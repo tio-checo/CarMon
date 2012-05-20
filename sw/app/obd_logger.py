@@ -138,7 +138,9 @@ class TurboIndicator(OBDParameter):
     '''
 
     def __init__(self, pid='Turbo', desc='Turbo Indicator', label='TURBO',
-                 format_string='%.2f', units='-', f_add = -1.0,
+                 format_string='%.2f', units='-',
+                 # progressbar range: <0.7; 2.0>
+                 f_add = -0.7, f_mul = 1.0 / (2.0 - 0.7),
                  pid_list = ['0B', '33']):
 
         super(TurboIndicator, self).__init__(pid, desc, label, f_add=f_add,
@@ -189,7 +191,8 @@ class PICConv(object):
         # open serial port for communication with PIC module
 #        self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.5)
 #        self.ser = serial.Serial('/dev/ttyUSB0', 115200)
-        self.ser = serial.Serial('/dev/ttyS0', 115200, timeout=1.0)
+#        self.ser = serial.Serial('/dev/ttyS0', 115200, timeout=1.0)
+        self.ser = serial.Serial('/dev/rfcomm0', 115200, timeout=1.0)
 
         # Initialize receive state machine.
         self.recv_state = PICConv.ST_IDLE
@@ -634,7 +637,9 @@ class MainLoop(threading.Thread):
                                            'WATER', 1,
                                            -40, 1,
                                            40.0, 1.0 / (40.0 + 110.0),
-                                           '%d', unichr(0x1d52) + 'C')
+                                           '%d',
+#                                           unichr(0x1d52) + 'C')
+                                           'stC')
         self.obd_pids['0B'] = OBDParameter('0B',
                                            'Intake Manifold Absolute Pressure',
                                            'AIR', 1,
@@ -651,7 +656,9 @@ class MainLoop(threading.Thread):
         self.obd_pids['0F'] = OBDParameter('0F', 'Intake Air Temperature',
                                            'AIR', 1,
                                            -40, 1, 40.0, 1.0 / (40.0 + 50.0),
-                                          '%d', unichr(0x1d52) + 'C')
+                                          '%d',
+#                                         unichr(0x1d52) + 'C')
+                                           'stC')
         self.obd_pids['10'] = OBDParameter('10', 'MAF Air Flow Rate',
                                            'MAF', 2,
                                            0.0, 0.01, 0.0, 1.0 / 150.0,
