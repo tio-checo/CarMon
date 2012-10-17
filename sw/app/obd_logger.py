@@ -688,10 +688,16 @@ class MainLoop(threading.Thread):
         # Battery voltage - measured by PIC module on one of its analog inputs.
         self.obd_pids['Batt'] = OBDParameter('Batt', 'Battery Voltage',
                                              'BATT', 2,
-                                             40.74, # protection diode
-                                             (5.0 * (2.7 + 6.8) / 2.7) / 1024,
+                                             # protection diode - only HW v1
+                                             #40.74,
+                                             #(5.0 * (2.7 + 6.8) / 2.7) / 1024,
+                                             #0.0,
+                                             #1.0 / (5.0 * (2.7 + 6.8) / 2.7),
+                                             # HW v2
                                              0.0,
-                                             1.0 / (5.0 * (2.7 + 6.8) / 2.7),
+                                             0.03562,
+                                             0.0,
+                                             1.0 / (0.03562 * 1024),
                                              '%.1f', 'V')
 
         #
@@ -991,7 +997,10 @@ class MainLoop(threading.Thread):
                     # directly by PIC, not read from ECU.
                     #
                     if self.current_pid_id == 'Batt':
-                        pc.send_packet('A', '06')
+                        # HW v1 - AD channel 6
+                        #pc.send_packet('A', '06')
+                        # HW v2 - AD channel 8
+                        pc.send_packet('A', '08')
                         self.state = MainLoop.ST_GET_VBB
                     else:
                         self.obd_comm.get_pid_value(self.current_pid_id)
@@ -1072,7 +1081,10 @@ class MainLoop(threading.Thread):
                     # directly by PIC, not read from ECU.
                     #
                     if self.current_pid_id == 'Batt':
-                        pc.send_packet('A', '06')
+                        # HW v1 - AD channel 6
+                        #pc.send_packet('A', '06')
+                        # HW v2 - AD channel 8
+                        pc.send_packet('A', '08')
                         self.state = MainLoop.ST_GET_VBB
                     else:
                         self.obd_comm.get_pid_value(self.current_pid_id)
