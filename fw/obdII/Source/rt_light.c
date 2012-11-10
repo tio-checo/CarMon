@@ -60,6 +60,15 @@ rtl_heartbeat_service(void)
 	/* indicate if BT module is currently paired */
 	if (bt_is_paired()) {
 		heartbeat_mode = HB_MODE_TICKS;
+
+		/*
+		 * Add one more tick if communication with ECU has been
+		 * established.
+		 */
+		if (kwp2k_comm_is_established())
+			hb_num_ticks = 2;
+		else
+			hb_num_ticks = 1;
 	} else {
 		heartbeat_mode = HB_MODE_FIFTY_FIFTY;
 	}
@@ -78,10 +87,12 @@ rtl_heartbeat_service(void)
 			if (hb_counter <= 0) {
 				hb_curr_tick--;
 				if (hb_curr_tick > 0)
-					hb_counter = 400;
+					hb_counter =
+					    200000 / RTL_SERVICE_PERIOD;
 				else
-					hb_counter = 2000;
-			} else if (hb_counter <= 350) {
+					hb_counter =
+					    1000000 / RTL_SERVICE_PERIOD;
+			} else if (hb_counter <= 175000 / RTL_SERVICE_PERIOD) {
 				LATBSET = 1 << 13;
 			} else {
 				LATBCLR = 1 << 13;
@@ -89,7 +100,7 @@ rtl_heartbeat_service(void)
 		} else {
 			/* silent period */
 			if (--hb_counter <= 0) {
-				hb_counter = 400;
+				hb_counter = 200000 / RTL_SERVICE_PERIOD;
 				hb_curr_tick = hb_num_ticks;
 				LATBCLR = 1 << 13;
 			}

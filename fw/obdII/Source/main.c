@@ -1,3 +1,9 @@
+/*********************************************************************
+ *
+ * Main program.
+ *
+ *********************************************************************/
+
 #include "xc.h"
 
 #include "bt.h"
@@ -15,10 +21,11 @@
 /* errno */
 int errno;
 
+/* local functions */
 /*
  * initialize peripheries
  */
-int
+static int
 per_init(void)
 {
 	/* configure JTAG pins as GPIO - they drive LEDs */

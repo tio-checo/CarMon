@@ -264,7 +264,8 @@ def main():
                         help='erase and program flash', default=None)
 
     parser.add_argument('-d', dest='comm_device', metavar='DEVICE',
-                        default='/tmp/SUNWut/units/IEEE802.00144fd6bfca/dev/term/a',
+#                        default='/tmp/SUNWut/units/IEEE802.00144fd6bfca/dev/term/a',
+                        default='/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a',
                         help='device port (e.g. /dev/ttya)')
 
     parser.add_argument('-v', dest='get_version', action='store_true',

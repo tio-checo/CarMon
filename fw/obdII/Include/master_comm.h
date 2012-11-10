@@ -11,13 +11,15 @@
 #define MCOM_CMD_SEND		'S'	/* send KWP2000 packet to K line */
 /* send KWP2000 packet prepended with WuP to K line */
 #define MCOM_CMD_SEND_WUP	'W'
+/* change communication mode */
+#define MCOM_CMD_CHANGE_MODE	'M'
 /* Quit the application, jump to bootloader */
 #define MCOM_CMD_QUIT		'q'
 /* Go to sleep */
 #define MCOM_CMD_SLEEP		's'
 
 /* responses */
-#define MCOM_RESP_CHAR	'r'	/* character received from K line */
+#define MCOM_RESP_DATA	'r'	/* packet received from ECU */
 #define MCOM_RESP_RXERR	'e'	/* malformed character received from K line */
 #define MCOM_RESP_ADC	'a'	/* result of A/D conversion */
 #define MCOM_RESP_ACK	'A'	/* ACK */
@@ -25,8 +27,19 @@
 
 /* NAK errors */
 #define MCOM_NAK_UNKNOWN_CMD	0x01	/* unknown command */
-#define MCOM_NAK_KWP2K_TX_ERR	0x02	/* Failed to send packet to ECU */
-#define MCOM_NAK_ADC_ERR	0x03	/* Failed to get data from ADC */
+#define MCOM_NAK_EINVAL		0x02	/* invalid value */
+#define MCOM_NAK_KWP2K_TX_ERR	0x03	/* Failed to send packet to ECU */
+#define MCOM_NAK_ADC_ERR	0x04	/* Failed to get data from ADC */
+#define MCOM_NAK_ECU_TOUT	0x05	/* ECU didn't respond */
+#define MCOM_NAK_ECU_BADPKT	0x06	/* bad packet received from ECU */
+/* Packet with invalid checksum received from ECU */
+#define MCOM_NAK_ECU_CHSUM	0x07
+/* Invalid response from ECU received */
+#define MCOM_NAK_ECU_INV_RESP	0x08
+/* Failed to establish communication with ECU */
+#define MCOM_NAK_ECU_INIT	0x09
+#define MCOM_NAK_KWP2K_BUSY	0x0a	/* Communication module is busy */
+#define MCOM_NAK_ECU_UKNOWN	0xff	/* unknown error */
 
 /* initialize master communication module */
 extern int mcom_init(void);

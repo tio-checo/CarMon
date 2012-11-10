@@ -9,7 +9,7 @@
 #define RTL_ENOCV	-2	/* no condition variable available */
 
 /* period of calling main service loop  in us */
-#define RTL_SERVICE_PERIOD	500
+#define RTL_SERVICE_PERIOD	100
 
 /* heartbeat modes */
 #define HB_MODE_FIFTY_FIFTY	0
