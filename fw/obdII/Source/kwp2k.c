@@ -417,7 +417,7 @@ kwp2k_init(void)
 	TRISDCLR = KWP2K_TX_MASK;
 
 	/*
-         * initialize UART1 used for communication with ECU
+	 * initialize UART1 used for communication with ECU
 	 *  - baudrate: KWP2K_BAUDRATE
 	 *  - 8 data bits, 1 stop bit
 	 *  - continue to operate in IDLE mode

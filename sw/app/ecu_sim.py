@@ -232,8 +232,8 @@ class ECUSim(object):
             ib_timer = time.time()
 
             #
-            # If too much time passed from last character received,
-            # consider just received character to be start of new packet.
+            # If too much time has passed since last character was received,
+            # assume this is just a beginning of new packet.
             #
             if ib_delay > ECUSim.KWP2K_T_P1_DEFMAX:
                 is_first_byte = True
