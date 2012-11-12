@@ -3,6 +3,9 @@ OBJCOPY= /opt/mipsel/bin/mipsel-objcopy
 OBJDUMP= /opt/mipsel/bin/mipsel-objdump
 NM= /opt/mipsel/bin/mipsel-nm
 
+# build directory
+BUILD_DIR= build
+
 # project directories containing header files
 HEADER_DIRS= -I. -I./Include -I./Include/peripheral \
 -I./Include/HardwareProfile/ -I./Source/
@@ -17,60 +20,62 @@ CFLAGS= -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 -DOBDCONV_BOARD \
 #  - soft float
 LDFLAGS= -msoft-float -march=m4k -nostartfiles
 
-OBJFILES= main.o rt_light.o bt.o kwp2k.o master_comm.o mon.o data_acq.o \
-utils.o
+OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
+    $(BUILD_DIR)/kwp2k.o $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
+    $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o
 
 APPNAME= main
 
 all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
     $(APPNAME).sym
 
-$(APPNAME).elf: $(OBJFILES) crt0-mipsel-app.o
-	$(CC) $(LDFLAGS) -o $@ $(OBJFILES) -T ld/elf32pic32mx-app.x
+$(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
+	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) \
+	-T ld/elf32pic32mx-app.x
 
-$(APPNAME).dis: $(APPNAME).elf
-	$(OBJDUMP) -D $? > $@
+$(APPNAME).dis: $(BUILD_DIR)/$(APPNAME).elf
+	$(OBJDUMP) -D $? > $(BUILD_DIR)/$@
 
-$(APPNAME).hdr: $(APPNAME).elf
-	$(OBJDUMP) -h $? > $@
+$(APPNAME).hdr: $(BUILD_DIR)/$(APPNAME).elf
+	$(OBJDUMP) -h $? > $(BUILD_DIR)/$@
 
-$(APPNAME).hex: $(APPNAME).elf
-	$(OBJCOPY) -I elf32-little -O ihex --change-addresses -0x80000000 $? $@
+$(APPNAME).hex: $(BUILD_DIR)/$(APPNAME).elf
+	$(OBJCOPY) -I elf32-little -O ihex --change-addresses -0x80000000 $? \
+	$(BUILD_DIR)/$@
 
 #	$(OBJCOPY) -I elf32-little -O ihex --change-addresses -0x80000000 \
 #   --change-section-lma .reset=0x1fc00000 --change-section-lma \
 #    .configsfrs=0x1fc02ff0 $? $@
 
-$(APPNAME).sym: $(APPNAME).elf
-	$(NM) $? > $@
+$(APPNAME).sym: $(BUILD_DIR)/$(APPNAME).elf
+	$(NM) $? > $(BUILD_DIR)/$@
 
-crt0-mipsel-app.o: Source/crt0-mipsel-app.S
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/crt0-mipsel-app.o: Source/crt0-mipsel-app.S
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-bt.o: Source/bt.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/bt.o: Source/bt.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-data_acq.o: Source/data_acq.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/data_acq.o: Source/data_acq.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-kwp2k.o: Source/kwp2k.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/kwp2k.o: Source/kwp2k.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-master_comm.o: Source/master_comm.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/master_comm.o: Source/master_comm.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-main.o: Source/main.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/main.o: Source/main.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-mon.o: Source/mon.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/mon.o: Source/mon.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-rt_light.o: Source/rt_light.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/rt_light.o: Source/rt_light.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
-utils.o: Source/utils.c
-	$(CC) -c $(CFLAGS) $?
+$(BUILD_DIR)/utils.o: Source/utils.c
+	$(CC) -o $@ -c $(CFLAGS) $?
 
 clean:
-	$(RM) $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
-$(APPNAME).sym $(OBJFILES) crt0-mipsel-app.o
+	$(RM) $(BUILD_DIR)/*

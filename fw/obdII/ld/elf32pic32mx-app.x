@@ -17,7 +17,7 @@ PROVIDE(_min_stack_size = 0x400) ;
 /*************************************************************************
  * Processor-specific object file.  Contains SFR definitions.
  *************************************************************************/
-STARTUP("crt0-mipsel-app.o")
+STARTUP("build/crt0-mipsel-app.o")
 INPUT("ld/processor.o")
 
 /*************************************************************************
