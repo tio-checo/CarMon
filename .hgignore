@@ -1,0 +1,15 @@
+/bootloader\.X/
+build
+design_notes
+docs
+namery
+gerber
+konstrukce
+pic16f
+pic18f
+vyroba
+MplabX
+.*\.o$
+.*\.ps$
+.*\.png$
+.*~$
