@@ -644,10 +644,14 @@ kwp2k_ul_send(unsigned char *data, int ln)
 	int	i;
 
 	/*
-	 * If previous packet is still being sent or response from
-	 * ECU is currently being received, return
+	 * If previous packet is still being sent, return. If everything
+	 * works as expected, fl_send_packet flag should be cleared before
+	 * machine enters idle mode. Though if something went wrong,
+	 * state machine could be transitioned into idle mode with that
+	 * flag still set leading to dead lock. In such case, initiating
+	 * sending of new packet is the way how to recover from that state.
 	 */
-	if (kwp2k_ul_st != KWP_STUL_IDLE)
+	if (kwp2k_ul_comm.fl_send_packet && kwp2k_ul_st != KWP_STUL_IDLE)
 		return EBUSY;
 
 	/*
@@ -660,15 +664,24 @@ kwp2k_ul_send(unsigned char *data, int ln)
 
 	/* clear error code */
 	kwp2k_ul_comm.error = 0;
+	kwp2k_ul_comm.fl_rx_done = FALSE;
 
-	/* Indicate that process of transmission commenced. */
+	/*
+	 * Signal to state machine that it should commence transmission
+	 * process.
+	 */
 	kwp2k_ul_comm.fl_send_packet = TRUE;
 
-	/* If needed, initialize communication first. */
-	if (kwp2k_comm_established) {
-		kwp2k_ul_goto(KWP_STUL_SEND);
-	} else {
-		kwp2k_ul_goto(KWP_STUL_COMM_INIT);
+	/*
+	 * If needed, wake-up state machine.
+	 */
+	if (kwp2k_ul_st == KWP_STUL_IDLE) {
+		if (kwp2k_comm_established) {
+			kwp2k_ul_goto(KWP_STUL_SEND);
+		} else {
+			/* Initialize communication first. */
+			kwp2k_ul_goto(KWP_STUL_COMM_INIT);
+		}
 	}
 
 	return 0;
@@ -1106,6 +1119,19 @@ kwp2k_ul_service(void)
 	 */
 	case KWP_STUL_RECV:
 		/*
+		 * There is a packet to be transmitted to ECU, interrupt
+		 * receiving process and commence transmission one.
+		 */
+		if (kwp2k_ul_comm.fl_send_packet) {
+			if (kwp2k_comm_established) {
+				kwp2k_ul_goto(KWP_STUL_SEND);
+			} else {
+				/* Initialize communication first. */
+				kwp2k_ul_goto(KWP_STUL_COMM_INIT);
+			}
+		}
+
+		/*
 		 * Previous packet (either valid or malformed)
 		 * still being processed.
 		 */
@@ -1113,7 +1139,7 @@ kwp2k_ul_service(void)
 			break;
 
 		/*
-		 * Receive for packet from ECU, decode it and move
+		 * Receive packet from ECU, decode it and move
 		 * data payload into receive buffer.
 		 */
 		ret = kwp2k_ll_recv(kwp2k_ul_comm.rx_buf,
@@ -1123,10 +1149,8 @@ kwp2k_ul_service(void)
 		if (ret == EAGAIN)
 			break;
 
-
 		/*
 		 * Valid packet received. Make it available to the master.
-		 * And transition state machine into idle state.
 		 */
 		if (ret == 0) {
 			/* Increment counter of packets received. */

@@ -153,14 +153,15 @@ class TurboIndicator(OBDParameter):
         '''Calculates parameter value as
         Intake Pressure/Barometric Pressure ratio.
         '''
-        if obd_pids['0B'].y_curr and obd_pids['33'].y_curr:
+        if obd_pids['0B'].y_curr is not None and \
+           obd_pids['33'].y_curr is not None and \
+           obd_pids['33'].y_curr != 0:
             self.y_curr = obd_pids['0B'].y_curr / obd_pids['33'].y_curr
 
     def recalculate(self, pid):
         '''Returns True if parameter should be recalculated as a result
         of change of given PID.
         '''
-
         return (pid in self.pid_list)
 
 
@@ -182,7 +183,8 @@ class PICConv(object):
 
     # states of receive state machine
     ST_IDLE = "st_idle"
-    ST_RECV = "st_recv"
+    ST_WAIT4SOF = "st_wait4sof"
+    ST_RECV_DATA = "st_recv_data"
 
     def __init__(self, kwp2000_recv_cb):
         self.debug = True
@@ -210,90 +212,68 @@ class PICConv(object):
         # Initialize data structure measuring battery voltage.
         self.battery_voltage = {'rdy':False, 'value':[0, 0]}
 
-    def recv(self, num):
-        if self.debug:
-            print "pic: R-> %s (%d)" % (PICConv.ST_RECV, num)
-        self.recv_state = PICConv.ST_RECV
-        self.recv_num = num
-
     def send_packet(self, cmd, data):
         pic_packet = '<' + cmd + data + '>'
         self.ser.write(pic_packet)
+
         # Packet sent, wait for response.
-        # Response to 'A' command (obtain A/D sample) contains 7 characters,
-        # otherwise wait for ACK (3 characters)
-        #
-        if cmd == 'A':
-            self.recv(7)
-        else:
-            self.recv(3)
+        if self.debug:
+            print "pic: R-> %s" % (PICConv.ST_WAIT4SOF)
+            print "[%0.3f] %s" % (time.time(), pic_packet)
+        self.recv_state = PICConv.ST_WAIT4SOF
 
     def recv_state_machine(self):
+        # State machine is idle, there is nothing to do.
         if self.recv_state == PICConv.ST_IDLE:
             return
 
-        recv_chars = ''
-        while self.recv_num > 0:
-            recv_tmp = self.ser.read(self.recv_num)
-            if self.debug:
-                print " pic: rcv_tmp = '%s'" % recv_tmp
+        # Process characters received from PIC module.
+        ch = self.ser.read(1)
 
-            #
-            # If there are no more characters available, timeout expired.
-            # In such case, just return.
-            # TODO: Handle this situation
-            #
-            if len(recv_tmp) == 0:
-                return
+        # Return if there is no character received.
+        if len(ch) == 0:
+            return
 
-            recv_chars += recv_tmp
-            self.recv_num -= len(recv_tmp)
-
-        if self.debug:
-            print "pic: recv_chars = '%s'" % recv_chars
-
-        # Required number of characters received, switch to IDLE state.
-        self.recv_state = PICConv.ST_IDLE
-
-#        while self.ser.inWaiting() != 0:
-#            t1 = t2 = t3 = -1.0
-#            tstart = time.time()
-
-#            recv_chars = self.ser.read(self.ser.inWaiting())
-#            t1 = time.time() - tstart
-#            print 'pic: recv_buf=%s' % recv_chars
-
-        #
-        # Process received characters
-        #
-        for ch in recv_chars:
+        # Waiting for beginning of packet.
+        if self.recv_state == PICConv.ST_WAIT4SOF:
             if ch == '<':
-                # SOF character received, restart receive process.
+                self.recv_buf = ''
+                self.recv_state = PICConv.ST_RECV_DATA
+            return
+
+        # Receive packet.
+        if self.recv_state == PICConv.ST_RECV_DATA:
+            if ch == '<':
+                # SOF character received again, restart receive process.
                 self.recv_buf = ''
             elif ch == '>':
-                #
-                # EOF character received, switch to IDLE state.
-                #
+                # EOF character received, process received packet.
 
                 #
-                # If it's KWP2000 related character,
-                # let KWP2000 layer process received packet. Otherwise
-                # process received packet here.
+                # If it is KWP2000 response from ECU, let KWP2000 layer
+                # process it. Otherwise process received packet here.
                 #
-                if self.recv_buf[0] == 'A' or self.recv_buf[0] == 'r':
+                if self.recv_buf[0] == 'r':
+                    # print "[%0.3f] %s" % (time.time(), self.recv_buf)
                     self.kwp2000_recv_cb(self.recv_buf)
-#                        t2 = time.time() - tstart
                 elif self.recv_buf[0] == 'a':
-                    self.battery_voltage['value'] = [int(self.recv_buf[1:3], 16),
-                                                     int(self.recv_buf[3:5], 16)]
+                    self.battery_voltage['value'] = \
+                        [int(self.recv_buf[1:3], 16),
+                         int(self.recv_buf[3:5], 16)]
                     self.battery_voltage['rdy'] = 'True'
-#!HA!                    print "Vbb: %d" % self.battery_voltage['value']
+                elif self.recv_buf[0] == 'A':
+                    pass
+                elif self.recv_buf[0] == 'N':
+                    # TODO: process NAK
+                    print "[%0.3f] NAK received: %s" % (time.time(),
+                                                         self.recv_buf)
+                    pass
+
+                # switch to IDLE mode
+                self.recv_state = PICConv.ST_IDLE
             else:
                 # Otherwise store received character in buffer.
                 self.recv_buf += ch
-#                t3 = time.time() - tstart
-
-#            print 'pic: t1=%.3f, t2=%.3f, t3=%.3f' % (t1, t2, t3)
 
 class KWP2000(object):
     # kwp2000 communication times - values are in seconds.
@@ -306,6 +286,7 @@ class KWP2000(object):
     #
 #    JITTER = 0.010
     JITTER = 0.0
+    P2_MAX = 0.5
     P3_MIN = 0.055 + JITTER
     P3_MAX = 5
 
@@ -355,123 +336,20 @@ class KWP2000(object):
             chsum += int(p[2 * i:2 * (i + 1)], 16)
         return '%(ch)02X' % {'ch': chsum & 255}
 
-    def send_packet(self, p, wup = False):
-        # Append checksum and send the packet
-        p1 = p + self.calc_chsum(p)
-
+    def send_packet(self, p):
         #
-        # If it's an initialization packet, prepend it
-        # with 'Wake up Pattern'.
+        # Pass the packet to lower layer.
         #
-        if wup:
-            self.pic_conv.send_packet('W', p1)
-        else:
-            #
-            # There must be a period of silence before tester can send a packet
-            # after last packet was received from ECU.
-            #
-            # If that period of silence hasn't expired yet, postpone sending
-            # the packet.
-            #
-#           if False:
-            wait_time = self.time_ecu_recv_packet + KWP2000.P3_MIN - get_time()
-            if wait_time > 0.0:
-                time.sleep(wait_time)
-
-#        if not time_expired(self.time_ecu_recv_packet, KWP2000.P3_MIN):
-#            if self.debug:
-#                print "kwp2000: rcv=%f, p3min=%f, time=%f" % \
-#                       (self.time_ecu_recv_packet, KWP2000.P3_MIN,
-#                        get_time())
-            #
-            # Wait for a while to meet KWP2000 timing specification,
-            # then send the packet.
-            #
-#            self.send_buff = [p1, wup]
-#            self.change_send_state(KWP2000.ST_SEND_WAIT4P3)
-#        else:
-            self.pic_conv.send_packet('S', p1)
-
-        # Wait for ACK.
-        self.change_recv_state(KWP2000.ST_RECV_WAIT4ACK)
-
-    def send_state_machine(self):
-        if self.send_state == KWP2000.ST_SEND_IDLE:
-            return
-        elif self.send_state == KWP2000.ST_SEND_WAIT4P3:
-            if time_expired(self.time_ecu_recv_packet, KWP2000.P3_MIN):
-                #
-                # If it's an initialization packet,
-                # prepend it with 'Wake up Pattern'.
-                #
-                if self.send_buff[1]:
-                    self.pic_conv.send_packet('W', self.send_buff[0])
-                else:
-                    self.pic_conv.send_packet('S', self.send_buff[0])
-
-                # Switch send state machine to IDLE state.
-                self.change_send_state(KWP2000.ST_SEND_IDLE)
-
-                # Wait for ACK.
-                self.change_recv_state(KWP2000.ST_RECV_WAIT4ACK)
+        self.pic_conv.send_packet('S', p)
 
     def recv_state_machine(self, data):
-        if self.recv_state == KWP2000.ST_RECV_WAIT4ACK:
-            if data[0] == 'A':
-                # ACK received, start receiving data.
-                self.recv_buf = ""
-                self.change_recv_state(KWP2000.ST_RECV_HDR)
-                self.pic_conv.recv(5)
-                return
-        elif data[0] != 'r':
+        # Invalid packet received.
+        if data[0] != 'r':
             return
 
-        # Extract data portion and convert from hex ASCII form into binary one.
-        d = int(data[1:3], 16)
+        # Let upper layer process received packet
+        self.obd_recv_cb(data[1:])
 
-        # Store data in a buffer (in ASCII form).
-        self.recv_buf += data[1:3]
-
-        # print received byte for debug purposes
-        if self.debug:
-            print "kwp2000: recv_buf=" + self.recv_buf
-
-        # Process received data
-        if self.recv_state == KWP2000.ST_RECV_IDLE:
-            # no-op
-            return
-        elif self.recv_state == KWP2000.ST_RECV_HDR:
-            # Received KWP2000 header byte. 6 lower bits contain length
-            # of data to be received.
-            self.data_ln = d & 0x3f
-            # account for overhead (ECU address, tester address, checksum)
-            self.data_ln += 3
-
-            if self.debug:
-                print "kwp2000: ln=%d" % self.data_ln
-
-            self.change_recv_state(KWP2000.ST_RECV_DATA)
-            self.pic_conv.recv(5 * self.data_ln)
-        elif self.recv_state == KWP2000.ST_RECV_DATA:
-            self.data_ln -= 1
-
-            #
-            # If whole packet has been received, let OBD layer process it.
-            # TODO: Verify checksum of received packet. Inform upper layer
-            #       if checksum is not correct.
-            #
-            if self.data_ln <= 0:
-                # Record time when the packet was received from ECU.
-                self.time_ecu_recv_packet = get_time()
-
-                if self.debug:
-                    print "kwp2000: time_ecu_recv_packet=%f" % \
-                           self.time_ecu_recv_packet
-
-                self.obd_recv_cb(self.recv_buf)
-                self.recv_buf = ""
-
-                self.change_recv_state(KWP2000.ST_RECV_IDLE)
 
 class OBD(object):
     ST_IDLE = "st_idle"
@@ -482,8 +360,8 @@ class OBD(object):
     PKT_START_COMM_RESP = "83F110C1"
     PKT_STOP_COMM = "C133F182"
     PKT_STOP_COMM_RESP = "81F110C2"
-    PKT_GET_PID = "C233F101"
-    PKT_GET_PID_RESP = "83F11041"
+    PKT_GET_PID = "01"
+    PKT_GET_PID_RESP = "41"
 
     def __init__(self):
         # turn on debug mode
@@ -523,12 +401,18 @@ class OBD(object):
         if self.communication_established:
             return
 
+        # Make sure receive buffer is empty
+        pc = self.kwp2000.pic_conv
+	while pc.ser.inWaiting() != 0:
+            ch = pc.ser.read(1)
+
         #
-        # Send StartCommunication packet to ECU (let receive state machine
-        # process a response).
+        # To establish communication with ECU, send 'get pid 00' packet
+        # to ECU. Low level part of that handshake is handled by PIC.
+        # Let receive state machine process a response.
         #
         self.change_recv_state(OBD.ST_COMM_INIT)
-        self.kwp2000.send_packet(OBD.PKT_START_COMM, True)
+        self.kwp2000.send_packet(OBD.PKT_GET_PID + "00")
 
 
     def get_pid_value(self, pid_id):
@@ -546,30 +430,28 @@ class OBD(object):
             #
             # TODO: Make verification step more robust and flexible.
             #
-            if data.startswith(OBD.PKT_START_COMM_RESP):
+            if data.startswith(OBD.PKT_GET_PID_RESP + "00"):
                 self.communication_established = True
             else:
                 self.incorrect_response = True
+                print "[%0.3f] Incorrect response to getPID 00: %s" % \
+                    (time.time(), data)
 
             # Switch to IDLE state.
             self.change_recv_state(OBD.ST_IDLE)
         elif self.recv_state == OBD.ST_GET_PID:
             #
-            # Verify response packet. Ignore first header byte, since it
-            # contains length of data portion, thus may vary.
-            # If incorrect response has been received, set the flag. Let upper
-            # layer deal with that.
+            # Verify response packet. If incorrect response has been
+            # received, set the flag. Let upper layer deal with that.
             #
-            # TODO: Make verification step more robust and flexible.
-            #
-            if data[2:].startswith(OBD.PKT_GET_PID_RESP[2:]):
+            if data.startswith(OBD.PKT_GET_PID_RESP):
                 #
                 # If previous PID value was not processed yet,
                 # drop the new one.
                 #
                 if not self.pid_value_ready:
                     # Get number of bytes representing PID
-                    num = (int(data[0:2], 16) & 0x3f) - 2
+                    num = (len(data) / 2 - 2)
                     if self.debug:
                         print "obd: PID data length=%d" % num
 
@@ -577,8 +459,8 @@ class OBD(object):
                     self.pid_value = []
 
                     for i in range(num):
-                        self.pid_value.append(int(data[10 + 2 * i: \
-                                                       10 + 2 * (i + 1)], 16))
+                        self.pid_value.append(int(data[4 + 2 * i: \
+                                                       4 + 2 * (i + 1)], 16))
                     if self.debug:
                         print "obd: PID data: %s" % str(self.pid_value)
 
@@ -586,6 +468,8 @@ class OBD(object):
                     self.pid_value_ready = True
             else:
                 self.incorrect_response = True
+                print "[%0.3f] Incorrect response to getPID: %s" % \
+                    (time.time(), data)
 
             # Switch to IDLE state.
             self.change_recv_state(OBD.ST_IDLE)
@@ -598,7 +482,7 @@ class MainLoop(threading.Thread):
     ST_GET_VBB = "st_get_vbb"
 
     # Times are in seconds.
-    TIME_RETRY_START_COMM = 1
+    TIME_RETRY_START_COMM = 5.0
 
     # Dashboard indicators.
     DB_DESC_LBL_NAME = 'desc_lbl_name'
@@ -894,14 +778,15 @@ class MainLoop(threading.Thread):
 
 
     def init_pid_state_machine(self):
-        ''' Initializes PID state machine.'''
-
+        ''' Initializes PID state machine.
+        '''
         for i in range(len(self.pid_speed_groups)):
             self.pid_speed_groups[i]['curr_index'] = -1
 
 
     def get_next_pid_to_process(self):
-
+        '''
+        '''
         #
         # Move to the next PID to be queried. Start with the first group.
         # If all PIDs has been processed there, continue with next group, etc.
@@ -955,10 +840,7 @@ class MainLoop(threading.Thread):
 
             pc = self.obd_comm.kwp2000.pic_conv
 
-            # Serve kwp2000 send state machine.
-            self.obd_comm.kwp2000.send_state_machine()
-
-            # Handle received packets.
+            # Handle packets received from PIC module.
             pc.recv_state_machine()
 
             t1 = time.time() - tstart
@@ -967,6 +849,7 @@ class MainLoop(threading.Thread):
 
             # Establish communication channel
             if self.state == MainLoop.ST_COMM_INIT_SEND:
+                time.sleep(2.0)
                 # Initialize timeout timer.
                 self.time_comm_start = get_time()
 
@@ -980,8 +863,11 @@ class MainLoop(threading.Thread):
                 #
                 if time_expired(self.time_comm_start,
                                 MainLoop.TIME_RETRY_START_COMM):
+                    print "[%0.3f] Timeout when trying to initiate " \
+                           "communication" % time.time()
+
                     self.time_comm_start = get_time()
-                    self.obd_comm.comm_start()        
+                    self.obd_comm.comm_start()
 
                 # Communication established, start with collecting PID values.
                 if self.obd_comm.communication_established:
@@ -1024,7 +910,7 @@ class MainLoop(threading.Thread):
                     # refresh voltage indicator.
                     #
                     if pc.battery_voltage['rdy']:
-                        # Value is just about be processed, clear the flag.
+                        # Clear the flag.
                         pc.battery_voltage['rdy'] = False
 
                         # Currently processed PID.
@@ -1039,14 +925,16 @@ class MainLoop(threading.Thread):
                     # If communication with ECU is broken,
                     # try to establish it again.
                     #
-                    if time_expired(self.time_packet_sent,
-                                    4 * MainLoop.TIME_RETRY_START_COMM):
+                    if time_expired(self.time_packet_sent, KWP2000.P2_MAX):
                         self.obd_comm.communication_established = False
+                        print "[%0.3f] Timeout when waiting for ECU " \
+                            "response" % time.time()
 
                         # Let user know via indicator on status bar.
                         self.update_stock_image('sts_communication',
                                                 'gtk-no', -1)
 
+                        time.sleep(MainLoop.TIME_RETRY_START_COMM)
                         self.time_comm_start = get_time()
                         self.obd_comm.comm_start()
 
