@@ -731,6 +731,8 @@ kwp2k_ll_recv(unsigned char *buf, int buf_size, int *ln, BOOL decode)
 int
 kwp2k_ll_send(unsigned char *data, int ln, BOOL send_wup, BOOL encode)
 {
+	kwp2k_rx_char_t ch;
+
 	/*
 	 * Machine currently busy either with sending or receiving packet.
 	 */
@@ -767,6 +769,15 @@ kwp2k_ll_send(unsigned char *data, int ln, BOOL send_wup, BOOL encode)
 		/* index in transmit buffer */
 		kwp2k_ll_comm.tx_index = 0;
 	}
+
+	/*
+	 * Before transmission of packet is initiated, make sure receive
+	 * buffer is empty. That assures lower layer receiver can recover
+	 * from situations when incomplete packets are received for some reason
+	 * (e.g. due to incorrect packet timing) and garbage is left
+	 * unprocessed in receive buffer.
+	 */
+	while (kwp2k_getchar(&ch) == 0);
 
 	/* disable receiver during transmission, echoes are discarded */
 	U1STACLR = UART_RX_ENABLE;
