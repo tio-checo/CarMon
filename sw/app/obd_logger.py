@@ -214,10 +214,6 @@ class PICConv(object):
         if self.com_pic_established:
             return True
 
-        # Make sure receive buffer is empty
-	while self.ser.inWaiting() != 0:
-            ch = self.ser.read(self.ser.inWaiting())
-
         # Initiate communication by reading value from A/D converter.
         self.send_packet('A', '08')
         p = self.recv_packet()
@@ -238,11 +234,22 @@ class PICConv(object):
             return False
 
     def send_packet(self, cmd, data):
-        ''' Assemble and send packet to PIC module.
+        ''' Assembles and sends packet to PIC module.
+        Before packet is sent out, flush receive buffer to get rid of any
+        potential garbage resulting from previous error.
         '''
+
+        # Flush receive buffer.
+        while self.ser.inWaiting() != 0:
+            ch = self.ser.read(self.ser.inWaiting())
+
+        # Encapsulate provided data payload with SOF and EOF characters.
         pic_packet = '<' + cmd + data + '>'
+
+        # Send out resulting packet to PIC module.
         self.ser.write(pic_packet)
 
+        # If desired, print the packet for debugging purposes.
         if self.debug:
             print "[%0.3f] pic: <- %s" % (get_time() - self.comm_time,
                                            pic_packet)
@@ -272,13 +279,13 @@ class PICConv(object):
             if len(ch) == 0:
                 return None
 
-            # Waiting for beginning of packet.
+            # Wait for beginning of packet.
             if recv_state == PICConv.ST_WAIT4SOF and ch == '<':
                 p = ''
                 recv_state = PICConv.ST_RECV_DATA
                 continue
 
-            # Receive packet.
+            # Receive the rest of packet.
             if recv_state == PICConv.ST_RECV_DATA:
                 if ch == '<':
                     # SOF character received again, restart receive process.
@@ -287,6 +294,8 @@ class PICConv(object):
                     #
                     # EOF character, complete packet has been received.
                     # Pass data payload to the caller.
+                    # If desired, print received packet for debugging
+                    # purposes.
                     #
                     if self.debug:
                         print "[%0.3f] pic: -> %s" % (get_time() -
@@ -305,6 +314,8 @@ class KWP2000(object):
     '''
 
     def __init__(self):
+        ''' Initializes instance of KWP2000 class.
+        '''
         # turn debug mode off
         self.debug = False
 
@@ -312,18 +323,21 @@ class KWP2000(object):
         self.pic_conv = PICConv()
 
     def calc_chsum(self, p):
+        ''' Calculates KWP2000 checksum as simple 8-bit sum series of all
+        bytes in the message, excluding the checksum itself.
+        '''
         chsum = 0
         for i in range(len(p) / 2):
             chsum += int(p[2 * i:2 * (i + 1)], 16)
         return '%(ch)02X' % {'ch': chsum & 255}
 
     def send_packet(self, p):
-        ''' Assemble and send out KWP2000 packet.
+        ''' Assembles and sends out KWP2000 packet.
         '''
         self.pic_conv.send_packet('S', p)
 
     def recv_packet(self):
-        ''' Wait for KWP2000 packet from PIC module.
+        ''' Waits for KWP2000 packet from PIC module.
         Returns None if timeout expired.
         '''
 
@@ -356,6 +370,8 @@ class OBD(object):
     PKT_GET_PID_RESP = "41"
 
     def __init__(self):
+        ''' Initializes instance of OBD class.
+        '''
         # turn debug mode off
         self.debug = False
 
@@ -373,11 +389,6 @@ class OBD(object):
         # If communication channel is already established, return.
         if self.com_ecu_established:
             return True
-
-        # Make sure receive buffer is empty
-        pc = self.kwp2000.pic_conv
-	while pc.ser.inWaiting() != 0:
-            ch = pc.ser.read(pc.ser.inWaiting())
 
         #
         # To establish communication with ECU, send 'get pid 00' packet

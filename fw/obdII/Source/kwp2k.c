@@ -12,14 +12,14 @@
  *      (see below)
  *    - receives byte from ECU
  *
- *  o higher layer (hl)
+ *  o upper layer (ul)
  *    - assembles and transmits complete packet to ECU
  *    - provides for "on-demand" initialization of communication with ECU
  *    - receives and verifies packet from ECU
  *
  * Related to that, there are two modes of operation. The simple one which
- * just passes data between ECU and master without any processing and the
- * more sophisticated one which takes care of following:
+ * just passes characters between ECU and master without any processing
+ * and the more sophisticated one which takes care of following:
  *  - takes care of assembling KWP2000 packet - creates header, calculates
  *    checksum.
  *  - automatically on-demand initializes communication with ECU
