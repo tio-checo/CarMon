@@ -379,8 +379,10 @@ kwp2k_decode_packet(unsigned char *buf, int buf_size, int *ln)
 	 * should have been captured by lower layer, but catch this
 	 * just to be on a safe side.
 	 */
-	if (*ln < 0)
+	if (*ln < 0) {
+		kwp2k_ll_comm.error = KWP2K_LLERR_DECODE;
 		return EINVAL;
+	}
 
 	/* Transfer data payload into supplied buffer */
 	for (i = 0; s < kwp2k_ll_comm.rx_ln - 1 && i < buf_size; s++, i++)
@@ -782,6 +784,10 @@ kwp2k_ll_send(unsigned char *data, int ln, BOOL send_wup, BOOL encode)
 	/* disable receiver during transmission, echoes are discarded */
 	U1STACLR = UART_RX_ENABLE;
 
+	/* clear RX errors */
+	kwp2k_ll_comm.error = 0;
+	kwp2k_ll_comm.fl_rx_done = FALSE;
+
 	if (send_wup)
 		/* Start with Wake Up Pattern, then send out data. */
 		kwp2k_ll_goto(KWP_STLL_TX_WUP_LOW);
@@ -954,8 +960,12 @@ kwp2k_ll_service(void)
 				/* invalid checksum, abort */
 				kwp2k_ll_err_abort(KWP2K_LLERR_CHSUM);
 			} else {
-				/* valid packet received, clear error */
+				/*
+				 * Valid packet received, clear error
+				 * and set appropriate flag.
+				 */
 				kwp2k_ll_comm.error = 0;
+				kwp2k_ll_comm.fl_rx_done = TRUE;
 
 				/*
 				 * Reset timer which, if expires, forces
@@ -971,9 +981,6 @@ kwp2k_ll_service(void)
 				 * response has been received.
 				 */
 				rtl_timer_init(&kwp2k_p3_timer, kwp2k_p3);
-
-				/* we are done */
-				kwp2k_ll_comm.fl_rx_done = TRUE;
 
 				/*
 				 * Response might contain more that one packet,
@@ -1140,6 +1147,8 @@ kwp2k_ul_service(void)
 				/* Initialize communication first. */
 				kwp2k_ul_goto(KWP_STUL_COMM_INIT);
 			}
+
+			break;
 		}
 
 		/*
@@ -1249,8 +1258,7 @@ kwp2k_ul_service(void)
 		/* continue with sending data to ECU */
 		kwp2k_ul_goto(KWP_STUL_SEND);
 
-		/* Just proceed, no need to wait for another round. */
-		/* break; */
+		break;
 
 	/* Send packet to ECU */
 	case KWP_STUL_SEND:

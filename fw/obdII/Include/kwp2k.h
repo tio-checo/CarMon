@@ -97,16 +97,18 @@
 /* return codes */
 /* receiver errors */
 /* lower layer errors */
-/* ECU didn't respond within expected P2 time */
-#define KWP2K_LLERR_RXP2	0x01
 /* ECU didn't provide next character within expected P1 time */
-#define KWP2K_LLERR_RXP1	0x02
+#define KWP2K_LLERR_RXP1	0x01
+/* ECU didn't respond within expected P2 time */
+#define KWP2K_LLERR_RXP2	0x02
 /* bad character received from ECU */
 #define KWP2K_LLERR_BADCHAR	0x03
 /* bad packet received from ECU */
 #define KWP2K_LLERR_BADPKT	0x04
 /* bad checksum */
 #define KWP2K_LLERR_CHSUM	0x05
+/* error occurred when packet was being decoded */
+#define KWP2K_LLERR_DECODE	0x06
 
 /* upper layer errors */
 /* lower layer signals there was an error during packet reception */
