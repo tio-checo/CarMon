@@ -82,12 +82,13 @@
 
 /* kwp2k_ul_st states */
 #define KWP_STUL_IDLE		0	/* machine IDLE */
-#define KWP_STUL_COMM_INIT	1	/* initialize communication with ECU */
-#define KWP_STUL_COMM_INIT_RESP	2	/* wait for response from ECU */
-#define KWP_STUL_SEND		3	/* send packet to ECU */
-#define KWP_STUL_RECV		4	/* receive packets from ECU */
+#define KWP_STUL_WAIT4SEND	1	/* wait for packet to be sent to ECU */
+#define KWP_STUL_COMM_INIT	2	/* initialize communication with ECU */
+#define KWP_STUL_COMM_INIT_RESP	3	/* wait for response from ECU */
+#define KWP_STUL_SEND		4	/* send packet to ECU */
+#define KWP_STUL_RECV		5	/* receive packets from ECU */
 /* wait until packet is completely transmitted to ECU */
-#define KWP_STUL_WAIT4TXDONE	5
+#define KWP_STUL_WAIT4TXDONE	6
 
 /* communication speed */
 /* for debug purposes, select speed supported by debug tool */
@@ -252,8 +253,11 @@ kwp2k_ul_err_abort(int err_code)
 	/* Signal to upper layer that the job is finished */
 	kwp2k_ul_comm.fl_rx_done = TRUE;
 
-	/* Transition state machine into idle state */
-	kwp2k_ul_goto(KWP_STUL_IDLE);
+	/*
+	 * Restart state machine - it will wait for packet to be transmitted
+	 * to ECU.
+	 */
+	kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
 
 	return 0;
 }
@@ -519,8 +523,11 @@ kwp2k_init(void)
 	/* lower layer state machine is IDLE */
 	kwp2k_ll_goto(KWP_STLL_IDLE);
 
-	/* upper layer state machine is IDLE */
-	kwp2k_ul_goto(KWP_STUL_IDLE);
+	/*
+	 * Start upper layer state machine - it will wait for packet
+	 * to be transmitted to ECU.
+	 */
+	kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
 
 	return 0;
 }
@@ -645,15 +652,8 @@ kwp2k_ul_send(unsigned char *data, int ln)
 {
 	int	i;
 
-	/*
-	 * If previous packet is still being sent, return. If everything
-	 * works as expected, fl_send_packet flag should be cleared before
-	 * machine enters idle mode. Though if something went wrong,
-	 * state machine could be transitioned into idle mode with that
-	 * flag still set leading to dead lock. In such case, initiating
-	 * sending of new packet is the way how to recover from that state.
-	 */
-	if (kwp2k_ul_comm.fl_send_packet && kwp2k_ul_st != KWP_STUL_IDLE)
+	/* If previous packet is still being sent, return. */
+	if (kwp2k_ul_comm.fl_send_packet)
 		return EBUSY;
 
 	/*
@@ -664,27 +664,17 @@ kwp2k_ul_send(unsigned char *data, int ln)
 
 	kwp2k_ul_comm.tx_ln = ln;
 
-	/* clear error code */
+	/*
+	 * Clear error code, discard any received packets.
+	 */
 	kwp2k_ul_comm.error = 0;
 	kwp2k_ul_comm.fl_rx_done = FALSE;
 
 	/*
-	 * Signal to state machine that it should commence transmission
+	 * Signal to state machine that it should initiate transmission
 	 * process.
 	 */
 	kwp2k_ul_comm.fl_send_packet = TRUE;
-
-	/*
-	 * If needed, wake-up state machine.
-	 */
-	if (kwp2k_ul_st == KWP_STUL_IDLE) {
-		if (kwp2k_comm_established) {
-			kwp2k_ul_goto(KWP_STUL_SEND);
-		} else {
-			/* Initialize communication first. */
-			kwp2k_ul_goto(KWP_STUL_COMM_INIT);
-		}
-	}
 
 	return 0;
 }
@@ -816,7 +806,8 @@ BOOL
 kwp2k_is_idle(void)
 {
 	return (kwp2k_ll_st == KWP_STLL_IDLE &&
-	    kwp2k_ul_st == KWP_STUL_IDLE);
+	    kwp2k_ul_st == KWP_STUL_WAIT4SEND &&
+	    !kwp2k_ul_comm.fl_send_packet);
 }
 
 /*
@@ -1133,21 +1124,32 @@ kwp2k_ul_service(void)
 		break;
 
 	/*
+	 * Wait for packet to be transmitted to ECU.
+	 */
+	case KWP_STUL_WAIT4SEND:
+		if (!kwp2k_ul_comm.fl_send_packet)
+			break;
+
+		/* If necessary, initialize communication first. */
+		if (kwp2k_comm_established) {
+			kwp2k_ul_goto(KWP_STUL_SEND);
+		} else {
+			kwp2k_ul_goto(KWP_STUL_COMM_INIT);
+		}
+
+		break;
+
+	/*
 	 * Wait for response from ECU.
 	 */
 	case KWP_STUL_RECV:
 		/*
-		 * There is a packet to be transmitted to ECU, interrupt
-		 * receiving process and commence transmission one.
+		 * If upper layer signals there is a packet to be transmitted
+		 * to ECU, then interrupt receive process and initiate
+		 * transmission.
 		 */
 		if (kwp2k_ul_comm.fl_send_packet) {
-			if (kwp2k_comm_established) {
-				kwp2k_ul_goto(KWP_STUL_SEND);
-			} else {
-				/* Initialize communication first. */
-				kwp2k_ul_goto(KWP_STUL_COMM_INIT);
-			}
-
+			kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
 			break;
 		}
 
@@ -1186,12 +1188,13 @@ kwp2k_ul_service(void)
 		 * If lower layer signals timeout when waiting for
 		 * packet from ECU and if at least one packet has been
 		 * already received, then treat that condition
-		 * as indicator of "response completed". In such case,
-		 * do not report error and switch to idle mode.
+		 * as indicator of "ECU response completed". In such case,
+		 * terminate receiving process and wait for another packet
+		 * to be sent to ECU.
 		 */
 		if (ecu_response_packet_counter > 0 &&
 		    kwp2k_ll_comm.error == KWP2K_LLERR_RXP2) {
-			kwp2k_ul_goto(KWP_STUL_IDLE);
+			kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
 
 			break;
 		}
