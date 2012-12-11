@@ -63,11 +63,16 @@ main(int argc, char **argv)
 	daq_init();
 	kwp2k_init();
 	mcom_init();
-//	mon_init();
+	mon_init();
+
+	/* Immediately enter diagnostic mode */
+	//mon_diag_enter();
 
 	while(1) {
-//		bt_service();
-//		mon_service();
+		while (mon_is_diag_mode()) {
+			mon_service();
+		}
+
 		if (mcom_suspend()) {
 			sleeping = TRUE;
 

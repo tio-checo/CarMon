@@ -3,11 +3,6 @@
 
 #include "GenericTypeDefs.h"
 
-/* return codes */
-#define BT_OK		0	/* operation succeeded */
-#define BT_RX_EMPTY	-1	/* receive buffer empty */
-#define BT_TX_FULL	-2	/* transmit buffer full */
-
 /* initialize Bluetooth module */
 extern int bt_init(void);
 

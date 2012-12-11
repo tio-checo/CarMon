@@ -1,3 +1,9 @@
+/*********************************************************************
+ *
+ * Support for light real time system.
+ *
+ *********************************************************************/
+
 #include "HardwareProfile.h"
 #include "xc.h"
 
@@ -8,6 +14,7 @@
 #include "mon.h"
 #include "rt_light.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -44,7 +51,7 @@ rtl_timer_service(void)
 			rtl_pool_timers[i].tout--;
 	}
 
-	return	RTL_OK;
+	return	0;
 }
 
 /*
@@ -113,8 +120,8 @@ rtl_heartbeat_service(void)
 /*
  * Allocate timer from pool and initialize it.
  * If timer has not been allocated yet (*ptimer is NULL), then try to allocate
- * one from pool of timers. If there is no free timer available, return
- * RTL_ENOTIMER. Otherwise, initialize pointer to the timer allocated.
+ * one from pool of timers. If there is no free timer available, return ENOSPC.
+ * Otherwise, initialize pointer to the timer allocated.
  *
  * Timeout specified in microseconds.
  */
@@ -131,7 +138,7 @@ rtl_timer_init(rtl_timer_t **ptimer, rtl_time_t tout)
 
 		/* no timer available, return */
 		if (i == RTL_TIMER_POOL_SIZE)
-			return RTL_ENOTIMER;
+			return ENOSPC;
 
 		*ptimer = &rtl_pool_timers[i];
 	}
@@ -140,7 +147,7 @@ rtl_timer_init(rtl_timer_t **ptimer, rtl_time_t tout)
 	(*ptimer)->allocated = TRUE;
 	(*ptimer)->tout = tout / RTL_SERVICE_PERIOD;
 
-	return RTL_OK;
+	return 0;
 }
 
 /*
@@ -154,8 +161,8 @@ rtl_timer_expired(rtl_timer_t *ptimer)
 
 /*
  * Allocate condition variable from pool and initialize it.
- * If there is no free condition variable available, return
- * RTL_ENOCV. Otherwise, initialize pointer to condition variable allocated.
+ * If there is no free condition variable available, return ENOSPC.
+ * Otherwise, initialize pointer to condition variable allocated.
  *
  * Timeout specified in microseconds.
  */
@@ -168,7 +175,7 @@ rtl_cond_init(rtl_cv_t **pcv, const char *desc)
 
 	/* no condition variable available, return */
 	if (i == RTL_CV_POOL_SIZE)
-		return RTL_ENOCV;
+		return ENOSPC;
 
 	*pcv = &rtl_pool_cvs[i];
 
@@ -178,7 +185,7 @@ rtl_cond_init(rtl_cv_t **pcv, const char *desc)
 	/* initialize description field to given string */
 	(*pcv)->description = desc;
 
-	return RTL_OK;
+	return 0;
 }
 
 /*
@@ -222,7 +229,7 @@ rtl_init(void)
 	/* Enable Timer 1 */
 	T1CONSET = 0x8000;
 
-	return RTL_OK;
+	return 0;
 }
 
 /*
@@ -234,7 +241,7 @@ rtl_suspend(void)
 	/* Stop timer 1 */
 	T1CONCLR = 0x8000;
 
-	return RTL_OK;
+	return 0;
 }
 
 /*
@@ -245,14 +252,21 @@ __attribute__ ((interrupt)) isr_timer1(void)
 {
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
-	kwp2k_service();
-	bt_service();
-	daq_service();
-	mcom_service();
-//	mon_service();
+	if (mon_is_diag_mode()) {
+		/*
+		 * Diagnostic mode. 
+		 */
+		mon_service();
+	} else {
+		kwp2k_service();
+		daq_service();
+		mcom_service();
+		rtl_timer_service();
+	}
 
+	/* Services which run in both normal and diagnostic modes */
+	bt_service();
 	rtl_heartbeat_service();
-	rtl_timer_service();
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;

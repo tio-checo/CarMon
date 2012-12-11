@@ -1,11 +1,6 @@
 #ifndef __MCOMM_H
 #define __MCOMM_H
 
-/* return codes */
-#define MCOM_OK			0	/* operation succeeded */
-/* packet being transmitted to master */
-#define MCOM_TX_IN_PROGRESS	-1	
-
 /* commands */
 #define MCOM_CMD_GET_AD		'A'	/* get value from AD converter */
 #define MCOM_CMD_SEND		'S'	/* send KWP2000 packet to K line */
@@ -13,6 +8,8 @@
 #define MCOM_CMD_SEND_WUP	'W'
 /* change communication mode */
 #define MCOM_CMD_CHANGE_MODE	'M'
+/* Interrupt the application, jump to diagnostic mode */
+#define MCOM_CMD_DIAG_MODE	'd'
 /* Quit the application, jump to bootloader */
 #define MCOM_CMD_QUIT		'q'
 /* Go to sleep */

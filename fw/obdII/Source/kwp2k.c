@@ -395,18 +395,20 @@ kwp2k_decode_packet(unsigned char *buf, int buf_size, int *ln)
 	return 0;
 }
 
+/* public functions */
+
 /*
- * Set communication speed (baudrate)
+ * Sets communication speed (baudrate). Returns previous value.
  */
-static int
+int
 kwp2k_set_comm_speed(int speed)
 {
+	int old_speed = U1BRG;
+
 	U1BRG = (SYS_FREQ / 16 / speed - 1);
 
-	return 0;
+	return old_speed;
 }
-
-/* public functions */
 
 /*
  * Initialize KWP2000 communication channel
@@ -836,7 +838,7 @@ kwp2k_set_mode(int new_mode)
 	/* adjust baudrate if leaving or entering debug mode */
 	if (old_mode != new_mode &&
 	    (old_mode == KWP2K_MODE_DEBUG || new_mode == KWP2K_MODE_DEBUG))
-		return kwp2k_set_comm_speed(new_mode == KWP2K_MODE_DEBUG ?
+		kwp2k_set_comm_speed(new_mode == KWP2K_MODE_DEBUG ?
 		    KWP2K_BAUDRATE_DEBUG : KWP2K_BAUDRATE_NORMAL);
 
 	return 0;

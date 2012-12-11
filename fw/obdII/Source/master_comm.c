@@ -206,7 +206,7 @@ mcom_init(void)
 	/* Do not suspend */
 	mcom_suspend_fl = FALSE;
 
-	return MCOM_OK;
+	return 0;
 }
 
 /*
@@ -219,7 +219,7 @@ mcom_send_packet(unsigned char ln)
 	 * If previous packet is still being sent, wait.
 	 */
 	if (mcom_comm.fl_send_packet) {
-		return MCOM_TX_IN_PROGRESS;
+		return EAGAIN;
 	}
 
 	mcom_comm.tx_ln = ln;
@@ -227,7 +227,7 @@ mcom_send_packet(unsigned char ln)
 	mcom_comm.fl_send_packet = TRUE;
 	mcom_st_tx = MCOM_ST_TX_SOF;
 
-	return MCOM_OK;
+	return 0;
 }
 
 /*
@@ -249,7 +249,7 @@ mcom_rx_st(void)
 	 * received.
 	 */
 	while (!mcom_comm.fl_packet_received &&
-	    (mcom_comm.getchar)(&ch) == MCOM_OK) {
+	    (mcom_comm.getchar)(&ch) == 0) {
 
 		switch (mcom_st_rx) {
 		/* machine is IDLE */
@@ -288,7 +288,7 @@ mcom_rx_st(void)
 		} /* switch */
 	} /* while */
 
-	return MCOM_OK;
+	return 0;
 }
 
 /*
@@ -367,6 +367,11 @@ mcom_decode_packet(void)
 
 		break;
 
+	/* Enter diagnostic mode */
+	case MCOM_CMD_DIAG_MODE:
+		mon_diag_enter();
+		break;
+
 	/* Change communication mode */
 	case MCOM_CMD_CHANGE_MODE:
 		/*
@@ -409,7 +414,7 @@ mcom_decode_packet(void)
 		break;
 	} /* switch */
 
-	return MCOM_OK;
+	return 0;
 }
 
 /*
@@ -523,7 +528,7 @@ mcom_process_packet_st(void)
 		break;
 	} /* switch */
 
-	return MON_OK;
+	return 0;
 }
 
 /*
@@ -539,7 +544,7 @@ mcom_tx_st(void)
 
 	/* send SOF */
 	case MCOM_ST_TX_SOF:
-		if ((mcom_comm.putchar)(MCOM_PKT_SOF) == MCOM_OK)
+		if ((mcom_comm.putchar)(MCOM_PKT_SOF) == 0)
 			mcom_st_tx = MCOM_ST_TX_DATA;
 		break;
 
@@ -547,7 +552,7 @@ mcom_tx_st(void)
 	case MCOM_ST_TX_DATA:
 		/* all data sent, so EOF */
 		if (mcom_comm.tx_head >= mcom_comm.tx_ln) {
-			if ((mcom_comm.putchar)(MCOM_PKT_EOF) == MCOM_OK) {
+			if ((mcom_comm.putchar)(MCOM_PKT_EOF) == 0) {
 				/*
 				 * Packet has been completely transmitted
 				 * to master, signal it.
@@ -562,14 +567,14 @@ mcom_tx_st(void)
 			c = mcom_comm.tx_buf[mcom_comm.tx_head];
 
 			/* byte successfully sent out, move to the next one */
-			if ((mcom_comm.putchar)(c) == MCOM_OK) {
+			if ((mcom_comm.putchar)(c) == 0) {
 				mcom_comm.tx_head++;
 			}
 		}
 		break;
 	}
 
-	return MCOM_OK;
+	return 0;
 }
 
 /*
@@ -589,6 +594,6 @@ mcom_service(void)
 	/* Transmit packet to master */
 	mcom_tx_st();	
 
-	return MCOM_OK;
+	return 0;
 }
 

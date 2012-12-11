@@ -3,11 +3,6 @@
 
 #include "GenericTypeDefs.h"
 
-/* return codes */
-#define RTL_OK		0	/* operation succeeded */
-#define RTL_ENOTIMER	-1	/* no timer available */
-#define RTL_ENOCV	-2	/* no condition variable available */
-
 /* period of calling main service loop  in us */
 #define RTL_SERVICE_PERIOD	100
 

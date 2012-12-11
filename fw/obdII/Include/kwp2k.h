@@ -165,6 +165,9 @@ typedef struct _kwp2l_rx_tx_t {
 /* Initialize KWP2000 communication module. */
 extern int kwp2k_init(void);
 
+/* Set communication speed (baudrate). Return original speed. */
+extern int kwp2k_set_comm_speed(int speed);
+
 /* Return TRUE if module operates in basic communication mode. */
 extern BOOL kwp2k_is_basic_mode(void);
 
