@@ -1,3 +1,5 @@
+android/.*/bin
+android/\.metadata
 /bootloader\.X/
 build
 design_notes
