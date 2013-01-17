@@ -1229,7 +1229,7 @@ manufacturer=Yageo
 T 57600 37300 5 10 0 0 270 0 1
 vendor_part_number=117347
 T 56900 37400 5 10 1 1 0 0 1
-value=100k
+value=10k
 }
 N 57800 37200 57600 37200 4
 C 55500 36000 1 0 0 gnd-3.sym
@@ -1269,7 +1269,7 @@ manufacturer=Yageo
 T 55800 37200 5 10 0 0 0 0 1
 vendor_part_number=117347
 T 56100 36600 5 10 1 1 0 0 1
-value=27k
+value=1k
 }
 N 51600 35800 54500 35800 4
 N 51600 32700 51600 35800 4
