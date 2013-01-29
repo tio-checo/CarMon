@@ -801,6 +801,14 @@ class PicCom {
                 p = new String("");
 
                 recvState = ST_RECV_DATA;
+
+                if (mDebug) {
+                    Log.d(ObdLogger.TAG, (String.format("[%.3f] -> '<'",
+                            ObdLogger.getTime() - mComTime)));
+
+                    mComTime = ObdLogger.getTime();
+                }
+
                 continue;
             }
 
@@ -809,6 +817,13 @@ class PicCom {
                 if (ch == '<') {
                     /* SOF character received again, restart receive process. */
                     p = new String("");
+
+                    if (mDebug) {
+                        Log.d(ObdLogger.TAG, (String.format("[%.3f] -> <",
+                                ObdLogger.getTime() - mComTime)));
+
+                        mComTime = ObdLogger.getTime();
+                    }
                 } else if (ch == '>') {
                     /*
                      * EOF character, complete packet has been received.
@@ -827,6 +842,13 @@ class PicCom {
                 } else {
                     /* Otherwise store received character in buffer. */
                     p += ch;
+
+                    if (mDebug) {
+                        Log.d(ObdLogger.TAG, (String.format("[%.3f] -> %s",
+                                ObdLogger.getTime() - mComTime, p)));
+
+                        mComTime = ObdLogger.getTime();
+                    }
                 }
             }
         }

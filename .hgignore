@@ -9,8 +9,12 @@ gerber
 konstrukce
 pic16f
 pic18f
+pictures
 vyroba
 MplabX
+.*\.elf$
+.*\.hex$
+.*\.ld$
 .*\.o$
 .*\.ps$
 .*\.png$
