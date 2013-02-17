@@ -48,7 +48,7 @@ $(APPNAME).hex: $(BUILD_DIR)/$(APPNAME).elf
 #    .configsfrs=0x1fc02ff0 $? $@
 
 $(APPNAME).sym: $(BUILD_DIR)/$(APPNAME).elf
-	$(NM) $? > $(BUILD_DIR)/$@
+	$(NM) -S -n $? > $(BUILD_DIR)/$@
 
 $(BUILD_DIR)/crt0-mipsel-app.o: Source/crt0-mipsel-app.S
 	$(CC) -o $@ -c $(CFLAGS) $?
