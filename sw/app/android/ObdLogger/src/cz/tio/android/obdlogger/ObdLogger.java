@@ -1677,7 +1677,7 @@ class CommunicationService {
          */
         mProbePool.put("Batt", new PicProbe("Batt", "V",
                 "Battery Voltage", "BATT", "%.1f",
-                0.0, 0.03562, 0.0, 1.0 / (0.03562 * 1024),
+                0.0, 0.01934, 0.0, 1.0 / (0.01934 * 1024),
                 obd.mKwp2000.mPicCom));
 
         /*
