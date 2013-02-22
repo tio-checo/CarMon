@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
@@ -1884,6 +1885,7 @@ class CommunicationService {
 
 public class ObdLogger extends Activity {
     static final String TAG = "ObdLogger";
+    static final int REQUEST_ENABLE_BT = 1;
 
     /* Reference to application context */
 //    private Context mContext;
@@ -1912,49 +1914,9 @@ public class ObdLogger extends Activity {
     private OutputStream mBluetoothOut = null;
 
     /**
-     * Returns current time in seconds.
+     * Establishes connection to PIC module
      */
-    public static double getTime() {
-        return System.currentTimeMillis() / 1000.0;
-    }
-
-    /**
-     * Returns run time of the application in seconds.
-     */
-    public static double getRunTime() {
-        return ObdLogger.getTime() - mTimeStart;
-    }
-
-    /** Called when the activity is first created. */
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        mLog.i("Application started.");
-
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.main);
-
-        mTimeStart = getTime();
-
-        /*
-         * Initialize Bluetooth connection.
-         */
-       	mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        	
-        if (mBluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth is not available",
-                    Toast.LENGTH_LONG).show();
-
-            finish();
-            return;
-        }
-
-        if (!mBluetoothAdapter.isEnabled()) {
-            Toast.makeText(this, "Bluetooth not enabled",
-                    Toast.LENGTH_LONG).show();
-
-            finish();
-            return;
-        }
+    private void connectToPic() {
 
         /* Cancel in-progress discovery */
         if (mBluetoothAdapter.isDiscovering()) {
@@ -2068,6 +2030,75 @@ public class ObdLogger extends Activity {
         commThread.start();
     }
 
+    /**
+     * Returns current time in seconds.
+     */
+    public static double getTime() {
+        return System.currentTimeMillis() / 1000.0;
+    }
+
+    /**
+     * Returns run time of the application in seconds.
+     */
+    public static double getRunTime() {
+        return ObdLogger.getTime() - mTimeStart;
+    }
+
+    /** Called when the activity is first created. */
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.main);
+
+        mLog.d("Application started.");
+
+        mTimeStart = getTime();
+
+        /*
+         * Initialize Bluetooth connection.
+         */
+       	mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+        if (mBluetoothAdapter == null) {
+            Toast.makeText(this, "Bluetooth is not available",
+                    Toast.LENGTH_LONG).show();
+
+            finish();
+            return;
+        }
+
+        /*
+         * If Bluetooth is not enabled, pop up dialog asking user
+         * to enable it.
+         */
+        if (!mBluetoothAdapter.isEnabled()) {
+            Intent enableBtIntent = new Intent(
+                    BluetoothAdapter.ACTION_REQUEST_ENABLE);
+
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+        }  else {
+            connectToPic();
+        }
+    }
+
+    /** Called when the activity is started. */
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        Log.d(TAG, "-> onStart()");
+        Log.d(TAG, "<- onStart()");
+    }
+
+    /** Called when the activity is stopped. */
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        Log.d(TAG, "-> onStop()");
+        Log.d(TAG, "<- onStop()");
+    }
+
     /** Called when the activity is destroyed. */
     @Override
     public void onDestroy() {
@@ -2115,5 +2146,32 @@ public class ObdLogger extends Activity {
         mLog.finish();
 
         Log.d(TAG, "<- onDestroy()");
+    }
+
+    /**
+     * Called when the concurrently running activity
+     * spawned by startActivityForResult() is done.
+     */
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        Log.d(TAG, "-> onActivityResult " + resultCode);
+
+        switch (requestCode) {
+        case REQUEST_ENABLE_BT:
+            /* Request to enable Bluetooth returned */
+            if (resultCode == Activity.RESULT_OK) {
+                /* Bluetooth is now enabled, connect to PIC module */
+                connectToPic();
+            } else {
+                /* User did not enable Bluetooth or an error occurred */
+                Log.d(TAG, "BT not enabled");
+
+                Toast.makeText(this, "Bluetooth not enabled",
+                        Toast.LENGTH_LONG).show();
+
+                finish();
+            }
+        }
+
+        Log.d(TAG, "<- onActivityResult");
     }
 }
