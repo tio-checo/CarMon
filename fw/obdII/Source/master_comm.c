@@ -44,9 +44,14 @@
 #define MCOM_ST_RX_DATA		2	/* receives data */
 
 /* mcom_st_tx states - transmits packet to master */
-#define MCOM_ST_TX_IDLE		0	/* machine is IDLE */
-#define MCOM_ST_TX_SOF		1	/* send 'start of frame' */
-#define MCOM_ST_TX_DATA		2	/* send data and 'end of frame' */
+/* machine IDLE waiting for new packet to be transmitted */
+#define MCOM_ST_TX_IDLE		0
+#define	MCOM_ST_TX_SOF		1	/* send 'start of frame' */
+#define	MCOM_ST_TX_ID		2	/* send module id */
+#define MCOM_ST_TX_HEADER	3	/* send header */
+#define MCOM_ST_TX_DATA		4	/* send data payload */
+#define MCOM_ST_TX_CHSUM	5	/* send checksum */
+#define MCOM_ST_TX_EOF		6	/* send 'end of frame' */
 
 /* packet format */
 #define MCOM_PKT_SOF		'<'	/* start of frame */
@@ -65,21 +70,21 @@ static struct mcom_comm_object_t {
 	int	(*putchar)(unsigned char);	/* sends char to master */
 
 	/* receive buffer */
-	unsigned char rx_buf[MCOM_PACKET_MAXLN];
+	char rx_buf[MCOM_PACKET_MAXLN];
 	/* rx buffer tail  */
 	unsigned char rx_tail;
 	/* flag indicating that buffer contains received packet */
 	BOOL fl_packet_received;
 
-	/* transmit buffer */
-	unsigned char tx_buf[MCOM_PACKET_MAXLN];
-	/* tx buffer head  */
-	unsigned char tx_head;
-	/* number of characters to be sent */
-	unsigned char tx_ln;
+	/* pointer to response currently transmitted to master */
+	mcom_response_t *resp;
+
 	/* flag indicating that packet is being sent to master */
 	BOOL fl_send_packet;
-} mcom_comm;
+} mcom_co;
+
+/* local buffer for handling response to master */
+static mcom_response_t mcom_resp;
 
 /* flag indicating desired to suspend the system */
 static BOOL mcom_suspend_fl;
@@ -95,35 +100,8 @@ static int mcom_st_rx;
 static int mcom_st_tx;
 
 /* local functions */
-/* send packet to master */
-static int mcom_send_packet(unsigned char ln);
-/* send response (ACK or NAK) to master along with optional data */
-static int mcom_respond_to_master(char resp, unsigned char *data, int ln);
 /* Quit the application, jump to bootloader. */
 static void mcom_jump_to_bootloader(void);
-
-/*
- * Send response (ACK or NAK) to master along with optional data.
- */
-static int
-mcom_respond_to_master(char resp, unsigned char *data, int ln)
-{
-	int res;
-
-	/* response type - ACK, NAK, ... */
-	mcom_comm.tx_buf[0] = resp;
-
-	/* data are sent in ASCII format */
-	hex2ascii(data, &mcom_comm.tx_buf[1], ln);
-
-	/* Initiate process of sending packet to master */
-	res = mcom_send_packet(1 + 2 * ln);
-
-	/* wait until packet is completely transmitted */
-	mcom_st = MCOM_ST_SEND2MASTER;
-
-	return (res);
-}
 
 /*
  * Quit the application, jump to bootloader.
@@ -181,20 +159,24 @@ mcom_init(void)
 {
 	/* Initialize main communication object */
  	/* method for receiving char from master */
-	mcom_comm.getchar = bt_getchar;
+	mcom_co.getchar = bt_getchar;
 	/* method for sending char to master */
-	mcom_comm.putchar = bt_putchar;
+	mcom_co.putchar = bt_putchar;
 
 	/* receive buffer */
 	/* rx buffer tail  */
-	mcom_comm.rx_tail = 0;
+	mcom_co.rx_tail = 0;
 	/* flag indicating that buffer contains received packet */
-	mcom_comm.fl_packet_received = FALSE;
+	mcom_co.fl_packet_received = FALSE;
 
-	/* transmit buffer */
-	mcom_comm.tx_head = mcom_comm.tx_ln = 0;
-	/* flag indicating that packet is being sent to master */
-	mcom_comm.fl_send_packet = FALSE;
+	/* pointer to current response to master */
+	mcom_co.resp = NULL;
+
+	/* local structure holding response to master - unset module ID */
+	mcom_resp.id = MCOMM_COMM_ID;
+
+	/* flag indicating that response is to be sent to master */
+	mcom_co.fl_send_packet = FALSE;
 
 	/* receiver - wait for packet from master */
 	mcom_st_rx = MCOM_ST_RX_W4SOF;
@@ -210,22 +192,65 @@ mcom_init(void)
 }
 
 /*
- * Send packet to master
+ * Put response to master to the transmit queue.
+ * If the queue is full, return EAGAIN, otherwise return 0.
  */
-static int
-mcom_send_packet(unsigned char ln)
+int
+mcom_queue_response(mcom_response_t *resp)
 {
-	/*
-	 * If previous packet is still being sent, wait.
-	 */
-	if (mcom_comm.fl_send_packet) {
+	/* If there is currently response being sent, signal it */
+	if (mcom_co.fl_send_packet) {
 		return EAGAIN;
 	}
 
-	mcom_comm.tx_ln = ln;
-	mcom_comm.tx_head = 0;
-	mcom_comm.fl_send_packet = TRUE;
-	mcom_st_tx = MCOM_ST_TX_SOF;
+	mcom_co.resp = resp;
+	mcom_co.fl_send_packet = TRUE;
+
+	return 0;
+}
+
+/*
+ * Send generic response to master.
+ */
+int
+mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
+    int dtype, int dln)
+{
+	/* pointer to packet header */
+	resp->header = header;
+	/* pointer to data payload */
+	resp->data = data;
+	/* data type */
+	resp->data_type = dtype;
+	/* data length */
+	resp->data_ln = dln;
+
+	return 0;
+}
+
+/*
+ * Send ACK response to master.
+ */
+int
+mcom_prepare_ack_response(mcom_response_t *resp)
+{
+	mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
+	    MCOM_DATA_TYPE_BYTE, 0);
+
+	return 0;
+}
+
+/*
+ * Send NAK response to master.
+ */
+int
+mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
+{
+	static unsigned char e;
+
+	e = err;
+	mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
+	    MCOM_DATA_TYPE_BYTE, 1);
 
 	return 0;
 }
@@ -248,18 +273,18 @@ mcom_rx_st(void)
 	 * buffer is kept for another round in case full packet has just been
 	 * received.
 	 */
-	while (!mcom_comm.fl_packet_received &&
-	    (mcom_comm.getchar)(&ch) == 0) {
+	while (!mcom_co.fl_packet_received &&
+	    (mcom_co.getchar)(&ch) == 0) {
 
 		switch (mcom_st_rx) {
 		/* machine is IDLE */
 		case MCOM_ST_RX_IDLE:
 		break;
 
-		/* wait for 'start of frame'*/
+		/* wait for 'start of frame' */
 		case MCOM_ST_RX_W4SOF:
 			if (ch == MCOM_PKT_SOF) {
-				mcom_comm.rx_tail = 0;
+				mcom_co.rx_tail = 0;
 				mcom_st_rx = MCOM_ST_RX_DATA;
 			}
 			break;
@@ -271,9 +296,9 @@ mcom_rx_st(void)
 			 * and wait for next one.
 			 */
 			if (ch == MCOM_PKT_EOF) {
-				mcom_comm.fl_packet_received = TRUE;
+				mcom_co.fl_packet_received = TRUE;
 				mcom_st_rx = MCOM_ST_RX_W4SOF;
-			} else if (mcom_comm.rx_tail >= MCOM_PACKET_MAXLN) {
+			} else if (mcom_co.rx_tail >= MCOM_PACKET_MAXLN) {
 				/*
 				 * Packet would not fit in a buffer,
 				 * discard it.
@@ -281,7 +306,7 @@ mcom_rx_st(void)
 				mcom_st_rx = MCOM_ST_RX_W4SOF;
 			} else {
 				/* store received character in a buffer */
-				mcom_comm.rx_buf[mcom_comm.rx_tail++] = ch;
+				mcom_co.rx_buf[mcom_co.rx_tail++] = ch;
 			}
 
 			break;
@@ -293,30 +318,55 @@ mcom_rx_st(void)
 
 /*
  * Decode received packet.
+ * Returns:
+ *   0 - packet has been successfully dispatched to target module for further
+ *       processing.
+ *   1 - there has been response prepared which is to be sent to master.
  */
 static int
 mcom_decode_packet(void)
 {
 	BOOL send_wup;
 	int j;
-	unsigned long res;
-	unsigned char data[2];
-	unsigned char error;
+	int err;
+	int ret = 0;
+	int ln = mcom_co.rx_tail - 1;
 
-	switch (mcom_comm.rx_buf[0]) {
-	/* get value from AD converter */
-	case MCOM_CMD_GET_AD:
-		if (daq_get_adc_value(ascii2hex(&mcom_comm.rx_buf[1], 2),
-		    &res) == 0) {
-			data[0] = (res >> 8) & 0xff;
-			data[1] = res & 0xff;
+	/* dispatch packet to appropriate handle routines based on module ID */
+	switch (mcom_co.rx_buf[0]) {
+	/* A/D converter */
+	case MCOMM_ADC_ID:
+		err = daq_adc_process_query(&mcom_co.rx_buf[1], ln);
 
-			mcom_respond_to_master(MCOM_RESP_ADC, data, 2);
-		} else {
-			error = MCOM_NAK_ADC_ERR;
-			mcom_respond_to_master(MCOM_RESP_NAK, &error, 1);
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
 		}
+
 		break;
+
+	/* data acquisition module */
+	case MCOMM_DAQ_ID:
+		err = daq_acq_process_query(&mcom_co.rx_buf[1], ln);
+
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
+
+		break;
+
+	/* module handling communication with ECUs */
+	case MCOMM_ECU_ID:
+		// TODO: ecu_process_query(&mcom_co.rx_buf[1], ln);
+		mcom_prepare_nak_response(&mcom_resp,
+		    MCOM_NAK_UNKNOWN_IDCMD);
+
+		ret = 1;
+
+		break;
+
+	/* now process legacy packets */
 
 	/*
 	 * Send raw KWP packet prepended with Wake up Pattern.
@@ -324,20 +374,22 @@ mcom_decode_packet(void)
 	 */
 	case MCOM_CMD_SEND_WUP:
 		if (!kwp2k_is_basic_mode()) {
-			error = MCOM_NAK_UNKNOWN_CMD;
-			mcom_respond_to_master(MCOM_RESP_NAK, &error, 1);
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_UNKNOWN_IDCMD);
+
+			ret = 1;
 
 			break;
 		}
 	/* send packet to ECU */
 	case MCOM_CMD_SEND:
 		/* WuP should be sent out */
-		send_wup = mcom_comm.rx_buf[0] == MCOM_CMD_SEND_WUP;
+		send_wup = mcom_co.rx_buf[0] == MCOM_CMD_SEND_WUP;
 
 		/* convert data from ASCII to raw hex */
 		/* length of data payload - number of bytes */
-		j = (mcom_comm.rx_tail - 1) / 2;
-		ascii2hexbuf(&mcom_comm.rx_buf[1], mcom_packet_ecu, j * 2);
+		j = ln / 2;
+		hex2ucharbuf(&mcom_co.rx_buf[1], mcom_packet_ecu, j * 2);
 
 		/* If operating in basic mode, send packet directly to ECU */
 		if (kwp2k_is_basic_mode()) {
@@ -349,9 +401,10 @@ mcom_decode_packet(void)
 				 */
 				mcom_st = MCOM_ST_SEND2ECU;
 			} else {
-				error = MCOM_NAK_KWP2K_TX_ERR;
-				mcom_respond_to_master(MCOM_RESP_NAK, &error,
-				    1);
+				mcom_prepare_nak_response(&mcom_resp,
+				    MCOM_NAK_KWP2K_TX_ERR);
+
+				ret = 1;
 			}
 		} else {
 			/* enhanced mode */
@@ -359,9 +412,10 @@ mcom_decode_packet(void)
 				/* wait for ECU response */
 				mcom_st = MCOM_ST_W4PACKET;
 			} else {
-				error = MCOM_NAK_KWP2K_TX_ERR;
-				mcom_respond_to_master(MCOM_RESP_NAK, &error,
-				    1);
+				mcom_prepare_nak_response(&mcom_resp,
+				   MCOM_NAK_KWP2K_TX_ERR);
+
+				ret = 1;
 			}
 		}
 
@@ -379,18 +433,19 @@ mcom_decode_packet(void)
 		 * is idle.
 		 */
 		if (kwp2k_is_idle()) {
-			if (kwp2k_set_mode(ascii2hex(&mcom_comm.rx_buf[1],
+			if (kwp2k_set_mode(hex2ulong(&mcom_co.rx_buf[1],
 			    2)) == 0) {
-				mcom_respond_to_master(MCOM_RESP_ACK, NULL, 0);
+				mcom_prepare_ack_response(&mcom_resp);
 			} else {
-				error = MCOM_NAK_EINVAL;
-				mcom_respond_to_master(MCOM_RESP_NAK, &error,
-				    1);
+				mcom_prepare_nak_response(&mcom_resp,
+				    MCOM_NAK_EINVAL);
 			}
 		} else {
-			error = MCOM_NAK_KWP2K_BUSY;
-			mcom_respond_to_master(MCOM_RESP_NAK, &error, 1);
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_KWP2K_BUSY);
 		}
+
+		ret = 1;
 
 		break;
 
@@ -408,13 +463,14 @@ mcom_decode_packet(void)
 
 	/* should not happen, but... */
 	default:
-		error = MCOM_NAK_UNKNOWN_CMD;
-		mcom_respond_to_master(MCOM_RESP_NAK, &error, 1);
+		mcom_prepare_nak_response(&mcom_resp,
+		    MCOM_NAK_UNKNOWN_IDCMD);
+		ret = 1;
 
 		break;
 	} /* switch */
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -425,7 +481,8 @@ mcom_decode_packet(void)
 static int
 mcom_process_packet_st(void)
 {
-	unsigned char *data;
+	static unsigned char data[2];
+
 	int ln;
 	int ret;
 	int rx_err;
@@ -440,15 +497,20 @@ mcom_process_packet_st(void)
 	 * received from ECU.
 	 */
 	case MCOM_ST_W4PACKET:
-		if (mcom_comm.fl_packet_received) {
+		if (mcom_co.fl_packet_received) {
 			/*
-			 * Decode received packet and transition
-			 * to appropriate state.
+			 * Decode received packet and dispatch it to
+			 * the appropriate module for further processing.
+			 * If there has been packet prepared during
+			 * the process, send it to the master.
 			 */
-			mcom_decode_packet();
+			if (mcom_decode_packet() == 1) {
+				/* Queue response for transmission */
+				mcom_st = MCOM_ST_SEND2MASTER;
+			}
 
 			/* wait for another packet from master */
-			mcom_comm.fl_packet_received = FALSE;
+			mcom_co.fl_packet_received = FALSE;
 
 			break;
 		}
@@ -456,8 +518,6 @@ mcom_process_packet_st(void)
 		/* Handle packet received from ECU */
 		/* In basic mode, send every byte received from ECU */
 		if (kwp2k_is_basic_mode() && (kwp2k_getchar(&kwp2k_ch) == 0)) {
-			unsigned char data[2];
-
 			/*
 			 * Inspect received character and build packet
 			 * which will be sent to master.
@@ -465,8 +525,10 @@ mcom_process_packet_st(void)
 			if (kwp2k_ch.sts == 0) {
 				/* valid character received */
 				data[0] = kwp2k_ch.ch;
-				mcom_respond_to_master(MCOM_RESP_DATA,
-				    data, 1);
+
+				mcom_prepare_generic_response(&mcom_resp,
+				    MCOM_RESP_DATA, data,
+				    MCOM_DATA_TYPE_BYTE, 1);
 			} else {
 				/*
 				 * Malformed character received, send also
@@ -474,11 +536,15 @@ mcom_process_packet_st(void)
 				 */
 				data[0] = kwp2k_ch.ch;
 				data[1] = kwp2k_ch.sts;
-				mcom_respond_to_master(MCOM_RESP_RXERR,
-				    data, 2);
+
+				mcom_prepare_generic_response(&mcom_resp,
+				    MCOM_RESP_RXERR, data, MCOM_DATA_TYPE_BYTE,
+				    2);
 			}
 		} else {
-			ret = kwp2k_ul_recv(&data, &ln, &rx_err);
+			unsigned char *d;
+
+			ret = kwp2k_ul_recv(&d, &ln, &rx_err);
 
 			/* packet just being received */
 			if (ret == EAGAIN)
@@ -486,18 +552,22 @@ mcom_process_packet_st(void)
 
 			/* valid packet received */
 			if (ret == 0) {
-				mcom_respond_to_master(MCOM_RESP_DATA, data,
-				    ln);
+				mcom_prepare_generic_response(&mcom_resp,
+				    MCOM_RESP_DATA, d,
+				    MCOM_DATA_TYPE_BYTE, ln);
 			} else {
-				unsigned char data[2];
-
 				data[0] = (rx_err >> 8) & 0xff;
 				data[1] = rx_err & 0xff;
 
 				/* error occurred */
-				mcom_respond_to_master(MCOM_RESP_NAK, data, 2);
+				mcom_prepare_generic_response(&mcom_resp,
+				    MCOM_RESP_NAK, data,
+				    MCOM_DATA_TYPE_BYTE, 2);
 			}
 		}
+
+		/* Wait until response is queued for transmission */
+		mcom_st = MCOM_ST_SEND2MASTER;
 
 		break;
 
@@ -508,20 +578,27 @@ mcom_process_packet_st(void)
 	 */
 	case MCOM_ST_SEND2ECU:
 		if (!kwp2k_transmitter_busy()) {
-			if (kwp2k_is_basic_mode())
-				mcom_respond_to_master(MCOM_RESP_ACK, NULL, 0);
-			else
+			if (kwp2k_is_basic_mode()) {
+				mcom_prepare_ack_response(&mcom_resp);
+
+				/*
+				 * Wait until response is queued
+				 * for transmission
+				 */
+				mcom_st = MCOM_ST_SEND2MASTER;
+			} else {
 				mcom_st = MCOM_ST_W4PACKET;
+			}
 		}
 
 		break;
 
 	/*
-	 * Wait for packet to be completely sent to master, then allow
-	 * receiving another packet from master.
+	 * Wait until packet response to master is queued for transmission,
+	 * then allow receiving another packet from master.
 	 */
 	case MCOM_ST_SEND2MASTER:
-		if (!mcom_comm.fl_send_packet) {
+		if (mcom_queue_response(&mcom_resp) == 0) {
 			mcom_st = MCOM_ST_W4PACKET;
 		}
 
@@ -537,40 +614,187 @@ mcom_process_packet_st(void)
 static int
 mcom_tx_st(void)
 {
+	static unsigned char ch, tmp_buf[4];
+	static unsigned int item_ln, item_index, buf_ln, buf_index, chsum;
+	unsigned int d;
+
+	/*
+	 * If module is sending out characters (not idle), wait until
+	 * current character is queued for transmission.
+	 */
+	if ((mcom_st_tx != MCOM_ST_TX_IDLE) && ((mcom_co.putchar)(ch) != 0)) {
+		return 0;
+	}	 
+
 	switch (mcom_st_tx) {
 	/* machine is IDLE */
 	case MCOM_ST_TX_IDLE:
+		/*
+		 * If there is a new packet to be sent, initiate transmission
+		 * by sending SOF character.
+		 */
+		if (mcom_co.fl_send_packet) {
+			ch = MCOM_PKT_SOF;
+
+			mcom_st_tx = MCOM_ST_TX_SOF;
+		}
+
 		break;
 
 	/* send SOF */
 	case MCOM_ST_TX_SOF:
-		if ((mcom_comm.putchar)(MCOM_PKT_SOF) == 0)
-			mcom_st_tx = MCOM_ST_TX_DATA;
+		buf_index = 0;
+		chsum = 0;
+
+		/*
+		 * Continue with sending module ID. Skip if there is no
+		 * module ID.
+		 */
+		if (mcom_co.resp->id != 0) {
+			ch = mcom_co.resp->id;
+			mcom_st_tx = MCOM_ST_TX_ID;
+		} else {
+			ch = mcom_co.resp->header[buf_index];
+			mcom_st_tx = MCOM_ST_TX_HEADER;
+		}
+
 		break;
 
-	/* send data and EOF */
-	case MCOM_ST_TX_DATA:
-		/* all data sent, so EOF */
-		if (mcom_comm.tx_head >= mcom_comm.tx_ln) {
-			if ((mcom_comm.putchar)(MCOM_PKT_EOF) == 0) {
-				/*
-				 * Packet has been completely transmitted
-				 * to master, signal it.
-				 */
-				mcom_comm.fl_send_packet = FALSE;
-				mcom_st_tx = MCOM_ST_TX_IDLE;
-			}
-		} else {
-			/* send data */
-			unsigned char c;
+	/* send module ID */
+	case MCOM_ST_TX_ID:
+		/* Continue with sending a header */
+		ch = mcom_co.resp->header[buf_index];
+		mcom_st_tx = MCOM_ST_TX_HEADER;
 
-			c = mcom_comm.tx_buf[mcom_comm.tx_head];
+		break;
 
-			/* byte successfully sent out, move to the next one */
-			if ((mcom_comm.putchar)(c) == 0) {
-				mcom_comm.tx_head++;
-			}
+	/* send packet header */
+	case MCOM_ST_TX_HEADER:
+		buf_index++;
+
+		ch = mcom_co.resp->header[buf_index];
+
+		if (ch != '\0')
+			break;
+
+		/*
+		 * Complete header has been sent, proceed with sending
+		 * data payload.
+		 */
+
+		buf_index = 0;
+
+		/*
+		 * NULL data pointer or zero data length indicate there
+		 * is no data payload.
+		 */
+		if ((mcom_co.resp->data == NULL) || (mcom_co.resp->data_ln == 0)) {
+			/* No data payload, proceed with checksum. */
+			item_ln = 2;
+			uint2hex(chsum, tmp_buf, 1);
+
+			/* for now skip sending the checksum */
+//			ch = tmp_buf[0];
+//			mcom_st_tx = MCOM_ST_TX_CHSUM;
+
+			ch = MCOM_PKT_EOF;
+			mcom_st_tx = MCOM_ST_TX_EOF;
+
+			break;
 		}
+
+		/*
+		 * Adjust data length according to data type.
+		 * Convert first data item to sequence of ASCII characters.
+		 * Get first character to be sent.
+		 */
+		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
+			d = ((unsigned char *)mcom_co.resp->data)[0];
+
+			item_ln = 2;
+		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_WORD) {
+			d = ((unsigned int *)mcom_co.resp->data)[0];
+
+			item_ln = 4;
+		}
+
+		uint2hex(d, tmp_buf, item_ln / 2);
+		item_index = 0;
+		buf_ln = mcom_co.resp->data_ln;
+		ch = tmp_buf[item_index];
+
+		mcom_st_tx = MCOM_ST_TX_DATA;
+
+		break;
+
+	/* send data payload */
+	case MCOM_ST_TX_DATA:
+		/* Send next ASCII character of data item */
+		if (++item_index < item_ln) {
+			ch = tmp_buf[item_index];
+
+			break;
+		}
+
+		/* Sending of data item completed, proceed with next one */
+		buf_ln--;
+		buf_index++;
+
+		/* If all data has been sent, proceed with checksum */
+		if (buf_ln == 0) {
+			item_index = 0;
+			item_ln = 2;
+			uint2hex(chsum, tmp_buf, 1);
+
+			/* for now skip sending the checksum */
+//			ch = tmp_buf[0];
+//			mcom_st_tx = MCOM_ST_TX_CHSUM;
+
+			ch = MCOM_PKT_EOF;
+			mcom_st_tx = MCOM_ST_TX_EOF;
+
+			break;
+		}
+
+		/*
+		 * Get next data item to be sent taking into account
+		 * data type
+		 */
+		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
+			d = ((unsigned char *)mcom_co.resp->data)[buf_index];
+		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_WORD) {
+			d = ((unsigned int *)mcom_co.resp->data)[buf_index];
+		}
+
+		uint2hex(d, tmp_buf, item_ln / 2);
+		item_index = 0;
+		ch = tmp_buf[0];
+
+		break;
+
+	/* send checksum */
+	case MCOM_ST_TX_CHSUM:
+		/* Send next ASCII character of checksum */
+		if (++item_index < item_ln) {
+			ch = tmp_buf[item_index];
+
+			break;
+		}
+
+		/* All data has been sent, proceed with EOF */
+		ch = MCOM_PKT_EOF;
+		mcom_st_tx = MCOM_ST_TX_EOF;
+
+		break;
+
+	/* send EOF */
+	case MCOM_ST_TX_EOF:
+		/* wait for another packet to be sent */
+		mcom_st_tx = MCOM_ST_TX_IDLE;
+
+		/* signal that transmitter is ready again */
+		mcom_co.fl_send_packet = FALSE;
+
 		break;
 	}
 
@@ -581,7 +805,7 @@ mcom_tx_st(void)
  * Main service routine
  */
 int
-mcom_service(void)
+mcom_svc(void)
 {
 //	kwp2k_rx_char_t	kwp2k_ch;
 

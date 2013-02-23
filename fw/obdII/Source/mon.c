@@ -187,7 +187,7 @@ mon_is_diag_mode(void)
  * Service routine
  */
 int
-mon_service(void)
+mon_svc(void)
 {
 	unsigned char ch;
 

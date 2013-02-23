@@ -11,5 +11,5 @@ extern int mon_diag_enter(void);
 extern BOOL mon_is_diag_mode(void);
 
 /* service routine */
-extern int mon_service(void);
+extern int mon_svc(void);
 #endif /* __MON_H */

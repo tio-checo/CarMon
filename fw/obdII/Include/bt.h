@@ -16,5 +16,5 @@ extern int bt_getchar(unsigned char *ch);
 extern BOOL bt_is_paired(void);
 
 /* main service routine */
-extern int bt_service(void);
+extern int bt_svc(void);
 #endif /* __BT_H */

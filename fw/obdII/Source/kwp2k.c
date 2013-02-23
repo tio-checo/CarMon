@@ -850,7 +850,7 @@ kwp2k_set_mode(int new_mode)
  * - receives raw packet from ECU
  */
 static int
-kwp2k_ll_service(void)
+kwp2k_ll_svc(void)
 {
 	kwp2k_rx_char_t ch;
 
@@ -1109,7 +1109,7 @@ kwp2k_ll_service(void)
  *  - receives packets from ECU
  */
 static int
-kwp2k_ul_service(void)
+kwp2k_ul_svc(void)
 {
 	/* startCommunication packet */
 	static const unsigned char
@@ -1309,7 +1309,7 @@ kwp2k_ul_service(void)
  * - handles KWP2000 protocol
  */
 int
-kwp2k_service(void)
+kwp2k_svc(void)
 {
 	/*
 	 * If communication line is in idle state too long,
@@ -1321,9 +1321,9 @@ kwp2k_service(void)
 		kwp2k_comm_established = FALSE;
 
 	/* Lower communication layer */
-	kwp2k_ll_service();
+	kwp2k_ll_svc();
 	/* Upper communication layer */
-	kwp2k_ul_service();
+	kwp2k_ul_svc();
 
 	return 0;
 }

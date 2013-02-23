@@ -38,7 +38,7 @@ static rtl_cv_t rtl_pool_cvs[RTL_CV_POOL_SIZE];
  * Decrements currently active timers.
  */
 static int
-rtl_timer_service(void)
+rtl_timer_svc(void)
 {
 	int i;
 
@@ -58,7 +58,7 @@ rtl_timer_service(void)
  * handle hartbeat LED
  */
 static void
-rtl_heartbeat_service(void)
+rtl_heartbeat_svc(void)
 {
 	static int hb_counter = 250000 / RTL_SERVICE_PERIOD;
 	static int hb_num_ticks = 1;
@@ -256,17 +256,17 @@ __attribute__ ((interrupt)) isr_timer1(void)
 		/*
 		 * Diagnostic mode. 
 		 */
-		mon_service();
+		mon_svc();
 	} else {
-		kwp2k_service();
-		daq_service();
-		mcom_service();
-		rtl_timer_service();
+		kwp2k_svc();
+		daq_svc();
+		mcom_svc();
+		rtl_timer_svc();
 	}
 
 	/* Services which run in both normal and diagnostic modes */
-	bt_service();
-	rtl_heartbeat_service();
+	bt_svc();
+	rtl_heartbeat_svc();
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;

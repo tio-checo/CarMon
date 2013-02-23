@@ -70,7 +70,7 @@ main(int argc, char **argv)
 
 	while(1) {
 		while (mon_is_diag_mode()) {
-			mon_service();
+			mon_svc();
 		}
 
 		if (mcom_suspend()) {

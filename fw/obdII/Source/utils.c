@@ -12,10 +12,27 @@ static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
     '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 /*
- * Convert given number of bytes to HEX ASCII string
+ * Converts given number of bytes of unsigned int to ASCII HEX string.
+ * Start with MSB.
  */
 int
-hex2ascii(unsigned char *in, unsigned char *out, int ln)
+uint2hex(unsigned int in, unsigned char *out, int ln)
+{
+	int i;
+
+	for (i = 0; i < ln; i++) {
+		out[i * 2] = hex2ascii_tbl[(in >> (8 * (ln - 1 - i) + 4)) & 0x0f];
+		out[i * 2 + 1] = hex2ascii_tbl[(in >> (8 * (ln - 1 - i))) & 0x0f];
+	}
+
+	return 0;
+}
+
+/*
+ * Converts given number of bytes to ASCII HEX string
+ */
+int
+ucharbuf2hex(unsigned char *in, unsigned char *out, int ln)
 {
 	int i;
 
@@ -28,10 +45,10 @@ hex2ascii(unsigned char *in, unsigned char *out, int ln)
 }
 
 /*
- * Convert given number of ascii hex characters (max 8) to unsigned long
+ * Converts given number of ASCII HEX characters (max 8) to unsigned long
  */
 unsigned long
-ascii2hex(unsigned char *a, int ln)
+hex2ulong(char *a, int ln)
 {
 	int i;
 	unsigned long res = 0;
@@ -48,10 +65,10 @@ ascii2hex(unsigned char *a, int ln)
 }
 
 /*
- * Convert given number of ascii hex characters to sequence of bytes
+ * Converts given number of ASCII HEX characters to sequence of bytes
  */
 int
-ascii2hexbuf(unsigned char *in, unsigned char *out, int ln)
+hex2ucharbuf(char *in, unsigned char *out, int ln)
 {
 	int i;
 
@@ -60,7 +77,7 @@ ascii2hexbuf(unsigned char *in, unsigned char *out, int ln)
 		return EINVAL;
 
 	for (i = 0; i < ln / 2; i++) {
-		out[i] = ascii2hex(&in[i * 2], 2);
+		out[i] = hex2ulong(&in[i * 2], 2);
 	}
 
 	return 0;

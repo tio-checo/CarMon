@@ -180,7 +180,7 @@ bt_is_paired(void)
  * Service function handling all BT events.
  */
 int
-bt_service(void)
+bt_svc(void)
 {
 	/* Handle transmit buffer */
 	switch (bt_st) {
