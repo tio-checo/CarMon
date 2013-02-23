@@ -449,7 +449,8 @@ class Dashboard {
         mDashboardIndicators[0] = new DashboardIndicator(activity,
                 R.id.indicator1Label, R.id.indicator1Value, 0, "0C");
         mDashboardIndicators[1] = new DashboardIndicator(activity,
-                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
+//                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
+                R.id.indicator2Label, R.id.indicator2Value, 0, "11");
         mDashboardIndicators[2] = new DashboardIndicator(activity,
                 R.id.indicator3Label, R.id.indicator3Value, 0, "10");
         mDashboardIndicators[3] = new DashboardIndicator(activity,
@@ -883,7 +884,7 @@ class PicCom {
             }
 
             /* Valid packet received. Escape from the loop. */
-            if (p.startsWith("a")) {
+            if (p.startsWith("A00")) {
                 break;
             }
 
@@ -892,14 +893,14 @@ class PicCom {
              * and process next packet.
              */
             Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting " +
-                    "\"a...\", received \"" + p + "\"");
+                    "\"A00...\", received \"" + p + "\"");
         }
 
         int[] picData = new int[2];
 
         for (int i = 0; i < picData.length; i++) {
             picData[i] = Integer.parseInt(p.substring(
-                    1 + (i * 2), 1 + (i + 1) * 2), 16);
+                    3 + (i * 2), 3 + (i + 1) * 2), 16);
         }
 
         return (picData[0] * 256 + picData[1]);
@@ -929,7 +930,7 @@ class PicCom {
         }
 
         /* Valid packet received. Escape from the loop. */
-        if (p.equals("A")) {
+        if (p.equals("MA")) {
             return 0;
         }
 
@@ -938,7 +939,7 @@ class PicCom {
          * and process next packet.
          */
         Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting " +
-                "\"A\", received \"" + p + "\"");
+                "\"MA\", received \"" + p + "\"");
 
         return -1;
     }
@@ -993,7 +994,7 @@ class Kwp2000 {
              * Wait for either valid KWP packet or NAK response.
              * Discard other packets.
              */
-            if (p.startsWith("r")) {
+            if (p.startsWith("Mr")) {
                 if (mDebug) {
                     Log.d(ObdLogger.TAG, "-> " + p);
                 }
@@ -1001,7 +1002,7 @@ class Kwp2000 {
                 return p;
             }
 
-            if (p.startsWith("N")) {
+            if (p.startsWith("MN")) {
                 Log.e(ObdLogger.TAG, String.format("[%.3f] NAK received: %s",
                     ObdLogger.getRunTime(), p));
 
@@ -1118,25 +1119,25 @@ class Obd {
             }
 
             /* Valid packet received. Escape from the loop. */
-            if (p.startsWith("r" + PKT_GET_PID_RESP + pidId)) {
+            if (p.startsWith("Mr" + PKT_GET_PID_RESP + pidId)) {
                 break;
             }
 
             /* Invalid packet received. Log this and wait for another one. */
             String logStr = String.format("[%.3f] Invalid ECU " +
                     "response, awaiting %s, got %s.",
-                    ObdLogger.getRunTime(), "r" + PKT_GET_PID_RESP + pidId,
-                    p.substring(0, 5));
+                    ObdLogger.getRunTime(), "Mr" + PKT_GET_PID_RESP + pidId,
+                    p);
 
             Log.w(ObdLogger.TAG, logStr);
             mLog.w(logStr);
         }
 
-        int[] pidData = new int[(p.length() - 5) / 2];
+        int[] pidData = new int[(p.length() - 6) / 2];
 
         for (int i = 0; i < pidData.length; i++) {
             pidData[i] = Integer.parseInt(p.substring(
-                    5 + (i * 2), 5 + (i + 1) * 2), 16);
+                    6 + (i * 2), 6 + (i + 1) * 2), 16);
         }
 
         return pidData;
@@ -1654,7 +1655,7 @@ class CommunicationService {
                 0.0, 0.01, 0.0, 1.0 / 150.0, obd));
 
         mProbePool.put("11", new ObdProbe("11",  "%",
-                "Throttle Position", "GAS", "%.0f",
+                "Throttle Position", "THROT", "%.0f",
                 0.0, 100.0 / 255.0, 0.0, 1.0 / 100.0, obd));
 
         mProbePool.put("23", new ObdProbe("23", "MPa",
@@ -1705,11 +1706,11 @@ class CommunicationService {
         mPidSpeedGroups = new PidGroups();
 
         /* Fast - Intake Manifold Absolute Pressure, EGR */
-        String grpF[] = {"0B", "2C"};
+        String grpF[] = {"11", "2C"};
         mPidSpeedGroups.create(0, "fast", grpF);
 
         /* Medium - RPM, MAF, Rail Pressure */
-        String grpM[] = {"0C", "10", "23"};
+        String grpM[] = {"0B", "0C", "10", "23"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*
@@ -1729,7 +1730,7 @@ class CommunicationService {
          * Add calculated 'Turbo' parameter to the pid list, so that it gets
          * logged as well.
          */
-        mPidLogList.add("Turbo");
+//       mPidLogList.add("Turbo");
 
         Log.d(ObdLogger.TAG, "PID list:" + mPidLogList);
     }

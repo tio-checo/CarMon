@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">ObdLogger</string>
     <string name="indicator1Label">RPM</string>
-    <string name="indicator2Label">TURBO</string>
+    <string name="indicator2Label">THROT</string>
     <string name="indicator3Label">MAF</string>
     <string name="indicator4Label">WATER</string>
     <string name="indicator5Label">RAIL</string>
