@@ -58,7 +58,7 @@
 #define MCOM_PKT_EOF		'>'	/* end of frame */
 
 /* max length of packet */
-#define MCOM_PACKET_MAXLN	260
+#define MCOM_PACKET_MAXLN	4096
 
 /* local variables */
 /*

@@ -15,17 +15,30 @@
 #include "master_comm.h"
 
 /* constants */
-#define	MCOMM_ADC_ID		'A'	/* A/D converter module ID */
-#define	MCOMM_DAQ_ID		'Q'	/* acquisition module ID */
+/* acquisition module IDs */
+#define	MCOMM_ADC_ID		'A'	/* A/D converter module */
+#define	MCOMM_DAQ_ID		'Q'	/* acquisition module */
 
 /* acquisition module commands */
 #define	MCOMM_DAQ_CMD_CONF	'C'	/* configure */
 #define	MCOMM_DAQ_CMD_RUN	'R'	/* run acquisition */
 #define	MCOMM_DAQ_CMD_STOP	'S'	/* stop acquisition */
+#define	MCOMM_PP_CMD_CONF	'P'	/* configure post processing module */
 
-/* types */
+/* post processing modules */
+#define DAQ_PP_OFF		0x00	/* no post processing done */
+#define DAQ_PP_FFT		0x01	/* Fast Fourier Transformation */
+#define DAQ_PP_SIGID		0x02	/* Characterize acquired signal */
+
+/* Post processing commands */
+#define DAQ_PP_CMD_ACTIVATE	'A'	/* Activate module */
+#define DAQ_PP_CMD_TEST		'T'	/* Test module */
+
 /* size of acquisition buffer */
-#define	DAQ_BUF_SIZE	1024
+#define	DAQ_ACQ_BUF_SIZE	1024
+
+/* size of post processing buffer */
+#define	DAQ_PP_BUF_SIZE		2048
 
 /* acquisition mode */
 #define	DAQ_ACQ_MODE_SINGLE	0x01	/* single */
@@ -44,6 +57,7 @@
 #define	DAQ_SRATE_UNITS_MS	0x01	/* milliseconds */
 #define	DAQ_SRATE_UNITS_SEC	0x02	/* seconds */
 
+/* types */
 /* structure encapsulating common acquisition data */
 typedef struct daq_main {
 	/* scope state machine */
@@ -81,7 +95,7 @@ typedef struct daq_time_base {
 
 /* structure encapsulating acquisition buffer data */
 typedef struct daq_buffer {
-	unsigned int	buf[DAQ_BUF_SIZE];	/* acquisition buffer */
+	unsigned int	buf[DAQ_ACQ_BUF_SIZE];	/* acquisition buffer */
 	int		head;			/* head index */
 	int		tail;			/* tail index */
 	int		trig;			/* trigger position */
@@ -104,6 +118,8 @@ extern int daq_adc_process_query(char *, int);
 extern int daq_svc(void);
 /* Provides data measured by A/D converter */
 extern int daq_get_adc_value(unsigned int, unsigned int *);
+/* Upper half of post processing service routine - called from main(). */
+extern int daq_pp_upper_svc(void);
 
 /* Suspend the module. */
 extern int daq_suspend(void);

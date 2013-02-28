@@ -1,14 +1,17 @@
-CC= /opt/mipsel/bin/mipsel-gcc
-OBJCOPY= /opt/mipsel/bin/mipsel-objcopy
-OBJDUMP= /opt/mipsel/bin/mipsel-objdump
-NM= /opt/mipsel/bin/mipsel-nm
+TOOLS_DIR= /opt/mipsel
+TOOLS_BIN= $(TOOLS_DIR)/bin
+
+CC= $(TOOLS_BIN)/mipsel-gcc
+OBJCOPY= $(TOOLS_BIN)/mipsel-objcopy
+OBJDUMP= $(TOOLS_BIN)/mipsel-objdump
+NM= $(TOOLS_BIN)/mipsel-nm
 
 # build directory
 BUILD_DIR= build
 
 # project directories containing header files
 HEADER_DIRS= -I. -I./Include -I./Include/peripheral \
--I./Include/HardwareProfile/ -I./Source/
+-I./Include/HardwareProfile/ -I./Source/ -I $(TOOLS_DIR)/include/microchip
 
 # compiler flags
 #  - code optimized for size
@@ -20,6 +23,9 @@ CFLAGS= -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 -DOBDCONV_BOARD \
 #  - soft float
 LDFLAGS= -msoft-float -march=m4k -nostartfiles
 
+# directories containing libraries
+LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
+
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/kwp2k.o $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
     $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o
@@ -30,8 +36,8 @@ all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
     $(APPNAME).sym
 
 $(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
-	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) \
-	-T ld/elf32pic32mx-app.x
+	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) $(LIB_DIRS) \
+	-ldsp -T ld/elf32pic32mx-app.x
 
 $(APPNAME).dis: $(BUILD_DIR)/$(APPNAME).elf
 	$(OBJDUMP) -D $? > $(BUILD_DIR)/$@

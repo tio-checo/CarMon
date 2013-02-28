@@ -18,8 +18,9 @@
 #include <stdio.h>
 
 /* global variables */
-/* errno */
 int errno;
+
+/* local variables */
 
 /* local functions */
 /*
@@ -110,6 +111,10 @@ main(int argc, char **argv)
 			WDTCONSET = 1;
 
 		}
+
+		/* Run post processing upper layer service routine. */
+		daq_pp_upper_svc();
+
 		/*
 		 * Enter idle mode if there is nothing to do.
 		 * Alternatively, enter sleep mode if appropriate conditions

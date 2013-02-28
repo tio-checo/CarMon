@@ -10,6 +10,8 @@
 #include <errno.h>
 
 #include "adc10.h"
+#include "dsplib_dsp.h"
+#include "fftc.h"
 
 #include "data_acq.h"
 #include "master_comm.h"
@@ -38,6 +40,24 @@
 #define	DAQ_TRIG_ST_FEDGE_P1	3	/* falling edge - phase 1 */
 #define	DAQ_TRIG_ST_FEDGE_P2	4	/* falling edge - phase 2 */
 
+/* states of post processing state machine */
+#define	DAQ_PP_ST_IDLE		0	/* machine idle */
+#define	DAQ_PP_ST_WAIT4DATA	1	/* wait for acquired data */
+#define	DAQ_PP_ST_FFT_CALC	2	/* FFT - calculate */
+#define	DAQ_PP_ST_SIGID_CALC	3	/* signal identification - calculate */
+
+/* FFT */
+#define	FFT_LOG2N	11
+#define	FFT_N		(1 << FFT_LOG2N)
+
+/* Signal identification */
+#define	DAQ_PP_MAX_FREQ_SNUM	400
+#define	DAQ_PP_MAX_FREQ_FNUM	5
+
+/* test sequences */
+//static const char tst1[] = "02DE02DE02DE02DE02DF02DE02DE02DE02DE02DE02DF02DE02DE02DF02DF02DF02DF02DF02DF02DF02DF02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DD02DC02DA02DA02DC02DC02DC02DB02DC02DC02DE02DE02DF02DF02DF02DF02DF02DF02DE02DF02DE02DF02DE02DE02DE02DD02DE02DD02DE02DF02DF02DF02DF02DF02E002DF02E002DF02DF02DF02E002E002DF02DF02DF02DF02DE02DE02DF02DF02DD02DC02DA02DA02DD02DE02DD02DD02DC02DD02DE02DE02DE02DE02DE02DE02DE02DD02DE02DF02DF02DE02DE02DE02DE02DE02DF02DF02DE02DF02DF02DF02DF02DF02DF02DF02DE02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DD02DB02D902DA02DC02DD02DC02DB02DC02DC02DE02DF02DF02DF02DF02DF02DF02DF02DE02DE02DE02DE02DE02DE02DD02DD02DE02DD02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02E002DF02DE02DF02DF02DE02DE02DF02DE02DD02DB02D902DA02DC02DD02DD02DC02DC02DC02DF02DF02DF02DE02DF02DE02DE02DD02DE02DE02DE02DE02DE02DE02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DD02DC02D902DA02DC02DC02DC02DB02DC02DC02DE02DF02DF02DF02DF02DF02DF02DF02DE02DE02DE02DE02DE02DE02DD02DE02DD02DD02DE02DF02DE02DF02DF02DF02E002E002DF02DF02DF02DF02DF02E002DF02DF02DF02DE02DF02DE02DF02DE02DE02DC02DA02DB02DD02DD02DD02DC02DC02DD02DE02DF02DF02DF02DF02DE02DF02DE02DE02DF02DE02DE02DE02DE02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DC02D902DA02DD02DC02DC02DB02DC02DC02DE02DE02DF02DF02DF02DF02DF02DF02DE02DF02DE02DE02DE02DD02DD02DE02DD02DD02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DE02DE02DE02DE02DF02DE02DD02DB02DA02DA02DD02DD02DD02DD02DC02DD02DE02DE02DE02DE02DE02DE02DE02DD02DE02DE02DE02DE02DE02DE02DE02DF02DE02DE02DE02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02E002DF02DF02DF02DF02DF02DF02DF02DE02DE02DB02D902DA02DD02DD02DC02DB02DC02DD02DE02DF02DF02DF02DF02DF02DF02DF02DE02DF02DF02DE02DE02DE02DE02DD02DD02DD02DF02DF02DF02DF02DF02DF02DF02E002DF02E002DF02E002DF02E002DF02DF02DF02DF02DE02DE02DF02DE02DD02DB02DA02DB02DE02DE02DD02DC02DC02DD02DE02DF02DF02DE02DE02DE02DD02DD02DE02DE02DE02DE02DE02DE02DE02DF02DE02DF";
+static const char tst2[] = "02DD02DD02DD02DC02DB02DB02DB02DC02DC02DC02DC02DC02DB02DB02DB02DB02DB02DB02DB02DB02DB02DA02DA02D902D902D802DA02DA02D902DA02DA02DA02DB02DA02DB02DA02DA02D902DA02DA02D902D902D902D902D902D902D802D902D802D802D702D802D702D602D302D202D302D502D802D702D702D602D502D602D702D702D702D602D502D502D702D802D902D902D902D802D802D902D902D802D702D802D702D802D802D802D902D902DA02D902D902D902DA02DA02DA02DA02DA02D902DA02DA02D902D902D902D802D802D802D902D902D902D902D902DA02DA02DA02DB02DA02DA02DA02DC02DB02DB02DB02DB02DA02DA02D902DA02DB02DB02DB02DB02DB02DB02DC02DD02DD02DD02DD02DE02DE02DE02DD02DD02DD02DD02DD02DE02DD02DE02DD02DC02DD02DD02DD02DE02DE02DE02DE02DF02DF02DF02DF02DE02DE02DE02DE02DE02DF02DF02DF02DF02DF02DF02DE02DE02DE02DE02DE02DF02DE02DE02DE02DE02DD02DD02DD02DE02DD02DD02DD02DD02DD02DC02DD02DC02DD02DC02DB02DC02DC02DB02DB02DB02DA02DA02D902DA02DA02DB02DA02DB02DA02DA02D902D902D902D902D802DA02D902D902D902D802D802D802D702D802D802D802D702D702D802D802D902D902D902D902D902DA02D902D802D602D302D402D602D702D802D602D502D402D402D602D602D502D402D302D302D502D702D802D802D802D802D902D802D702D802D802D902D802D902D902D902D902D902D802D802D802D902D902D802D902D802D802D802D902D902DA02DA02DB02DA02DA02DA02DB02DB02DB02DB02DA02DB02DA02D902D902D902D902D902D902DA02DA02DA02DB02DB02DC02DC02DC02DC02DC02DC02DC02DD02DD02DD02DD02DD02DD02DC02DB02DD02DD02DD02DD02DE02DF02DF02DF02DF02DF02DF02DF02DF02E002DF02DF02DF02DF02DF02DF02DF02E002DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DF02DE02DE02DE02DE02DD02DD02DD02DE02DD02DD02DE02DD02DD02DD02DD02DD02DD02DD02DD02DD02DC02DC02DC02DB02DB02DC02DB02DB02DB02DB02DB02DB02DB02DB02DB02DB02DA02DB02DA02D902D902D902D902D902D802D802DA02D902D902D902D902D902D902D902D802D802D802D902D902D902D802D802D702D702D602D702D602D402D302D302D502D702D702D602D602D602D702D902D902D702D602D502D502D602D702D902D802D902D802D802D702D802D702D702D702D702D702D802D902D802D802D902D802D802D802D902D902D902DA02DA02DA02DA02DA02D902D902D902D902DA02D902D902D902D902D902D902D902DB02DB02DB02DB02DB02DB02DB02DC02DB02DB02DB02DB02DB02DB02DA02DA02DA02DA02DA02D902DB02DB02DC02DC02DD02DC";
+
 /* local variables */
 static unsigned int adc_data[ADC_NUM_CHANNELS];	/* measured ADC values */
 static int daq_adc_st;				/* ADC state machine */
@@ -51,6 +71,30 @@ static daq_trigger_t	daq_trigger;	/* trigger */
 static daq_time_base_t	daq_time_base;	/* time base */
 static daq_buffer_t	daq_buffer;	/* acquisition buffer */
 
+/* post processing module */
+static int daq_pp_st;			/* post processing state machine */
+static int daq_pp_mode;			/* post processing mode */
+static BOOL fl_pp_run_upper;		/* run pp upper layer */
+/*
+ * Structure encapsulating data participating in post processing.
+ */
+static struct daq_pp_t {
+	int	buf[DAQ_PP_BUF_SIZE];	/* input/output buffer */
+	int	ln;			/* buffer usage */
+
+	int	mean;			/* calculated mean value */
+	int	rms;			/* calculated rms value of AC part */
+	int	min, max;		/* minimum/maximum value of AC part */
+	int	f[DAQ_PP_MAX_FREQ_FNUM];	/* strongest frequencies */
+	int	m[DAQ_PP_MAX_FREQ_FNUM];
+
+	/* buffers used by FFT */
+	int16c	fft_in[FFT_N];
+	int16c	fft_out[FFT_N];
+	int16c	fft_scratch[FFT_N];
+} daq_pp;
+
+/* communication module */
 /* structure holding ACK/NAK response to master */
 static mcom_response_t daq_resp_ack_nak;
 /* If set to TRUE, send ack/nak response packet to master */
@@ -58,11 +102,6 @@ static BOOL fl_send_ack_nak;
 
 /* structure holding data response to master */
 static mcom_response_t daq_resp_data;
-/*
- * Buffer for data payload to be sent to master. It has the same size
- * as data acquisition buffer
- */
-static unsigned int daq_resp_buf[DAQ_BUF_SIZE];
 /* If set to TRUE, send response containing data to master */
 static BOOL fl_send_data;
 
@@ -74,6 +113,60 @@ static BOOL fl_send_data;
 static rtl_timer_t *daq_refresh_timer;
 
 /* local functions */
+/*
+ * Calculates square root of given number. Following iterative formula
+ * is used to calculate the value:
+ *
+ * y[n] = (y[n-1] + x[n-1] / y[n-1]) / 2
+ *
+ * Iteration process ends once difference between y[n] and y[n-1]
+ * is less than 2. The method converges in approximately 10 steps.
+ */
+static int
+daq_sqrt(int x)
+{
+	int y1 = 1 << 12;
+	int y2;
+	int n = 0;
+	int d = 0;
+
+	/* Only positive 'x' are valid input. */
+	if (x < 0)
+		return 0;
+
+	/* Handle small numbers separately */
+	if (x < 3)
+		return x;
+
+	do {
+		y2 = (y1 + x / y1) / 2;
+
+		d = y1 > y2 ? (y1 - y2) : (y2 - y1);
+
+		y1 = y2;
+		n++;
+	} while (d > 1 && n < 100);
+
+	return y2;
+}
+
+/*
+ * Sends data packet to master.
+ */
+static int
+daq_send_data_response_to_master(void)
+{
+	mcom_prepare_generic_response(&daq_resp_data, "00",
+	    daq_pp.buf, MCOM_DATA_TYPE_WORD, daq_pp.ln);
+
+	/* Set id of module which is going to respond */
+	daq_resp_data.id = MCOMM_DAQ_ID;
+
+	fl_send_data = TRUE;
+
+	return 0;
+}
+
 /*
  * Service routine collecting data from sensors connected to PIC
  * 10bit AD converter with configurable sample rate.
@@ -156,9 +249,9 @@ daq_get_sample(int index)
 	i = daq_buffer.tail - 1 + index;
 
 	if (i < 0) {
-		i += DAQ_BUF_SIZE;
-	} else if (i > DAQ_BUF_SIZE) {
-		i -= DAQ_BUF_SIZE;
+		i += DAQ_ACQ_BUF_SIZE;
+	} else if (i > DAQ_ACQ_BUF_SIZE) {
+		i -= DAQ_ACQ_BUF_SIZE;
 	}
 
 	return daq_buffer.buf[i];
@@ -272,16 +365,16 @@ daq_scope_svc(void)
 		 * Buffer is cyclic, so when it gets full, start dropping the
 		 * oldest samples.
 		 */
-		if (++daq_buffer.sn < DAQ_BUF_SIZE) {
+		if (++daq_buffer.sn < DAQ_ACQ_BUF_SIZE) {
 			daq_buffer.tail++;
 		} else {
-			daq_buffer.sn = DAQ_BUF_SIZE;
+			daq_buffer.sn = DAQ_ACQ_BUF_SIZE;
 
 			/* Buffer is full, move both head and tail markers */
-			if (++daq_buffer.tail >= DAQ_BUF_SIZE) {
+			if (++daq_buffer.tail >= DAQ_ACQ_BUF_SIZE) {
 				daq_buffer.tail = 0;
 			}
-			if (++daq_buffer.head >= DAQ_BUF_SIZE) {
+			if (++daq_buffer.head >= DAQ_ACQ_BUF_SIZE) {
 				daq_buffer.head = 0;
 			}
 		}
@@ -389,34 +482,34 @@ daq_scope_svc(void)
 }
 
 /*
- * Post processing service. Processes acquired data before they are sent
- * to master.
+ * Bottom half of post processing service. Processes acquired data before
+ * they are either sent to master or passed to upper half of post processing
+ * service.
  */
 static int
-daq_post_process_svc()
+daq_pp_bottom_svc()
 {
 	int num;
+
+	/* Wait until upper layer finishes its job */
+	if (fl_pp_run_upper)
+		return 0;
 
 	/* There are no data to be processed, return */
 	if (!daq_buffer.ready)
 		return 0;
 
-	/*
-	 * Send raw data to master
-	 * wait until previous data is sent
-	 */
+	/* Wait until sending previous data to the master is completed. */
 	if (fl_send_data)
 		return 0;
 
-	/*
-	 * Continuous acquisition stopped, drop the acquired data.
-	 */
+	/* Continuous acquisition aborted, drop the acquired data. */
 	if ((daq_time_base.mode == DAQ_ACQ_MODE_CONT) && (!daq_main.run))
 		return 0;
 
 	/*
-	 * Copy acquired data to response data buffer. Which part of acquisition
-	 * buffer will be copied depends on trigger mode.
+	 * Copy acquired data to post processing data buffer. Which part
+	 * of acquisition buffer will be copied depends on trigger mode.
 	 *
 	 *  'auto'   - copy all acquired samples.
 	 *  'normal' - copy only pre-trigger and post-trigger samples around
@@ -428,10 +521,10 @@ daq_post_process_svc()
 		num = daq_buffer.sn;
 
 		for (i = 0, j = daq_buffer.head; i < num; i++) {
-			daq_resp_buf[i] = daq_buffer.buf[j];
+			daq_pp.buf[i] = daq_buffer.buf[j];
 
 			/* Acquisition buffer is circular one */
-			if (++j >= DAQ_BUF_SIZE)
+			if (++j >= DAQ_ACQ_BUF_SIZE)
 				j = 0;
 		}
 	} else {
@@ -439,30 +532,34 @@ daq_post_process_svc()
 
 		num = daq_time_base.pre + daq_time_base.post;
 		last = daq_buffer.tail > 0 ? daq_buffer.tail - 1 :
-		    DAQ_BUF_SIZE - 1;
+		    DAQ_ACQ_BUF_SIZE - 1;
 
 		/* Copy from the last sample to the first one */
 		for (i = num - 1, j = last; i >= 0; i--) {
-			daq_resp_buf[i] = daq_buffer.buf[j];
+			daq_pp.buf[i] = daq_buffer.buf[j];
 
 			/* Acquisition buffer is circular one */
 			if (--j < 0) 
-				j = DAQ_BUF_SIZE - 1;
+				j = DAQ_ACQ_BUF_SIZE - 1;
 		}
 
 	}
 
-	/* Prepare response - only one packet is to be sent */
-	mcom_prepare_generic_response(&daq_resp_data, "00",
-	    daq_resp_buf, MCOM_DATA_TYPE_WORD, num);
+	/* Save number of buffer usage - used by post processing module. */
+	daq_pp.ln = num;
+
+	/* Let post processing upper layer process acquired data. */
+	if (daq_pp_mode != DAQ_PP_OFF) {
+		fl_pp_run_upper = TRUE;
+
+		return 0;
+	}
+
+	/* Post processing is turned off, send the raw data to master. */
+	daq_send_data_response_to_master();
 
 	/* acquired data processed, release acquisition buffer */
 	daq_buffer.ready = FALSE;
-
-	/* Set id of module which is going to respond */
-	daq_resp_data.id = MCOMM_DAQ_ID;
-
-	fl_send_data = TRUE;
 
 	return 0;
 }
@@ -610,6 +707,454 @@ daq_process_conf_cmd(char *cfg, int ln)
 	return 0;
 }
 
+/*
+ * Calculates mean value.
+ */
+static int
+daq_pp_mean(void)
+{
+	int i;
+	int mean = 0;
+	int ln = daq_pp.ln;
+
+	/* Calculate mean value of acquired data */
+	for (i = 0; i < ln; i++)
+		mean += daq_pp.buf[i];
+
+	daq_pp.mean = mean / ln;
+
+	return 0;
+}
+
+/*
+ * Calculates RMS value 
+ */
+static int
+daq_pp_rms(void)
+{
+	int i;
+	int rms = 0;
+	int ln = daq_pp.ln;
+
+	/* Calculate RMS value of acquired data */
+	for (i = 0; i < ln; i++)
+		rms += daq_pp.buf[i] * daq_pp.buf[i];
+
+	/* TODO: calculate root of the value */
+	daq_pp.rms = daq_sqrt(rms / ln);
+
+	return 0;
+}
+
+/*
+ * Calculates minimum and maximum values
+ */
+static int
+daq_pp_min_max(void)
+{
+	int i;
+	int min;
+	int max;
+	int ln = daq_pp.ln;
+
+	max = min = daq_pp.buf[0];
+	for (i = 1; i < ln; i++)
+		if (daq_pp.buf[i] < min)
+			min = daq_pp.buf[i];
+		else if (daq_pp.buf[i] > max)
+			max = daq_pp.buf[i];
+
+	daq_pp.min = min;
+	daq_pp.max = max;
+
+	return 0;
+}
+
+/*
+ * Removes DC bias (mean value) from acquired signal. 
+ */
+static int
+daq_pp_remove_dc_bias(void)
+{
+	int i;
+	int ln = daq_pp.ln;
+	int mean = daq_pp.mean;
+
+	for (i = 0; i < ln; i++)
+		daq_pp.buf[i] -= mean;
+
+	return 0;
+}
+
+/*
+ * Calculates FFT.
+ */
+static int
+daq_pp_calc_fft(void)
+{
+	int i;
+	int16 max, s;
+
+//	LATBCLR = 1 << 12;
+
+	/* Calculate mean value of acquired data. */
+	daq_pp_mean();
+
+	/* Remove DC bias from acquired data. */
+	daq_pp_remove_dc_bias();
+
+//	LATBSET = 1 << 12;
+
+	/* Calculate minimum and maximum value of AC part. */
+	daq_pp_min_max();
+
+	/* Calculate RMS value of AC part. */
+	daq_pp_rms();
+
+	/*
+	 * Populate FFT input buffer. Scale input data, so that FFT can generate
+	 * usable spectrum.
+	 */
+	/* Compute scaling factor */
+	max = daq_pp.min >= 0 ? daq_pp.min : -daq_pp.min;
+	s = daq_pp.max >= 0 ? daq_pp.max : -daq_pp.max;
+
+	if (s > max)
+		max = s;
+
+	/*
+	 * There is no point to calculate FFT for really small signals, as
+	 * it would produce incorrect results anyway.
+	 */
+	if (max < 2) {
+		/* Zero output buffer */
+		for (i = 0; i < FFT_N; i++)
+			daq_pp.fft_out[i].re = daq_pp.fft_out[i].im = 0;
+
+		return EINVAL;
+	}
+
+	s = 10000 / max;
+
+	for (i = 0; i < daq_pp.ln; i++) {
+		daq_pp.fft_in[i].re = ((int16) daq_pp.buf[i]) * s;
+		daq_pp.fft_in[i].im = 0;
+	}
+	/* Zero the rest of the buffer */
+	for (i = daq_pp.ln; i < FFT_N; i++) {
+		daq_pp.fft_in[i].re = daq_pp.fft_in[i].im = 0;
+	}
+
+//	LATBCLR = 1 << 12;
+
+	/* Calculate FFT. */
+	mips_fft16(daq_pp.fft_out, daq_pp.fft_in, (int16c *)fft16c2048,
+	    daq_pp.fft_scratch, FFT_LOG2N);
+
+
+//	LATBSET = 1 << 12;
+
+	return 0;
+}
+
+/*
+ * Find strongest frequencies in calculated spectrum.
+ */
+static int
+daq_pp_find_fft_max_freqs(void)
+{
+	int i, j, st;
+	int m, f;
+	int16c *in = daq_pp.fft_out;
+	int *out = daq_pp.buf;
+
+	/* 
+	 * Calculate square of frequency magnitudes. We are interested just
+	 * in first DAQ_PP_MAX_FREQ_SNUM values.
+	 */
+	for (i = 0; i < DAQ_PP_MAX_FREQ_SNUM; i++) {
+		out[i] = (int) in[i].re * (int) in[i].re +
+		   (int) in[i].im * (int) in[i].im;
+	}
+
+	/*
+	 * Now go through the result and search for maximums.
+	 */
+	st = 0;
+	for (i = 0; i < DAQ_PP_MAX_FREQ_FNUM; i++)
+		daq_pp.f[i] = daq_pp.m[i] = 0;
+
+	for (i = 1; i < DAQ_PP_MAX_FREQ_SNUM; i++) {
+		switch (st) {
+		/* Waiting for growing part of function */
+		case 0:
+			if (out[i] > out[i - 1])
+				st = 1;
+
+			break;
+
+		/* Wait for maximum */
+		case 1:
+			if (out[i] >= out[i - 1])
+				break;
+
+			f = i - 1;
+			m = out[f];
+
+			/*
+			 * Maximum found. Save it only if its magnitude is
+			 * bigger than the ones already found. Take into
+			 * account the fact that the list is sorted.
+			 * If maximum is lower than the ones already found,
+			 * discard it and restart searching process.
+			 */
+			if (daq_pp.m[DAQ_PP_MAX_FREQ_FNUM - 1] >= m) {
+				st = 0;
+				break;
+			}
+
+			/*
+			 * Find place for the value discarding frequency
+			 * with the lowest magnitude. Keep the list
+			 * of frequencies sorted by magnitude.
+			 */
+			for (j = 0; j < DAQ_PP_MAX_FREQ_FNUM; j++) {
+				int k;
+
+				if (daq_pp.m[j] > m)
+					continue;
+
+				/* Place found, move existing values */
+				for (k = DAQ_PP_MAX_FREQ_FNUM - 1; k > j; k--) {
+					daq_pp.m[k] = daq_pp.m[k - 1];
+					daq_pp.f[k] = daq_pp.f[k - 1];
+				}
+
+				break;
+			}
+
+			/* Save the frequency and magnitude */
+			daq_pp.f[j] = f;
+			daq_pp.m[j] = m;
+
+			/* Restart the process */
+			st = 0;
+
+			break;
+		}
+	}
+
+	/*
+	 * Finish calculation of magnitudes for selected frequencies.
+	 * In particular, we operated so far with squares of magnitudes,
+	 * so calculate their square root. We postpone that operation until
+	 * now to avoid calculations for frequencies we are not interested in.
+	 */
+	for (i = 0; i < DAQ_PP_MAX_FREQ_FNUM; i++)
+		daq_pp.m[i] = daq_sqrt(daq_pp.m[i]);
+
+	return 0;
+}
+
+/*
+ * Move results of FFT process to the transmit buffer.
+ */
+static int
+daq_pp_fft_prepare_result(void)
+{
+	int i, j;
+
+	for (i = 0, j = DAQ_PP_BUF_SIZE / 2; i < DAQ_PP_BUF_SIZE / 2;
+	    i++, j++) {
+		daq_pp.buf[i] = daq_pp.fft_out[i].re;
+		daq_pp.buf[j] = daq_pp.fft_out[i].im;
+	}
+
+	daq_pp.ln = DAQ_PP_BUF_SIZE;
+
+	return 0;
+}
+
+/*
+ * Handles FFT commands.
+ */
+static int
+daq_process_fft_cmd(char *cfg, int ln)
+{
+	int i, lnt;
+
+	/* cfg[0] - command */
+	switch (cfg[0]) {
+	/* Activate FFT module - nothing special to be done for now */
+	case DAQ_PP_CMD_ACTIVATE:
+		daq_pp_mode = DAQ_PP_FFT;
+		break;
+
+	/* Test FFT module - calculates FFT from given data */
+	case DAQ_PP_CMD_TEST:
+		/*
+		 * Read input data to data response buffer. It is used
+		 * as source of data for daq_pp_calc_fft() function.
+		 * Data are passed as sequence of HEX ASCII quartets
+		 * representing 16-bit unsigned values.
+		 */
+		lnt = sizeof (tst2);
+		for (i = 0; i < lnt / 8; i++)
+			daq_pp.buf[i] = hex2ulong((char *) (tst2 + i * 8),
+			    4);
+
+		/* Zero the rest of buffer */
+		for (i = lnt / 8; i < DAQ_PP_BUF_SIZE; i++)
+			daq_pp.buf[i] = 0;
+
+		daq_pp.ln = lnt / 8;
+
+		/* Calculate FFT of AC part of acquired data. */
+		daq_pp_calc_fft();
+
+		/*
+		 * Move resulting data to response data buffer. The first half
+		 * contains real part, the second half contains imaginary part.
+		 */
+		daq_pp_fft_prepare_result();
+
+		/* Queue data for sending to master. */
+		daq_send_data_response_to_master();
+
+		break;
+
+	/* unknown command */
+	default:
+		return EINVAL;
+		/* NOT REACHED */
+		break;
+	}
+
+	return 0;
+}
+
+/*
+ * Move results of signal identification process to the transmit buffer.
+ */
+static int
+daq_pp_sigid_prepare_result(void)
+{
+	int i;
+
+	daq_pp.buf[0] = daq_pp.mean;
+	daq_pp.buf[1] = daq_pp.rms;
+	daq_pp.buf[2] = daq_pp.min;
+	daq_pp.buf[3] = daq_pp.max;
+	for (i = 0; i < DAQ_PP_MAX_FREQ_FNUM; i++) {
+		daq_pp.buf[4 + i * 2] = daq_pp.f[i];
+		daq_pp.buf[5 + i * 2] = daq_pp.m[i];
+	}
+
+	daq_pp.ln = 4 + DAQ_PP_MAX_FREQ_FNUM * 2;
+
+	return 0;
+}
+
+/*
+ * Handles signal identification commands.
+ */
+static int
+daq_process_sigid_cmd(char *cfg, int ln)
+{
+	int i, lnt;
+
+	/* cfg[0] - command */
+	switch (cfg[0]) {
+	/* Activate FFT module - nothing special to be done for now */
+	case DAQ_PP_CMD_ACTIVATE:
+		daq_pp_mode = DAQ_PP_SIGID;
+		break;
+
+	/* Test SIGID module - collect signal characteristics from test data */
+	case DAQ_PP_CMD_TEST:
+		/*
+		 * Read test data to data response buffer. It is used
+		 * as source of data for daq_pp_calc_fft() function.
+		 * Data are passed as sequence of HEX ASCII quartets
+		 * representing 16-bit unsigned values.
+		 */
+		lnt = sizeof (tst2);
+		for (i = 0; i < lnt / 8; i++)
+			daq_pp.buf[i] = hex2ulong((char *) (tst2 + i * 8),
+			    4);
+
+		/* Zero the rest of buffer */
+		for (i = lnt / 8; i < DAQ_PP_BUF_SIZE; i++)
+			daq_pp.buf[i] = 0;
+
+		daq_pp.ln = lnt / 8;
+
+//	LATBCLR = 1 << 12;
+		/*
+		 * Calculate FFT of AC part of acquired data. If FFT failed,
+		 * there is no point to process the result.
+		 */
+		if (daq_pp_calc_fft() == 0) {
+			/*
+			 * Process result of FFT analysis. Find strongest
+			 * frequencies.
+			 */
+			daq_pp_find_fft_max_freqs();
+		} else {
+			for (i = 0; i < DAQ_PP_MAX_FREQ_FNUM; i++)
+				daq_pp.f[i] = daq_pp.m[i] = 0;
+		}
+
+		/* Move resulting data to response data buffer. */
+		daq_pp_sigid_prepare_result();
+//	LATBSET = 1 << 12;
+
+		/* Queue data for sending to master. */
+		daq_send_data_response_to_master();
+
+		break;
+
+	/* unknown command */
+	default:
+		return EINVAL;
+		/* NOT REACHED */
+		break;
+	}
+
+	return 0;
+}
+
+
+
+/*
+ * Processes post processing configuration data. Validates provided data.
+ * Returns non-zero value if provided configuration is invalid.
+ */
+static int
+daq_process_pp_id(char *cfg, int ln)
+{
+	int pp_module;
+
+	/* cfg[0..1] - post processing module ID */
+	pp_module = (int) hex2ulong(cfg, 2);
+
+	/* Turn post processing off */
+	if (pp_module == DAQ_PP_OFF) {
+		daq_pp_mode = pp_module;
+
+		return 0;
+	}
+
+	if (pp_module == DAQ_PP_FFT)
+		return daq_process_fft_cmd(cfg + 2, ln - 2);
+
+	if (pp_module == DAQ_PP_SIGID)
+		return daq_process_sigid_cmd(cfg + 2, ln - 2);
+
+	/* Unknown module */
+	return EINVAL;
+}
+
 /* public functions */
 /*
  * Initialization routine.
@@ -653,7 +1198,7 @@ daq_init(void)
 	daq_resp_data.id = MCOMM_DAQ_ID;
 
 	/* initialize data acquisition structures to default values */
-	/* trigger: auto */
+	/* trigger: single */
 	daq_trigger.mode = DAQ_TRIG_AUTO;
 	/* rising edge, level to 33% - ignored in 'auto' mode */
 	daq_trigger.event = DAQ_TRIG_REDGE;
@@ -661,13 +1206,13 @@ daq_init(void)
 
 	/*
 	 * time base:
-	 *  - sample rate 1ms
+	 *  - sample rate 400 us
 	 *  - single acquisition mode
 	 */
-	daq_time_base.srate = 200;
-	daq_time_base.pre = 400;
-	daq_time_base.post = 400;
-	daq_time_base.mode = DAQ_ACQ_MODE_CONT;
+	daq_time_base.srate = 400;
+	daq_time_base.pre = 128;
+	daq_time_base.post = 128;
+	daq_time_base.mode = DAQ_ACQ_MODE_SINGLE;
 
 	/* prepare acquisition buffer */
 	daq_buffer.head = daq_buffer.tail = daq_buffer.sn = 0;
@@ -684,6 +1229,11 @@ daq_init(void)
 	/* oscilloscope is inactive */
 	daq_main.scope_st = DAQ_SCOPE_ST_IDLE;
 	daq_main.run = FALSE;
+
+	/* Initialize post processing module */
+	daq_pp_st = DAQ_PP_ST_IDLE;
+	daq_pp_mode = DAQ_PP_OFF;
+	fl_pp_run_upper = FALSE;
 
 	/* Kick off conversion process */
 	/* select channel */
@@ -730,7 +1280,7 @@ daq_get_adc_value(unsigned int ch, unsigned int *result)
 }
 
 /*
- * Main service routine - called periodically from timer interrupt.
+ * Main acquisition service routine - called periodically from timer interrupt.
  */
 int
 daq_svc(void)
@@ -742,10 +1292,123 @@ daq_svc(void)
 	daq_scope_svc();
 
 	/* Process acquired data */
-	daq_post_process_svc();
+	daq_pp_bottom_svc();
 
 	/* Send response to master */
 	daq_comm_svc();
+
+	return 0;
+}
+
+/*
+ * Upper half of post processing service routine - called from main().
+ */
+int
+daq_pp_upper_svc(void)
+{
+	int i;
+
+	/* Upper layer stopped, make sure state machine is idle */
+	if (!fl_pp_run_upper) {
+		daq_pp_st = DAQ_PP_ST_IDLE;
+
+		return 0;
+	}
+
+	/* Post processing turned off */
+	if (daq_pp_mode == DAQ_PP_OFF)
+		return 0;
+
+	switch (daq_pp_st) {
+	/* machine idle */
+	case DAQ_PP_ST_IDLE:
+		daq_pp_st = DAQ_PP_ST_WAIT4DATA;
+
+		break;
+
+	/* FFT - wait for data */
+	case DAQ_PP_ST_WAIT4DATA:
+		if (!daq_buffer.ready)
+			break;
+
+		/* FFT turned on */
+		if (daq_pp_mode == DAQ_PP_FFT)
+			daq_pp_st = DAQ_PP_ST_FFT_CALC;
+
+		/* Signal identification turned on */
+		else if (daq_pp_mode == DAQ_PP_SIGID)
+			daq_pp_st = DAQ_PP_ST_SIGID_CALC;
+
+		/* Post processing turned off */
+		else
+			daq_pp_st = DAQ_PP_ST_IDLE;
+
+		break;
+
+	/* FFT - calculate */
+	case DAQ_PP_ST_FFT_CALC:
+		/* Calculate */
+		daq_pp_calc_fft();
+
+		/*
+		 * Move resulting data to response data buffer. The first half
+		 * contains real part, the second half contains imaginary part.
+		 */
+		daq_pp_fft_prepare_result();
+
+		/* Queue data for sending to master. */
+		daq_send_data_response_to_master();
+
+		/* acquired data processed, release acquisition buffer */
+		daq_buffer.ready = FALSE;
+
+		/* switch to IDLE mode */
+		daq_pp_st = DAQ_PP_ST_IDLE;
+
+		/* Let bottom layer know we are done. */
+		fl_pp_run_upper = FALSE;
+
+		break;
+
+	/* Signal identification - calculate */
+	case DAQ_PP_ST_SIGID_CALC:
+//	LATBCLR = 1 << 12;
+
+		/*
+		 * Calculate FFT of AC part of acquired data. If FFT failed,
+		 * there is no point to process the result.
+		 */
+		if (daq_pp_calc_fft() == 0) {
+			/*
+			 * Process result of FFT analysis. Find strongest
+			 * frequencies.
+			 */
+			daq_pp_find_fft_max_freqs();
+		} else {
+			for (i = 0; i < DAQ_PP_MAX_FREQ_FNUM; i++)
+				daq_pp.f[i] = daq_pp.m[i] = 0;
+		}
+
+//	LATBSET = 1 << 12;
+
+		/* Move resulting data to response data buffer. */
+		daq_pp_sigid_prepare_result();
+
+		/* Queue data for sending to master. */
+		daq_send_data_response_to_master();
+
+		/* acquired data processed, release acquisition buffer */
+		daq_buffer.ready = FALSE;
+
+		/* switch to IDLE mode */
+		daq_pp_st = DAQ_PP_ST_IDLE;
+
+		/* Let bottom layer know we are done. */
+		fl_pp_run_upper = FALSE;
+
+		break;
+
+	}
 
 	return 0;
 }
@@ -780,6 +1443,15 @@ daq_acq_process_query(char *data, int ln)
 			daq_main.run = FALSE;
 
 			break;
+
+		/* Configure post processing module */
+		case MCOMM_PP_CMD_CONF:
+			/* configure module */
+			err = daq_process_pp_id(data + 1, ln - 1);
+			if (err != 0)
+				response_with_ack = FALSE;
+			break;
+
 
 		/* unknown command */
 		default:
