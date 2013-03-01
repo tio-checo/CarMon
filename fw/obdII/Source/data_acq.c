@@ -1219,8 +1219,8 @@ daq_init(void)
 	daq_buffer.fill = FALSE;
 	daq_buffer.ready = FALSE;
 
-	/* set period of running acquisition cycles to 1 second */
-	daq_main.acq_per = 1000000;
+	/* set period of running acquisition cycles to 100 millisecond */
+	daq_main.acq_per = 100000;
 
 	/* Initialize timers */
 	daq_refresh_timer = NULL;
