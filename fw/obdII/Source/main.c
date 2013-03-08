@@ -11,6 +11,7 @@
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "mon.h"
+#include "obd.h"
 #include "rt_light.h"
 
 #include <errno.h>
@@ -65,6 +66,7 @@ main(int argc, char **argv)
 	kwp2k_init();
 	mcom_init();
 	mon_init();
+	obd_init();
 
 	/* Immediately enter diagnostic mode */
 	//mon_diag_enter();

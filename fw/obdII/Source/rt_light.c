@@ -12,6 +12,7 @@
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "mon.h"
+#include "obd.h"
 #include "rt_light.h"
 
 #include <errno.h>
@@ -259,7 +260,14 @@ __attribute__ ((interrupt)) isr_timer1(void)
 		mon_svc();
 	} else {
 		kwp2k_svc();
+		obd_svc();
 		daq_svc();
+
+		/*
+		 * Must be located after kwp2k_svc() and obd_svc() state
+		 * machines, sice it's role is to process KWP2K packets received
+		 * from ECU only if obd_svc() does not take care of it.
+		 */
 		mcom_svc();
 		rtl_timer_svc();
 	}

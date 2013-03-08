@@ -28,7 +28,7 @@ LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
 
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/kwp2k.o $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
-    $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o
+    $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o $(BUILD_DIR)/obd.o
 
 APPNAME= main
 
@@ -81,6 +81,9 @@ $(BUILD_DIR)/rt_light.o: Source/rt_light.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/utils.o: Source/utils.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/obd.o: Source/obd.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 clean:

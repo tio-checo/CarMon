@@ -1420,7 +1420,7 @@ int
 daq_acq_process_query(char *data, int ln)
 {
 	int err;
-	BOOL response_with_ack = TRUE;
+	BOOL respond_with_ack = TRUE;
 
 	/* Handle particular commands */
 	switch (data[0]) {
@@ -1429,7 +1429,7 @@ daq_acq_process_query(char *data, int ln)
 			/* configure module */
 			err = daq_process_conf_cmd(data + 1, ln - 1);
 			if (err != 0)
-				response_with_ack = FALSE;
+				respond_with_ack = FALSE;
 			break;
 
 		/* Run acquisition */
@@ -1449,14 +1449,13 @@ daq_acq_process_query(char *data, int ln)
 			/* configure module */
 			err = daq_process_pp_id(data + 1, ln - 1);
 			if (err != 0)
-				response_with_ack = FALSE;
+				respond_with_ack = FALSE;
 			break;
-
 
 		/* unknown command */
 		default:
 			err = MCOM_NAK_UNKNOWN_IDCMD;
-			response_with_ack = FALSE;
+			respond_with_ack = FALSE;
 
 			break;
 	}
@@ -1464,7 +1463,7 @@ daq_acq_process_query(char *data, int ln)
 	/*
 	 * Send response to master indicating that command was processed.
 	 */
-	if (response_with_ack) {
+	if (respond_with_ack) {
 		mcom_prepare_ack_response(&daq_resp_ack_nak);
 	} else {
 		mcom_prepare_nak_response(&daq_resp_ack_nak, err);

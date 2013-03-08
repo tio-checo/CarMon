@@ -1,12 +1,10 @@
 #ifndef __MCOMM_H
 #define __MCOMM_H
 
+#include <GenericTypeDefs.h>
+
 /* module IDs and commands */
 #define	MCOMM_COMM_ID		'M'	/* comm module ID */
-
-/* module handling communication with ECUs */
-#define	MCOMM_ECU_ID		'E'	/* module ID */
-#define	MCOMM_ECU_CMD_GETPID	'P'	/* read value of OBD PID */
 
 /* data type in data payload sent in response to master */
 #define	MCOM_DATA_TYPE_BYTE	'B'	/* 8-bit unsigned */

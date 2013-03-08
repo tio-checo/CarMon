@@ -25,6 +25,7 @@
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "mon.h"
+#include "obd.h"
 #include "utils.h"
 
 #include <errno.h>
@@ -358,11 +359,12 @@ mcom_decode_packet(void)
 
 	/* module handling communication with ECUs */
 	case MCOMM_ECU_ID:
-		// TODO: ecu_process_query(&mcom_co.rx_buf[1], ln);
-		mcom_prepare_nak_response(&mcom_resp,
-		    MCOM_NAK_UNKNOWN_IDCMD);
+		err = obd_process_query(&mcom_co.rx_buf[1], ln);
 
-		ret = 1;
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
 
 		break;
 
@@ -381,7 +383,7 @@ mcom_decode_packet(void)
 
 			break;
 		}
-	/* send packet to ECU */
+	/* Send packet to ECU. */
 	case MCOM_CMD_SEND:
 		/* WuP should be sent out */
 		send_wup = mcom_co.rx_buf[0] == MCOM_CMD_SEND_WUP;
