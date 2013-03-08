@@ -90,6 +90,14 @@ abstract class Probe {
     }
 
     /**
+     * Updates probe value. Returns true in case of success. Otherwise
+     * returns false.
+     */
+    public boolean update(int[] value) {
+        return true;
+    }
+
+    /**
      * Asks for probe value. Returns true in case of success. Otherwise
      * returns false.
      */
@@ -217,24 +225,34 @@ class PicProbe extends Probe {
     }
 
     /**
+     * Updates probe value. Returns true in case of success. Otherwise
+     * returns false.
+     */
+    public boolean update(int[] value) {
+        mCurrY = (value[0] + mRawToPhysAdd) * mRawToPhysMul;
+
+        mCurrYValid = true;
+
+        return true;
+    }
+
+    /**
      * Asks PIC for probe value. Returns true in case of success. Otherwise
      * returns false.
      */
     public boolean acquire() {
-        int picAdValue = mPicCom.getAdValue("08");
+        int[] picAdValue = new int[1];
+
+        picAdValue[0] = mPicCom.getAdValue("08");
 
         /* Failed to obtain data from ECU. Invalidate the value. */
-        if (picAdValue == -1) {
+        if (picAdValue[0] == -1) {
             mCurrYValid = false;
 
             return false;
         }
 
-        mCurrY = (picAdValue + mRawToPhysAdd) * mRawToPhysMul;
-
-        mCurrYValid = true;
-
-        return true;
+        return this.update(picAdValue);
     }
 }
 
@@ -269,8 +287,39 @@ class ObdProbe extends Probe {
     }
 
     /**
-     * Asks ECU for value of OBD parameter.  Returns true in case of success.
-     * Otherwise returns false.
+     * Updates probe value. Returns true in case of success. Otherwise
+     * returns false.
+     */
+    public boolean update(int[] value) {
+        /**
+         * Converts PID data returned by ECU in form of an array of bytes
+         * to physical value using following formula:
+         *
+         *   mCurrY = (mRawY + mRawToPhysAdd) * mRawToPhysMul,
+         *
+         *   where mRawY is summary of weighted bytes returned from ECU.
+         *   For instance, if ECU returned two bytes, mRawY would be
+         *   calculated as:
+         *
+         *   mRawY = 256 * value[0] + value[1]
+         */
+        int mRawY = 0;
+    
+        for (int d : value) {
+            mRawY *= 256;
+            mRawY += d;
+        }
+
+        mCurrY = (mRawY + mRawToPhysAdd) * mRawToPhysMul;
+
+        mCurrYValid = true;
+
+        return true;
+    }
+
+    /**
+     * Obtains value of OBD parameter from ECU. Updates probe with new value.
+     * Returns true in case of success. Otherwise returns false.
      */
     public boolean acquire() {
         int[] ecuData = mObd.getPidValue(mId);
@@ -282,30 +331,7 @@ class ObdProbe extends Probe {
             return false;
         }
 
-        /**
-         * Converts PID data returned by ECU in form of an array of bytes
-         * to physical value using following formula:
-         *
-         *   mCurrY = (mRawY + mRawToPhysAdd) * mRawToPhysMul,
-         *
-         *   where mRawY is summary of weighted bytes returned from ECU.
-         *   For instance, if ECU returned two bytes, mRawY would be
-         *   calculated as:
-         *
-         *   mRawY = 256 * ecuData[0] + ecuData[1]
-         */
-        int mRawY = 0;
-    
-        for (int d : ecuData) {
-            mRawY *= 256;
-            mRawY += d;
-        }
-
-        mCurrY = (mRawY + mRawToPhysAdd) * mRawToPhysMul;
-
-        mCurrYValid = true;
-
-        return true;
+        return this.update(ecuData);
     }
 }
 
@@ -338,7 +364,7 @@ class TurboProbe extends Probe {
      * Recalculates value if given PID contributes to the formula.
      * Returns true if value has been recalculated. Otherwise returns false.
      */
-    public boolean acquire(String pid,
+    public boolean update(String pid,
             HashMap<String, Probe> probePool) {
         for (String s : mProbeList) {
             if (pid.equals(s)) {
@@ -857,6 +883,39 @@ class PicCom {
     }
 
     /**
+     * Waits for ACK response. Returns -1 in case of failure.
+     */
+    public int waitForAck(String modId) {
+        String ack = modId + "A";
+
+        /* Wait for packet from PIC module. */
+        String p = recvPacket();
+
+        /* Timeout occurred */
+        if (p == null) {
+            Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                    "Timeout when waiting for packet from" +
+                    " PIC module", ObdLogger.getRunTime()));
+
+            return -1;
+        }
+
+        /* Valid packet received. */
+        if (p.equals(ack)) {
+            return 0;
+        }
+
+        /*
+         * Invalid response from PIC module received. Log this
+         * and process next packet.
+         */
+        Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting \"" +
+                ack + "\", received \"" + p + "\"");
+
+        return -1;
+    }
+
+    /**
      * Acquires value measured on given ADC channel. Returns -1
      * in case of failure.
      */
@@ -907,6 +966,74 @@ class PicCom {
     }
 
     /**
+     * Configures PIC acquisition engine.
+     * Returns -1 in case of failure.
+     */
+    public int configAcqModule(String config) {
+        if (!sendPacket("QC", config)) {
+            return -1;
+        }
+
+        /* Wait for ACK */
+        return waitForAck("Q");
+    }
+
+    /**
+     * Configures PIC post-processing engine.
+     * Returns -1 in case of failure.
+     */
+    public int configPpModule(String config) {
+        if (!sendPacket("QP", config)) {
+            return -1;
+        }
+
+        /* Wait for ACK */
+        return waitForAck("Q");
+    }
+
+    /**
+     * Start data acquisition
+     * Returns -1 in case of failure.
+     */
+    public int runAcq() {
+        if (!sendPacket("QR", "")) {
+            return -1;
+        }
+
+        /* Wait for ACK */
+//        return waitForAck("Q");
+        return 0;
+    }
+
+    /**
+     * Stop data acquisition
+     * Returns -1 in case of failure.
+     */
+    public int stopAcq() {
+        if (!sendPacket("QS", "")) {
+            return -1;
+        }
+
+        /* Wait for ACK */
+//        return waitForAck("Q");
+        return 0;
+    }
+
+    /**
+     * Configures OBD auto-scan mode.
+     * Returns -1 in case of failure.
+     */
+    public int configObdAutoScan(String pidList) {
+        if (!sendPacket("EOR", pidList)) {
+            return -1;
+        }
+
+        /* Wait for ACK */
+//        return waitForAck("E");
+        return 0;
+    }
+
+    /**
      * Changes ECU communication mode. Returns 0 in case of success,
      * -1 otherwise.
      */
@@ -915,33 +1042,8 @@ class PicCom {
             return -1;
         }
 
-        /*
-         * Process response from PIC module.
-         */
-        String p = recvPacket();
-
-        /* Timeout occurred */
-        if (p == null) {
-            Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                    "Timeout when waiting for packet from" +
-                    " PIC module", ObdLogger.getRunTime()));
-
-            return -1;
-        }
-
-        /* Valid packet received. Escape from the loop. */
-        if (p.equals("MA")) {
-            return 0;
-        }
-
-        /*
-         * Invalid response from PIC module received. Log this
-         * and process next packet.
-         */
-        Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting " +
-                "\"MA\", received \"" + p + "\"");
-
-        return -1;
+        /* Wait for ACK */
+        return waitForAck("M");
     }
 }
 
@@ -1299,6 +1401,46 @@ class PidGroups {
     public boolean groupProcessed(int grpNum) {
         return (mPidGroups.get(grpNum).allPidsProcessed());
     }
+
+    /**
+     * Constructs list of PID which will be sent to PIC when initiating
+     * auto-scan mode. This is one of the examples where using recursion
+     * is reasonable thing to do, since it simplifies implementation
+     * and improves readability of the code.
+     */
+    public String createAutoScanPidList(int grpIndex) {
+        PidGroup grp;
+        String pidList = new String();
+
+        /* Init phase */
+        if (grpIndex == -1) {
+            grpIndex = mPidGroups.size() - 1;
+        }
+
+        grp = mPidGroups.get(grpIndex);
+        /* Make sure we start from the first PID. */
+        grp.reset();
+
+        /* Enumerate through all PIDs in current group */
+        while (!grp.allPidsProcessed()) {
+            int i;
+
+            /*
+             * First process all PIDs in groups with higher priority (if there
+             * is one). In check we take advantage of the fact that highest
+             * priority group is the first one in the group list -
+             * it has index 0.
+             */
+            for (i = grpIndex - 1; i >= 0; i--) {
+                pidList += this.createAutoScanPidList(i);
+            }
+
+            /* Now add to the list PID in currently processed group */
+            pidList += grp.getNext();
+        }
+
+        return pidList;
+    }
 }
 
 /**
@@ -1604,6 +1746,9 @@ class CommunicationService {
     /* List of all measured PIDs */
     private ArrayList<String> mPidLogList;
 
+    /* List of PIDs passed to PIC module for auto-scan mode */
+    private String mPidAutoScanList;
+
     /* Status of PIC module communication */
     private Button mStsPic;
 
@@ -1717,7 +1862,7 @@ class CommunicationService {
          * Slow - Water & Air Temperature, Vehicle Speed, Barometric Pressure,
          *        Battery Voltage
          */
-        String grpS[] = {"Batt", "05", "0D", "0F", "33"};
+        String grpS[] = {"05", "0D", "0F", "33"};
         mPidSpeedGroups.create(2, "slow", grpS);
 
         /*
@@ -1730,9 +1875,15 @@ class CommunicationService {
          * Add calculated 'Turbo' parameter to the pid list, so that it gets
          * logged as well.
          */
-//       mPidLogList.add("Turbo");
+        mPidLogList.add("Turbo");
 
-        Log.d(ObdLogger.TAG, "PID list:" + mPidLogList);
+        Log.d(ObdLogger.TAG, "PID log list:" + mPidLogList);
+
+        /*
+         * Generate list of PIDs to be auto-scanned by PIC module.
+         */
+        mPidAutoScanList = mPidSpeedGroups.createAutoScanPidList(-1);
+        Log.d(ObdLogger.TAG, "PID auto scan list:" + mPidAutoScanList);
     }
 
     /**
@@ -1765,17 +1916,6 @@ class CommunicationService {
             PicCom pc = mObd.mKwp2000.mPicCom;
 
             while (!mQuit) {
-/*
-                tstart = time.time()
-                t1 = -1.0
-                t2 = -1.0
-                t3 = -1.0
-                t4 = -1.0
-*/
-/*
-                t1 = time.time() - tstart
-                t2 = time.time() - tstart
-*/
                 /* Establish communication with PIC module */
                 if (mState == ST_COMM_INIT_PIC) {
                     /* Wait until communication with PIC module is established. */
@@ -1791,6 +1931,33 @@ class CommunicationService {
 
                         continue;
                     }
+
+                    /* Make sure PIC module is idle */
+                    if (pc.stopAcq() == -1)
+                        continue;
+
+                    if (pc.configObdAutoScan("") == -1)
+                        continue;
+
+                    /*
+                     * Configure data acquisition module
+                     *  - channel            08
+                     *  - acquisition mode   Continuous
+                     *  - trigger mode       Auto
+                     *  - trigger event      Rising edge (not used)
+                     *  - trigger parameter  Not used
+                     *  - sample rate        400 us
+                     *  - refresh rate       500 ms
+                     *  - pre-trigger size   128 samples
+                     *  - post-trigger size  128 samples
+                     */
+                    if (pc.configAcqModule("08020201000019001F4100800080")
+                            == -1)
+                        continue;
+
+                    /* Activate signal identification post-processing module */
+                    if (pc.configPpModule("02A") == -1)
+                        continue;
 
                     /* Update status indicator */
                     updateStatusIndicator(mStsPic, true);
@@ -1813,6 +1980,14 @@ class CommunicationService {
                         continue;
                     }
 
+                    /* Start data acquisition */
+                    if (pc.runAcq() == -1)
+                        continue;
+
+                    /* Configure and start OBD auto-scan mode */
+                    if (pc.configObdAutoScan(mPidAutoScanList) == -1)
+                        continue;
+
                     /* Let user know via indicator on status bar. */
                     updateStatusIndicator(mStsEcu, true);
 
@@ -1822,10 +1997,52 @@ class CommunicationService {
 
                     mState = ST_ACQUIRE_PROBE_VALUE;
                 } else if (mState == ST_ACQUIRE_PROBE_VALUE) {
-                    /* Acquire probe value. */
+                    /* Wait for packet from PIC module. */
+                    String p = pc.recvPacket();
+
+                    /* Timeout occurred */
+                    if (p == null) {
+                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                                "Timeout when waiting for packet from" +
+                                " PIC module", ObdLogger.getRunTime()));
+
+                        continue;
+                    }
+
+                    /* Decode which PIC module provided data */
+
+                    int[] v;
+                    /* Data acquisition module */
+                    if (p.startsWith("Q00")) {
+                        currPid = "Batt";
+
+                        /* extract battery voltage from packet */
+                        v = new int[1];
+
+                        v[0] = Integer.parseInt(p.substring(3, 7), 16);
+                    } else if (p.startsWith("E00P")) {
+                        currPid = p.substring(4, 6);
+
+                        /* extract battery voltage from packet */
+                        int ln = (p.length() - 6) / 2;
+                        v = new int[ln];
+
+                        for (int i = 0; i < ln; i++) {
+                            v[i] = Integer.parseInt(p.substring(
+                                    6 + (i * 2), 6 + (i + 1) * 2), 16);
+                        }
+                    } else {
+                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                                "Discarding packet : %s",
+                                ObdLogger.getRunTime(), p));
+
+                        continue;
+                    }
+
+                    /* Update current probe. */
                     Probe currProbe = mProbePool.get(currPid);
 
-                    if (currProbe.acquire()) {
+                    if (currProbe.update(v)) {
                         /* Update indicator with new value */
                         mDashboard.updateIndicator(currProbe);
 
@@ -1835,18 +2052,16 @@ class CommunicationService {
                          */
                         TurboProbe turboPar = (TurboProbe) mProbePool.get("Turbo");
 
-                        if (turboPar.acquire(currPid, mProbePool)) {
+                        if (turboPar.update(currPid, mProbePool)) {
                             mDashboard.updateIndicator(turboPar);
                         }
-
-                        /* Move to the next PID. */
-                        currPid = mPidSpeedGroups.getNextPidToProcess();
 
                         /*
                          * Log data into log file every time all PIDs
                          * in the first group get processed.
                          */
-                        if (mPidSpeedGroups.groupProcessed(0)) {
+                        /* TODO: Use some method for this check */
+                        if (currPid.equals("2C")) {
                             mLog.captureProbes(mPidLogList, mProbePool);
                         }
                     } else {
@@ -1875,11 +2090,11 @@ class CommunicationService {
                         mState = ST_COMM_INIT_PIC;
                     }
                 }
-/*
-                t4 = time.time() - tstart
-    #            print 't1=%.3f, t2=%.3f, t3=%.3f, t4=%.3f' % (t1, t2, t3, t4)
-*/
-            }
+            } /* while */
+
+            /* Stop acquisition */
+            pc.stopAcq();
+            pc.configObdAutoScan("");
         }
     };
 }
