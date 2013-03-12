@@ -486,7 +486,7 @@ class Dashboard {
         mDashboardIndicators[5] = new DashboardIndicator(activity,
                 R.id.indicator6Label, R.id.indicator6Value, 0, "2C");
         mDashboardIndicators[6] = new DashboardIndicator(activity,
-                R.id.indicator7Label, R.id.indicator7Value, 0, "Batt");
+                R.id.indicator7Label, R.id.indicator7Value, 0, "Vst");
     }
 
     /**
@@ -1822,10 +1822,52 @@ class CommunicationService {
         /*
          * Battery voltage - measured directly by PIC A/D converter.
          */
-        mProbePool.put("Batt", new PicProbe("Batt", "V",
-                "Battery Voltage", "BATT", "%.1f",
+        mProbePool.put("Vst", new PicProbe("Vst", "V",
+                "Battery Voltage", "Vst", "%.1f",
                 0.0, 0.01934, 0.0, 1.0 / (0.01934 * 1024),
                 obd.mKwp2000.mPicCom));
+        mProbePool.put("Vrms", new PicProbe("Vrms", "-",
+                "RMS battery Voltage", "Vrms", "%.0f",
+                0.0, 1.0, 0.0, 1.0 / (1.0 * 1024),
+                obd.mKwp2000.mPicCom));
+        mProbePool.put("Vmin", new PicProbe("Vmin", "-",
+                "Min battery Voltage", "Vmin", "%.0f",
+                0.0, 1.0, 0.0, 1.0 / (1.0 * 1024),
+                obd.mKwp2000.mPicCom));
+        mProbePool.put("Vmax", new PicProbe("Vmax", "-",
+                "Max battery Voltage", "Vmax", "%.0f",
+                0.0, 1.0, 0.0, 1.0 / (1.0 * 1024),
+                obd.mKwp2000.mPicCom));
+        mProbePool.put("F1", new PicProbe("F1", "-",
+                "Frequency 1", "F1", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("M1", new PicProbe("M1", "-",
+                "Amplitude 1", "M1", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("F2", new PicProbe("F2", "-",
+                "Frequency 2", "F2", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("M2", new PicProbe("M2", "-",
+                "Amplitude 2", "M2", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("F3", new PicProbe("F3", "-",
+                "Frequency 3", "F3", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("M3", new PicProbe("M3", "-",
+                "Amplitude 3", "M3", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("F4", new PicProbe("F4", "-",
+                "Frequency 4", "F4", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("M4", new PicProbe("M4", "-",
+                "Amplitude 4", "M4", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("F5", new PicProbe("F5", "-",
+                "Frequency 5", "F5", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
+        mProbePool.put("M5", new PicProbe("M5", "-",
+                "Amplitude 5", "M5", "%.0f",
+                0.0, 1.0, 0.0, 1.0, obd.mKwp2000.mPicCom));
 
         /*
          * 'Turbo' indicator. Calculated as Intake pressure/Barometric pressure
@@ -1872,10 +1914,15 @@ class CommunicationService {
         mPidLogList = mPidSpeedGroups.getAllPids();
 
         /*
-         * Add calculated 'Turbo' parameter to the pid list, so that it gets
-         * logged as well.
+         * Add calculated 'Turbo' to the list, so that it gets logged.
          */
         mPidLogList.add("Turbo");
+
+        /*
+         * Add battery voltage probe to the list, so that it gets logged.
+         */
+        mPidLogList.add("Vst");
+
 
         Log.d(ObdLogger.TAG, "PID log list:" + mPidLogList);
 
@@ -2006,6 +2053,30 @@ class CommunicationService {
                                 "Timeout when waiting for packet from" +
                                 " PIC module", ObdLogger.getRunTime()));
 
+                        /*
+                         * Communication with ECU is broken, try to establish
+                         * it again.
+                         */
+                        /* Let user know via indicator on status bar. */
+                        updateStatusIndicator(mStsEcu, false);
+                        updateStatusIndicator(mStsPic, false);
+
+                        mLog.w("Communication with PIC module lost.");
+
+                        /*
+                         * Sleep for a while, then retry to establish
+                         * communication again.
+                         */
+                        try {
+                            Thread.sleep(5000);
+                        } catch (InterruptedException e) {
+                            Log.w(ObdLogger.TAG,
+                                    "Thread CommunicationService " +
+                                    "interrupted.", e);
+                        }
+
+                        mState = ST_COMM_INIT_PIC;
+
                         continue;
                     }
 
@@ -2014,16 +2085,31 @@ class CommunicationService {
                     int[] v;
                     /* Data acquisition module */
                     if (p.startsWith("Q00")) {
-                        currPid = "Batt";
-
-                        /* extract battery voltage from packet */
+                        String[] updatedPids = {"Vst", "Vrms", "Vmin", "Vmax",
+                                "F1", "M1", "F2", "M2", "F3", "M3", "F4", "M4",
+                                "F5", "M5"};
                         v = new int[1];
 
-                        v[0] = Integer.parseInt(p.substring(3, 7), 16);
+                        for (int i = 0; i < updatedPids.length; i++) {
+                            currPid = updatedPids[i];
+                            Probe currProbe = mProbePool.get(currPid);
+                            int b = 3 + i * 4;
+                            int e = 7 + i * 4;
+
+                            /* extract value from packet */
+                            v[0] = Integer.parseInt(p.substring(b, e), 16);
+
+                            /* Update appropriate probe */
+                            if (currProbe.update(v)) {
+                                /* Update indicator with new value */
+                                mDashboard.updateIndicator(currProbe);
+                            }
+                        }
                     } else if (p.startsWith("E00P")) {
                         currPid = p.substring(4, 6);
+                        Probe currProbe = mProbePool.get(currPid);
 
-                        /* extract battery voltage from packet */
+                        /* extract OBD PID value from packet */
                         int ln = (p.length() - 6) / 2;
                         v = new int[ln];
 
@@ -2031,20 +2117,12 @@ class CommunicationService {
                             v[i] = Integer.parseInt(p.substring(
                                     6 + (i * 2), 6 + (i + 1) * 2), 16);
                         }
-                    } else {
-                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                                "Discarding packet : %s",
-                                ObdLogger.getRunTime(), p));
 
-                        continue;
-                    }
-
-                    /* Update current probe. */
-                    Probe currProbe = mProbePool.get(currPid);
-
-                    if (currProbe.update(v)) {
-                        /* Update indicator with new value */
-                        mDashboard.updateIndicator(currProbe);
+                        /* Update appropriate probe */
+                        if (currProbe.update(v)) {
+                            /* Update indicator with new value */
+                            mDashboard.updateIndicator(currProbe);
+                        }
 
                         /*
                          * Recalculate and update TurboIndicator
@@ -2065,29 +2143,11 @@ class CommunicationService {
                             mLog.captureProbes(mPidLogList, mProbePool);
                         }
                     } else {
-                        /*
-                         * Communication with ECU is broken, try to establish
-                         * it again.
-                         */
-                        /* Let user know via indicator on status bar. */
-                        updateStatusIndicator(mStsEcu, false);
-                        updateStatusIndicator(mStsPic, false);
+                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                                "Discarding packet : %s",
+                                ObdLogger.getRunTime(), p));
 
-                        mLog.w("Communication with ECU lost.");
-
-                        /*
-                         * Sleep for a while, then retry to establish
-                         * communication again.
-                         */
-                        try {
-                            Thread.sleep(5000);
-                        } catch (InterruptedException e) {
-                            Log.w(ObdLogger.TAG,
-                                    "Thread CommunicationService " +
-                                    "interrupted.", e);
-                        }
-
-                        mState = ST_COMM_INIT_PIC;
+                        continue;
                     }
                 }
             } /* while */
