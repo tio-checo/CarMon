@@ -2099,6 +2099,11 @@ class CommunicationService {
                             /* extract value from packet */
                             v[0] = Integer.parseInt(p.substring(b, e), 16);
 
+                            /* Vmin and Vmax are 16-bit signed values */
+                            if (((i == 2) || (i == 3)) && (v[0] >= 32768)) {
+                                v[0] -= 65536;
+                            }
+
                             /* Update appropriate probe */
                             if (currProbe.update(v)) {
                                 /* Update indicator with new value */
