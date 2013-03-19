@@ -50,17 +50,17 @@
 
 /* DEVCFG2
  * 31-19:res          - reserved
- * 18-16:FPLLODIV<2:0> = 000 - 1:2 PLL postscaler
- * 15:   FUPLLEN = 0  - Disable USB PLL
+ * 18-16:FPLLODIV<2:0> = 001 - 1:2 PLL postscaler
+ * 15:   FUPLLEN = 1  - Enable USB PLL
  * 14-11:res          - reserved
  * 10-8: FUPLLIDIV<2:0> = 001 - USB PLL Input Divider - divide by 2
  * 7:    res          - reserved
- * 6-4:  FPLLMULT<2:0>  = 101 - Initial PLL Multiplier Value - 20x
+ * 6-4:  FPLLMULT<2:0>  = 000 - Initial PLL Multiplier Value - 15x
  * 3:    res          - reserved
  * 2-0:  FPLLIDIV<2:0>  = 001 - PLL Input Divider - divide by 2
  */
 /*	.word	0xfff8f9D9 FPLLMULT = x20 - Fosc=80MHz */
-	.word	0xfff97989 /* FPLLMULT = x15 - Fosc=30MHz */
+	.word	0xfff9f989 /* FPLLMULT = x15 - Fosc=30MHz */
 
 
 /* DEVCFG1
@@ -127,12 +127,12 @@
 /*
  * Handling situation when device was woken up by Watchdog
  * from either IDLE or SLEEP mode. In that case, just 'eret' which will
- * resume program from instruction followin 'wait' which put device into
+ * resume program from instruction following 'wait' which put device into
  * IDLE or SLEEP.
  *
  * Inspect RCON (0xbf80_f600) register to detect why we got here.
  * Do not clean status bits, let application take care of that,
- * so that application can inform user what happenned.
+ * so that application can inform user what happened.
  *
  * Use k0,k1 registers, as they are reserved for kernel.
  */
