@@ -51,7 +51,7 @@
 /* DEVCFG2
  * 31-19:res          - reserved
  * 18-16:FPLLODIV<2:0> = 001 - 1:2 PLL postscaler
- * 15:   FUPLLEN = 1  - Enable USB PLL
+ * 15:   *FUPLLEN = 0 - Enable USB PLL
  * 14-11:res          - reserved
  * 10-8: FUPLLIDIV<2:0> = 001 - USB PLL Input Divider - divide by 2
  * 7:    res          - reserved
@@ -60,7 +60,7 @@
  * 2-0:  FPLLIDIV<2:0>  = 001 - PLL Input Divider - divide by 2
  */
 /*	.word	0xfff8f9D9 FPLLMULT = x20 - Fosc=80MHz */
-	.word	0xfff9f989 /* FPLLMULT = x15 - Fosc=30MHz */
+	.word	0xfff97989 /* FPLLMULT = x15 - Fosc=30MHz */
 
 
 /* DEVCFG1
