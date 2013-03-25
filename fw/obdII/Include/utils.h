@@ -11,7 +11,7 @@
  * Converts given number of bytes of unsigned int to ASCII HEX string.
  * Starts with MSB.
  */
-extern int uint2hex(unsigned int in, unsigned char *out, int ln);
+extern int uint2hex(unsigned int in, char *out, int ln);
 
 /* Converts given number of bytes to ASCII HEX string */
 extern int ucharbuf2hex(unsigned char *, unsigned char *, int);

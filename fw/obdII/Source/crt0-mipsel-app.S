@@ -22,6 +22,7 @@
 #endif
 
 #include "regs.S"
+#include "usb_config.h"
 
 /*
  * Set up some room for a stack. We just grab a chunk of memory.
@@ -59,6 +60,18 @@
 
 	j	isr_timer1
 
+/* USB interrupt */
+#ifdef USB_INTERRUPT
+        .section .vector_45,"ax",@progbits
+	/* turn on red LED by clearing PB13 - LATBCLR resides at 0xbf886064 */
+//	lui	k0, 0xbf88
+//	li	k1, 0x1000
+
+	/* assembler moves that automatically into delay slot */
+//	sw	k1, 0x6064(k0)
+
+	j	_USB1Interrupt
+#endif /* USB_INTERRUPT */
 	.text
 
 /* Without the following nop, GDB thinks _start is a data variable.

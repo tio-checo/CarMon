@@ -44,7 +44,7 @@ extern "C"
 // Section: Includes
 // *****************************************************************************
 // *****************************************************************************
-#include <p32xxxx.h>
+#include <xc.h>
 #include <sys/attribs.h>
 
 #if   (((__PIC32_FEATURE_SET__ >= 100) && (__PIC32_FEATURE_SET__ <= 299)) || defined(__32MXGENERIC__))

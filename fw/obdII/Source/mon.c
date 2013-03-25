@@ -4,17 +4,30 @@
  *
  *********************************************************************/
 
+#include "xc.h"
 #include "HardwareProfile/HardwareProfile.h"
 #include "GenericTypeDefs.h"
 #include "peripheral/uart.h"
+
+#include "usb.h"
+#include "usb_device_local.h"
+#include "usb_device.h"
+
 #include "bt.h"
 #include "kwp2k.h"
-#include "xc.h"
 #include "mon.h"
+#include "utils.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+extern USB_VOLATILE long USBIntNum;
+extern USB_VOLATILE long USBIntSofNum;
+extern USB_VOLATILE long USBIntStallNum;
+extern USB_VOLATILE long USBIntErrNum;
+extern USB_VOLATILE long USBIntTrNum;
+extern USB_VOLATILE long USBEP0Service;
 
 /*
 static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
@@ -38,13 +51,28 @@ static int hex2ascii(unsigned char b)
 static const char *mon_diag_prompt = {"> "};
 /* main menu */
 static const char *mon_diag_main_menu = {
+    "------------------------\n\r"
     "[1] Bluetooth module\n\r"
+    "[2] Read Memory\n\r"
+    "[3] Status of USB\n\r"
+    "[d] Detach USB\n\r"
+    "[D] Disable USB\n\r"
+    "[a] Attach USB\n\r"
+    "[t] Test USB\n\r"
     "[0] Quit diagnostic mode\n\r"
     "------------------------\n\r"
 };
 /* bluetooth menu - NOT USED for now */
 /*
 static const char *mon_diag_bluetooth_menu = {
+    "[0] Quit\n"
+    "------------------------\n"
+};
+*/
+
+/* Read memory menu  - NOT USED for now*/
+/*
+static const char *mon_diag_memory_menu = {
     "[0] Quit\n"
     "------------------------\n"
 };
@@ -190,6 +218,8 @@ int
 mon_svc(void)
 {
 	unsigned char ch;
+	unsigned int v;
+	char s[9];
 
 	switch (mon_st) {
 	case MON_ST_IDLE:
@@ -213,6 +243,133 @@ mon_svc(void)
 		case '1':
 			mon_st = MON_ST_BLUETOOTH;
 			break;
+
+		/* Read memory - for now just print content of config regs */
+		case '2':
+			s[8] = '\0';
+
+			v = DEVCFG3;
+			uint2hex(v, s, 4);
+			mon_print_str("DEVCFG3: 0x");
+			mon_print_str(s);
+
+			v = DEVCFG2;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rDEVCFG2: 0x");
+			mon_print_str(s);
+
+			v = DEVCFG1;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rDEVCFG1: 0x");
+			mon_print_str(s);
+
+			v = DEVCFG0;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rDEVCFG0: 0x");
+			mon_print_str(s);
+
+			v = DEVID;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rDEVID: 0x");
+			mon_print_str(s);
+
+			v = OSCCON;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rOSCCON: 0x");
+			mon_print_str(s);
+
+			v = U1OTGSTAT;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rU1OTGSTAT: 0x");
+			mon_print_str(s);
+
+			v = U1OTGCON;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rU1OTGCON: 0x");
+			mon_print_str(s);
+
+			v = U1PWRC;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rU1PWRC: 0x");
+			mon_print_str(s);
+
+			v = U1CNFG1;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rU1CNFG1: 0x");
+			mon_print_str(s);
+
+			v = U1CON;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rU1CON: 0x");
+			mon_print_str(s);
+
+			mon_print_str("\n\r");
+
+			break;
+
+		/* print USB status */
+		case '3':
+			s[8] = '\0';
+
+			v = USBDeviceState;
+			uint2hex(v, s, 4);
+			mon_print_str("USBDeviceState: 0x");
+			mon_print_str(s);
+
+			v = USBIntNum;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBIntNum: 0x");
+			mon_print_str(s);
+
+			v = USBIntSofNum;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBIntSofNum: 0x");
+			mon_print_str(s);
+
+			v = USBIntStallNum;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBIntStallNum: 0x");
+			mon_print_str(s);
+
+			v = USBIntErrNum;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBIntErrNum: 0x");
+			mon_print_str(s);
+
+			v = USBIntTrNum;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBIntTrNum: 0x");
+			mon_print_str(s);
+
+			v = USBEP0Service;
+			uint2hex(v, s, 4);
+			mon_print_str("\n\rUSBEP0Service: 0x");
+			mon_print_str(s);
+
+			mon_print_str("\n\r");
+
+			break;
+
+		/* detach USB */
+		case 'd':
+			USBDeviceDetach();
+			break;
+
+		/* attach USB */
+		case 'a':
+			USBDeviceAttach();
+			break;
+
+		/* disable USB */
+		case 'D':
+			USBModuleDisable();
+			break;
+
+		/* generate test eye pattern on USB bus */
+		case 't':
+			U1CNFG1 = 0x80;
+			U1PWRC = 0x01;
+			U1CON = 0x01;
 		}
 
 		break;

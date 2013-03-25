@@ -616,7 +616,8 @@ mcom_process_packet_st(void)
 static int
 mcom_tx_st(void)
 {
-	static unsigned char ch, tmp_buf[4];
+	static unsigned char ch;
+	static char tmp_buf[4];
 	static unsigned int item_ln, item_index, buf_ln, buf_index, chsum;
 	unsigned int d;
 

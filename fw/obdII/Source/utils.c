@@ -16,7 +16,7 @@ static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
  * Start with MSB.
  */
 int
-uint2hex(unsigned int in, unsigned char *out, int ln)
+uint2hex(unsigned int in, char *out, int ln)
 {
 	int i;
 

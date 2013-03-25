@@ -14,6 +14,7 @@
 #include "mon.h"
 #include "obd.h"
 #include "rt_light.h"
+#include "usb_app.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -275,6 +276,7 @@ __attribute__ ((interrupt)) isr_timer1(void)
 	/* Services which run in both normal and diagnostic modes */
 	bt_svc();
 	rtl_heartbeat_svc();
+	uapp_svc();
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;
