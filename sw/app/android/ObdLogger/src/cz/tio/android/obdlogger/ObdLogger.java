@@ -1831,7 +1831,7 @@ class CommunicationService {
          */
         mProbePool.put("Vst", new PicProbe("Vst", "V",
                 "Battery Voltage", "Vst", "%.1f",
-                0.0, 0.01934, 0.0, 1.0 / (0.01934 * 1024),
+                0.0, 0.01837, 0.0, 1.0 / (0.01837 * 1024),
                 obd.mKwp2000.mPicCom));
         mProbePool.put("Vrms", new PicProbe("Vrms", "-",
                 "RMS battery Voltage", "Vrms", "%.0f",
