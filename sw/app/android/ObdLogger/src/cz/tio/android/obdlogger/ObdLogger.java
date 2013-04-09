@@ -472,19 +472,26 @@ class Dashboard {
     public Dashboard(Activity activity) {
         /* Instantiate indicators and associate them with OBD PIDs.*/
         mDashboardIndicators = new DashboardIndicator[7];
+        /* RPM */
         mDashboardIndicators[0] = new DashboardIndicator(activity,
                 R.id.indicator1Label, R.id.indicator1Value, 0, "0C");
+        /* Calculated Engine Load */
         mDashboardIndicators[1] = new DashboardIndicator(activity,
 //                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
-                R.id.indicator2Label, R.id.indicator2Value, 0, "11");
+                R.id.indicator2Label, R.id.indicator2Value, 0, "04");
+        /* MAF */
         mDashboardIndicators[2] = new DashboardIndicator(activity,
                 R.id.indicator3Label, R.id.indicator3Value, 0, "10");
+        /* WATER */
         mDashboardIndicators[3] = new DashboardIndicator(activity,
                 R.id.indicator4Label, R.id.indicator4Value, 0, "05");
+        /* RAIL */
         mDashboardIndicators[4] = new DashboardIndicator(activity,
                 R.id.indicator5Label, R.id.indicator5Value, 0, "23");
+        /* EGR */
         mDashboardIndicators[5] = new DashboardIndicator(activity,
                 R.id.indicator6Label, R.id.indicator6Value, 0, "2C");
+        /* Batt */
         mDashboardIndicators[6] = new DashboardIndicator(activity,
                 R.id.indicator7Label, R.id.indicator7Value, 0, "Vst");
     }
@@ -1892,12 +1899,12 @@ class CommunicationService {
         /* Create list of PID priority groups */
         mPidSpeedGroups = new PidGroups();
 
-        /* Fast - Intake Manifold Absolute Pressure, EGR */
-        String grpF[] = {"11", "2C"};
+        /* Fast - Calculated Engine Load, Intake Manifold Absolute Pressure */
+        String grpF[] = {"04", "0B"};
         mPidSpeedGroups.create(0, "fast", grpF);
 
-        /* Medium - RPM, MAF, Rail Pressure */
-        String grpM[] = {"0B", "0C", "10", "23"};
+        /* Medium - RPM, MAF, Rail Pressure, EGR */
+        String grpM[] = {"0C", "10", "23", "2C"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*
@@ -2144,7 +2151,7 @@ class CommunicationService {
                          * in the first group get processed.
                          */
                         /* TODO: Use some method for this check */
-                        if (currPid.equals("2C")) {
+                        if (currPid.equals("0B")) {
                             mLog.captureProbes(mPidLogList, mProbePool);
                         }
                     } else {
