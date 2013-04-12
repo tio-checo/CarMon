@@ -10,9 +10,6 @@
 
 #include "GenericTypeDefs.h"
 
-/* ECU module ID */
-#define	MCOMM_ECU_ID		'E'
-
 /* ECU submodule IDs */
 #define	ECU_OBD_ID		'O'	/* OBD module */
 

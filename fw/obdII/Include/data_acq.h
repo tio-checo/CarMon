@@ -15,10 +15,6 @@
 #include "master_comm.h"
 
 /* constants */
-/* acquisition module IDs */
-#define	MCOMM_ADC_ID		'A'	/* A/D converter module */
-#define	MCOMM_DAQ_ID		'Q'	/* acquisition module */
-
 /* acquisition module commands */
 #define	MCOMM_DAQ_CMD_CONF	'C'	/* configure */
 #define	MCOMM_DAQ_CMD_RUN	'R'	/* run acquisition */

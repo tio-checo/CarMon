@@ -1,0 +1,260 @@
+/*********************************************************************
+ *
+ * Support for PIC core functions.
+ *
+ *********************************************************************/
+
+#include <errno.h>
+#include <sys/time.h>
+#include <time.h>
+
+#include "HardwareProfile.h"
+#include "xc.h"
+
+#include "master_comm.h"
+#include "pic_core.h"
+#include "rt_light.h"
+#include "strings.h"
+#include "utils.h"
+
+/* constants */
+
+/* external functions */
+/* updatetimeofday() */
+extern int updatetimeofday(time_t us);
+
+/* local variables */
+/* communication module */
+/* structure holding ACK/NAK response to master */
+static mcom_response_t pcore_resp_ack_nak;
+/* If set to TRUE, send ack/nak response packet to master */
+static BOOL fl_send_ack_nak;
+
+/* structure holding data response to master */
+static mcom_response_t pcore_resp_data;
+/* If set to TRUE, send response containing data to master */
+static BOOL fl_send_data;
+
+/* local functions */
+/*
+ * Set date and time. Validates provided data.
+ * Returns EINVAL value if provided configuration is invalid.
+ */
+static int
+pcore_settime(char *td, int ln)
+{
+	time_t t;
+	struct tm newtm;
+	struct timeval newtv;
+
+	/* malformed packet */
+	if (ln != 14)
+		return EINVAL;
+
+	/* td[0..3] - year */
+	newtm.tm_year = (int) dec2ulong(td, 4);
+	if (newtm.tm_year < 1970 || newtm.tm_year > 2038)
+		return EINVAL;
+	newtm.tm_year -= 1900;
+
+	/* td[4..5] - month */
+	newtm.tm_mon = (int) dec2ulong(td + 4, 2) - 1;
+	if (newtm.tm_mon < 0 || newtm.tm_mon > 11)
+		return EINVAL;
+
+	/* td[6..7] - day */
+	newtm.tm_mday = (int) dec2ulong(td + 6, 2);
+	if (newtm.tm_mday < 1 || newtm.tm_mday > 31)
+		return EINVAL;
+
+	/* td[8..9] - hour */
+	newtm.tm_hour = (int) dec2ulong(td + 8, 2);
+	if (newtm.tm_hour < 0 || newtm.tm_hour > 23)
+		return EINVAL;
+
+	/* td[10..11] - minute */
+	newtm.tm_min = (int) dec2ulong(td + 10, 2);
+	if (newtm.tm_min < 0 || newtm.tm_min > 59)
+		return EINVAL;
+
+	/* td[12..13] - seconds 00..61 - allows for up to two leap seconds */
+	newtm.tm_sec = (int) dec2ulong(td + 12, 2);
+	if (newtm.tm_sec < 0 || newtm.tm_sec > 61)
+		return EINVAL;
+
+	t = mktime(&newtm);
+	if (t == (time_t) -1)
+		return EINVAL;
+
+	newtv.tv_sec = t;
+	newtv.tv_usec = 0;
+
+	if (settimeofday(&newtv, NULL) != 0)
+		return EINVAL;
+
+	return 0;
+}
+
+/*
+ * Reads date and time.
+ * Returns pointer to resulting string.
+ */
+static char *
+pcore_gettime(void)
+{
+	static char tds[15];
+
+	time_t t;
+	struct tm *currtm;
+
+	t = time(NULL);
+	currtm = gmtime(&t);
+
+	ulong2dec(currtm->tm_year + 1900, tds, 4);
+	ulong2dec(currtm->tm_mon + 1, tds + 4, 2);
+	ulong2dec(currtm->tm_mday, tds + 6, 2);
+	ulong2dec(currtm->tm_hour, tds + 8, 2);
+	ulong2dec(currtm->tm_min, tds + 10, 2);
+	ulong2dec(currtm->tm_sec, tds + 12, 2);
+
+	tds[14] = '\0';
+
+	return tds;
+}
+
+/*
+ * Takes care of sending response to master. Two responses might be scheduled
+ * for transmission - ack/nak one and data one.
+ * ack/nak response takes precedence over data response, since it is short,
+ * thus it will occupy transmitter for shorter time.
+ */
+static int
+pcore_comm_svc(void)
+{
+	/*
+	 * There is ack/nak response to be sent to master, attempt to queue it
+	 * for transmission.
+	 */
+	if (fl_send_ack_nak) {
+		if (mcom_queue_response(&pcore_resp_ack_nak) != 0) {
+			return EAGAIN;
+		}
+
+		fl_send_ack_nak = FALSE;
+
+		/*
+		 * Since transmitter is now busy, there is no point to continue
+		 * with attempt to send data response. thus return.
+		 */
+		return 0;
+	}
+
+	/*
+	 * There is data response to be sent to master, attempt to queue it
+	 * for transmission.
+	 */
+	if (fl_send_data) {
+		if (mcom_queue_response(&pcore_resp_data) != 0) {
+			return EAGAIN;
+		}
+
+		fl_send_data = FALSE;
+	}
+
+	return 0;
+}
+
+/*
+ * Sends data packet to master.
+ */
+static int
+pcore_send_data_response_to_master(char *buf, int ln)
+{
+	mcom_prepare_generic_response(&pcore_resp_data, "00",
+	    buf, MCOM_DATA_TYPE_ASCII, ln);
+
+	fl_send_data = TRUE;
+
+	return 0;
+}
+
+/* global functions */
+/*
+ * Initialization routine.
+ */
+int
+pcore_init(void)
+{
+	/* initialize communication data */
+	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
+	pcore_resp_data.id = MCOMM_PIC_ID;
+
+	return 0;
+}
+
+/*
+ * Processes query from master targeted to PIC core module
+ */
+int
+pcore_process_query(char *data, int ln)
+{
+	int err;
+	BOOL respond_with_ack = TRUE;
+	char *tds;
+
+	/* Assume ACK/NAK will be sent to master */
+	fl_send_ack_nak = TRUE;
+
+	/* Handle particular commands */
+	switch (data[0]) {
+		/* Set time and date */
+		case MCOMM_PCORE_CMD_SETTIME:
+			/* configure module */
+			err = pcore_settime(data + 1, ln - 1);
+			if (err != 0)
+				respond_with_ack = FALSE;
+			break;
+
+		/* Get time and date */
+		case MCOMM_PCORE_CMD_GETTIME:
+			tds = pcore_gettime();
+
+			pcore_send_data_response_to_master(tds, strlen(tds));
+
+			/* Data will be sent to master instead of ACK/NAK */
+			fl_send_ack_nak = FALSE;
+			break;
+
+		/* unknown command */
+		default:
+			err = MCOM_NAK_UNKNOWN_IDCMD;
+			respond_with_ack = FALSE;
+
+			break;
+	}
+
+	/*
+	 * Send response to master indicating that command was processed.
+	 */
+	if (respond_with_ack) {
+		mcom_prepare_ack_response(&pcore_resp_ack_nak);
+	} else {
+		mcom_prepare_nak_response(&pcore_resp_ack_nak, err);
+	}
+
+	return 0;
+}
+
+/*
+ * Main acquisition service routine - called periodically from timer interrupt.
+ */
+int
+pcore_svc(void)
+{
+	/* update time of the day */
+	updatetimeofday(RTL_SERVICE_PERIOD);
+
+	pcore_comm_svc();
+
+	return 0;
+}

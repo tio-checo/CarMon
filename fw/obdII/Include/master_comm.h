@@ -4,11 +4,20 @@
 #include <GenericTypeDefs.h>
 
 /* module IDs and commands */
-#define	MCOMM_COMM_ID		'M'	/* comm module ID */
+#define	MCOMM_COMM_ID		'M'	/* communication module ID */
+
+#define	MCOMM_PIC_ID		'P'	/* PIC module ID */
 
 /* data type in data payload sent in response to master */
+#define	MCOM_DATA_TYPE_ASCII	'A'	/* raw ASCII data */
 #define	MCOM_DATA_TYPE_BYTE	'B'	/* 8-bit unsigned */
 #define	MCOM_DATA_TYPE_WORD	'W'	/* 16-bit unsigned */
+
+#define	MCOMM_ECU_ID		'E'	/* ECU module ID */
+
+/* acquisition module IDs */
+#define	MCOMM_ADC_ID		'A'	/* A/D converter module */
+#define	MCOMM_DAQ_ID		'Q'	/* acquisition module */
 
 /* legacy commands */
 #define MCOM_CMD_GET_AD		'A'	/* get value from AD converter */

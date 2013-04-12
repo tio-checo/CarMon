@@ -13,12 +13,14 @@
 #include "master_comm.h"
 #include "mon.h"
 #include "obd.h"
+#include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 /* global variables */
 int errno;
@@ -67,18 +69,20 @@ main(int argc, char **argv)
 	mcom_init();
 	mon_init();
 	obd_init();
+	pcore_init();
 
 	/* USB module */
 	uapp_init();
 
 	/* Immediately enter diagnostic mode */
-	//mon_diag_enter();
+/*
+	mon_diag_enter();
+	while (mon_is_diag_mode()) {
+		mon_svc();
+	}
+*/
 
 	while(1) {
-		while (mon_is_diag_mode()) {
-			mon_svc();
-		}
-
 		if (mcom_suspend()) {
 			sleeping = TRUE;
 

@@ -83,3 +83,41 @@ hex2ucharbuf(char *in, unsigned char *out, int ln)
 	return 0;
 }
 
+/*
+ * Converts given number of ASCII decimal characters (max 10) to unsigned long
+ */
+unsigned long
+dec2ulong(char *a, int ln)
+{
+	int i;
+	unsigned long res = 0;
+
+	if (ln > 10)
+		return 0;
+
+	for (i = 0; i < ln; i++) {
+		res *= 10;
+		if (a[i] < '0' || a[i] > '9')
+			return 0;
+
+		res += a[i] - '0';
+	}
+
+	return res;
+}
+
+/*
+ * Converts unsigned long to given number of ASCII decimal characters
+ */
+int
+ulong2dec(unsigned long in, char *out, int ln)
+{
+	int i;
+
+	for (i = ln - 1; i >= 0; i--) {
+		out[i] = (in % 10) + '0';
+		in /= 10;
+	}
+
+	return 0;
+}

@@ -21,13 +21,20 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/time.h>
+#include <time.h>
 
+/* external variables */
 extern USB_VOLATILE long USBIntNum;
 extern USB_VOLATILE long USBIntSofNum;
 extern USB_VOLATILE long USBIntStallNum;
 extern USB_VOLATILE long USBIntErrNum;
 extern USB_VOLATILE long USBIntTrNum;
 extern USB_VOLATILE long USBEP0Service;
+
+/* external functions */
+/* print information about memory allocation requests */
+extern int print_alloc_requests(int (*printstr)());
 
 /*
 static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
@@ -44,8 +51,9 @@ static int hex2ascii(unsigned char b)
 
 /* state machine states */
 #define MON_ST_IDLE		0	/* machine is IDLE */
-#define MON_ST_MAIN_MENU	1	/* main menu */
-#define MON_ST_BLUETOOTH	2	/* connect to bluetooth module */
+#define MON_ST_MAIN_MENU	1	/* display main menu */
+#define MON_ST_WAIT4INPUT	2	/* wait for user's input */
+#define MON_ST_BLUETOOTH	3	/* connect to bluetooth module */
 
 /* prompt */
 static const char *mon_diag_prompt = {"> "};
@@ -58,7 +66,9 @@ static const char *mon_diag_main_menu = {
     "[d] Detach USB\n\r"
     "[D] Disable USB\n\r"
     "[a] Attach USB\n\r"
-    "[t] Test USB\n\r"
+    "[t] Display time of the day\n\r"
+    "[T] Set date to 04/10/2013 17:00:00\n\r"
+//    "[m] Display memory allocation requests\n\r"
     "[0] Quit diagnostic mode\n\r"
     "------------------------\n\r"
 };
@@ -220,16 +230,28 @@ mon_svc(void)
 	unsigned char ch;
 	unsigned int v;
 	char s[9];
+	time_t t;
+	char *tstr;
+	struct tm newtm;
+	struct timeval newtv;
 
 	switch (mon_st) {
 	case MON_ST_IDLE:
 		break;
 
-	/* Display main menu, then wait for input */
+	/* Display main menu */
 	case MON_ST_MAIN_MENU:
 		mon_print_str(mon_diag_main_menu);
 		mon_print_str(mon_diag_prompt);
-		mon_getchar(&ch, TRUE);
+
+		mon_st = MON_ST_WAIT4INPUT;
+		break;
+
+	/* Wait for user's input */
+	case MON_ST_WAIT4INPUT:
+		if (mon_getchar(&ch, FALSE) == EAGAIN)
+			break;
+
 		mon_print_str("\n\r");
 
 		/* Process input */
@@ -366,13 +388,66 @@ mon_svc(void)
 			break;
 
 		/* generate test eye pattern on USB bus */
+/*
 		case 't':
 			U1CNFG1 = 0x80;
 			U1PWRC = 0x01;
 			U1CON = 0x01;
-		}
+			break;
+*/
+		/* display time of the day */
+		case 't':
+			t = time(NULL);
+			tstr = ctime(&t);
+			mon_print_str("Date: ");
+
+			if (tstr == NULL)
+				mon_print_str("<NULL>");
+			else
+				mon_print_str(tstr);
+
+			mon_print_str("\n\r");
+			break;
+
+		/* Set date to 04/10/2013 17:00:00 */
+		case 'T':
+			newtm.tm_sec = 0;
+			newtm.tm_min = 0;
+			newtm.tm_hour = 17;
+			newtm.tm_mday = 10;
+			newtm.tm_mon = 3;
+			newtm.tm_year = 113;
+			newtm.tm_isdst = 0;
+
+			t = mktime(&newtm);
+
+			if (t == (time_t) -1) {
+				mon_print_str("Failed to set the date.\n\r");
+			} else {
+				newtv.tv_sec = t;
+				newtv.tv_usec = 0;
+
+				if (settimeofday(&newtv, NULL) == 0)
+					mon_print_str("Date set.\n\r");
+				else
+					mon_print_str("Failed to store "
+					    "the date.\n\r");
+			}
+
+			break;
+
+#if 0
+		/* Display history of memory allocation requests */
+		case 'm':
+			print_alloc_requests(mon_print_str);
+			break;
+#endif
+		} /* switch */
+
+		mon_st = MON_ST_MAIN_MENU;
 
 		break;
+
 
 	/*
 	 * Diagnose bluetooth module. For now just forward characters between

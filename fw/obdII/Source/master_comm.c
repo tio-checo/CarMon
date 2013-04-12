@@ -26,6 +26,7 @@
 #include "master_comm.h"
 #include "mon.h"
 #include "obd.h"
+#include "pic_core.h"
 #include "utils.h"
 
 #include <errno.h>
@@ -335,6 +336,17 @@ mcom_decode_packet(void)
 
 	/* dispatch packet to appropriate handle routines based on module ID */
 	switch (mcom_co.rx_buf[0]) {
+	/* PIC core module */
+	case MCOMM_PIC_ID:
+		err = pcore_process_query(&mcom_co.rx_buf[1], ln);
+
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
+
+		break;
+
 	/* A/D converter */
 	case MCOMM_ADC_ID:
 		err = daq_adc_process_query(&mcom_co.rx_buf[1], ln);
@@ -711,7 +723,11 @@ mcom_tx_st(void)
 		 * Convert first data item to sequence of ASCII characters.
 		 * Get first character to be sent.
 		 */
-		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
+		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_ASCII) {
+			ch = ((char *)mcom_co.resp->data)[0];
+
+			item_ln = 1;
+		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
 			d = ((unsigned char *)mcom_co.resp->data)[0];
 
 			item_ln = 2;
@@ -721,10 +737,14 @@ mcom_tx_st(void)
 			item_ln = 4;
 		}
 
-		uint2hex(d, tmp_buf, item_ln / 2);
+		/* Convert data to ASCII if necessary. */
+		if (mcom_co.resp->data_type != MCOM_DATA_TYPE_ASCII) {
+			uint2hex(d, tmp_buf, item_ln / 2);
+			ch = tmp_buf[item_index];
+		}
+
 		item_index = 0;
 		buf_ln = mcom_co.resp->data_ln;
-		ch = tmp_buf[item_index];
 
 		mcom_st_tx = MCOM_ST_TX_DATA;
 
@@ -763,15 +783,21 @@ mcom_tx_st(void)
 		 * Get next data item to be sent taking into account
 		 * data type
 		 */
-		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
+		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_ASCII) {
+			ch = ((char *)mcom_co.resp->data)[buf_index];
+		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
 			d = ((unsigned char *)mcom_co.resp->data)[buf_index];
 		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_WORD) {
 			d = ((unsigned int *)mcom_co.resp->data)[buf_index];
 		}
 
-		uint2hex(d, tmp_buf, item_ln / 2);
+		/* Convert data to ASCII if necessary. */
+		if (mcom_co.resp->data_type != MCOM_DATA_TYPE_ASCII) {
+			uint2hex(d, tmp_buf, item_ln / 2);
+			ch = tmp_buf[0];
+		}
+
 		item_index = 0;
-		ch = tmp_buf[0];
 
 		break;
 

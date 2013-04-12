@@ -13,12 +13,14 @@
 #include "master_comm.h"
 #include "mon.h"
 #include "obd.h"
+#include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 /* constants */
 #define RTL_TIMER_POOL_SIZE	16	/* number of available timers */
@@ -266,17 +268,18 @@ __attribute__ ((interrupt)) isr_timer1(void)
 
 		/*
 		 * Must be located after kwp2k_svc() and obd_svc() state
-		 * machines, sice it's role is to process KWP2K packets received
+		 * machines, sice its role is to process KWP2K packets received
 		 * from ECU only if obd_svc() does not take care of it.
 		 */
 		mcom_svc();
-		rtl_timer_svc();
 	}
 
 	/* Services which run in both normal and diagnostic modes */
+	rtl_timer_svc();
 	bt_svc();
 	rtl_heartbeat_svc();
 	uapp_svc();
+	pcore_svc();
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;

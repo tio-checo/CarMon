@@ -28,6 +28,7 @@ LDFLAGS= -msoft-float -march=m4k -nostdlib
 LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
 
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
+    $(BUILD_DIR)/helpers.o $(BUILD_DIR)/pic_core.o \
     $(BUILD_DIR)/kwp2k.o $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
     $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o $(BUILD_DIR)/obd.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
@@ -72,6 +73,9 @@ $(BUILD_DIR)/bt.o: Source/bt.c
 $(BUILD_DIR)/data_acq.o: Source/data_acq.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
+$(BUILD_DIR)/helpers.o: Source/helpers.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
 $(BUILD_DIR)/kwp2k.o: Source/kwp2k.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
@@ -94,6 +98,9 @@ $(BUILD_DIR)/utils.o: Source/utils.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/obd.o: Source/obd.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/pic_core.o: Source/pic_core.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/usb_app.o: Source/usb_app.c

@@ -3,7 +3,7 @@
 
 #include "GenericTypeDefs.h"
 
-/* period of calling main service loop  in us */
+/* period of calling main service loop in us */
 #define RTL_SERVICE_PERIOD	100
 
 /* heartbeat modes */
