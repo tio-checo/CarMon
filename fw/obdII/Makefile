@@ -10,9 +10,9 @@ NM= $(TOOLS_BIN)/mipsel-nm
 BUILD_DIR= build
 
 # project directories containing header files
-HEADER_DIRS= -I. -I./Include -I./Include/peripheral \
+HEADER_DIRS= -I ../common/Include -I. -I./Include -I./Include/peripheral \
 -I./Include/HardwareProfile/ -I./Source/ -I./Include/USB/ \
--I./Include/peripheral/int/ -I $(TOOLS_DIR)/include/microchip
+-I./Include/peripheral/int/
 
 # compiler flags
 #  - code optimized for size

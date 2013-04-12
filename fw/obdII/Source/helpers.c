@@ -8,6 +8,7 @@
 
 #include <sys/types.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "utils.h"
 
@@ -148,7 +149,7 @@ time_t time(time_t *tod)
  * settimeofday()
  */
 int
-settimeofday(const struct timeval *tv, const struct timezone *tz)
+settimeofday(const struct timeval *tv, void *tz)
 {
 	tv_cpu.tv_usec = tv->tv_usec;
 	tv_cpu.tv_sec = tv->tv_sec;

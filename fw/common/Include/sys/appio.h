@@ -40,7 +40,7 @@
 #include <stdio.h>
 
 #undef __DISCARD
-#define __DISCARD __attribute__((weak,section(".discard"),noinline))
+#define __DISCARD __attribute__((weak,section(".discard"),noinline,nomips16))
 
 #ifndef __APPIO_H
 #ifdef __cplusplus
@@ -90,11 +90,11 @@ extern "C"
 #define DBPRINTF printf
 #define DBPUTC _appio_putc
 #define DBPUTWORD _appio_putword
-    void __DISCARD _appio_putc (char c) {}
-    void __DISCARD _mon_putc (char c) __attribute__((alias("_appio_putc")));
+    void __DISCARD __attribute__((nomips16,noinline)) _appio_putc (char c) {}
+    void __DISCARD __attribute__((nomips16,noinline)) _mon_putc (char c) __attribute__((alias("_appio_putc")));
     extern void _appio_putword (unsigned int w);
-    void __DISCARD _appio_write (const char * s, unsigned int count) {}
-    void __DISCARD _mon_write (const char * s, unsigned int count) __attribute__((alias("_appio_write")));
+    void __DISCARD __attribute__((nomips16,noinline)) _appio_write (const char * s, unsigned int count) {}
+    void __DISCARD __attribute__((nomips16,noinline)) _mon_write (const char * s, unsigned int count) __attribute__((alias("_appio_write")));
 #else
 #define DBPRINTF(ignore,...) ((void)0)
 #define DBPUTC(ignore)       ((void)0)
@@ -134,15 +134,15 @@ extern "C"
     /* Debug function prototypes */
 
     extern void _pic32mxsk_init (void);
-    void __DISCARD _p32mxsk_write (const char * s, unsigned int count) {}
-    void __DISCARD _p32mxsk_putc (char c) {}
-    int  __DISCARD _p32mxsk_getc (int canblock) {}
+    void __DISCARD __attribute__ ((noinline,nomips16)) _p32mxsk_write (const char * s, unsigned int count) {}
+    void __DISCARD __attribute__ ((noinline,nomips16)) _p32mxsk_putc (char c) {}
+    int  __DISCARD __attribute__ ((noinline,nomips16)) _p32mxsk_getc (int canblock) {}
 
     extern void  __attribute__ ((noinline,nomips16)) db_puts (const unsigned char *s, int len);
     extern void  __attribute__ ((noinline,nomips16)) db_gets (unsigned char *s, int len);
-    void __DISCARD _mon_write (const char * s, unsigned int count) __attribute__((alias("_p32mxsk_write")));
-    void __DISCARD _mon_putc (char c) __attribute__((alias("_p32mxsk_putc")));
-    int __DISCARD _mon_getc (int canblock) __attribute__((alias("_p32mxsk_getc")));
+    void __DISCARD __attribute__((nomips16,noinline)) _mon_write (const char * s, unsigned int count) __attribute__((alias("_p32mxsk_write")));
+    void __DISCARD __attribute__((nomips16,noinline)) _mon_putc (char c) __attribute__((alias("_p32mxsk_putc")));
+    int __DISCARD __attribute__((nomips16,noinline)) _mon_getc (int canblock) __attribute__((alias("_p32mxsk_getc")));
 
 #else /* !(defined(__ENABLEIO_STARTERKIT_DEBUG)) */
 #define DBINIT()                ((void)0)
