@@ -22,7 +22,7 @@ CFLAGS= -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 
 # linker flags
 #  - soft float
-LDFLAGS= -msoft-float -march=m4k -nostartfiles
+LDFLAGS= -msoft-float -march=m4k -nostdlib
 
 # directories containing libraries
 LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
@@ -44,7 +44,7 @@ all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
 
 $(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
 	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) $(LIB_DIRS) \
-	-ldsp -lc -T ld/elf32pic32mx-app.x
+	-ldsp -lc_s_n -lgcc_s_n -T ld/elf32pic32mx-app.x
 
 $(APPNAME).dis: $(BUILD_DIR)/$(APPNAME).elf
 	$(OBJDUMP) -D $? > $(BUILD_DIR)/$@
