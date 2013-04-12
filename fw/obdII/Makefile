@@ -17,7 +17,7 @@ HEADER_DIRS= -I ../common/Include -I. -I./Include -I./Include/peripheral \
 # compiler flags
 #  - code optimized for size
 #  - soft float
-CFLAGS= -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
+CFLAGS= -nostdinc -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DDEBUG_KWP2K -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
