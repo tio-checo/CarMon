@@ -46,6 +46,17 @@
 #ifndef __GENERIC_TYPE_DEFS_H_
 #define __GENERIC_TYPE_DEFS_H_
 
+/* Specify an extension for GCC based compilers */
+#if defined(__GNUC__)
+#define __EXTENSION __extension__
+#else
+#define __EXTENSION
+#endif
+
+#if !defined(__PACKED)
+    #define __PACKED
+#endif
+
 #define ASSERT(x)  while(!x)
 
 typedef enum _BOOL { FALSE = 0, TRUE } BOOL;	// Undefined size
@@ -288,6 +299,52 @@ typedef union _QWORD_VAL
         unsigned char b63:1;
     } bits;
 } QWORD_VAL;
+
+typedef union
+{
+    UINT8 Val;
+    struct
+    {
+        __EXTENSION UINT8 b0:1;
+        __EXTENSION UINT8 b1:1;
+        __EXTENSION UINT8 b2:1;
+        __EXTENSION UINT8 b3:1;
+        __EXTENSION UINT8 b4:1;
+        __EXTENSION UINT8 b5:1;
+        __EXTENSION UINT8 b6:1;
+        __EXTENSION UINT8 b7:1;
+    } bits;
+} UINT8_VAL, UINT8_BITS;
+
+typedef union 
+{
+    UINT16 Val;
+    UINT8 v[2] __PACKED;
+    struct __PACKED
+    {
+        UINT8 LB;
+        UINT8 HB;
+    } byte;
+    struct __PACKED
+    {
+        __EXTENSION UINT8 b0:1;
+        __EXTENSION UINT8 b1:1;
+        __EXTENSION UINT8 b2:1;
+        __EXTENSION UINT8 b3:1;
+        __EXTENSION UINT8 b4:1;
+        __EXTENSION UINT8 b5:1;
+        __EXTENSION UINT8 b6:1;
+        __EXTENSION UINT8 b7:1;
+        __EXTENSION UINT8 b8:1;
+        __EXTENSION UINT8 b9:1;
+        __EXTENSION UINT8 b10:1;
+        __EXTENSION UINT8 b11:1;
+        __EXTENSION UINT8 b12:1;
+        __EXTENSION UINT8 b13:1;
+        __EXTENSION UINT8 b14:1;
+        __EXTENSION UINT8 b15:1;
+    } bits;
+} UINT16_VAL, UINT16_BITS;
 
 //TODO: (DF) had to remove these functions based on C18 requirements for non-inline usage
     #if !defined(__18CXX)

@@ -40,7 +40,8 @@ per_init(void)
 	 *   pull-ups, pull-downs).
 	 */
 	LATBSET = 0x3000;
-	TRISBCLR = 0x3e7f;
+	/* RB outputs: 13,12,11,9,6,5,4,3,2,1,0 */
+	TRISBCLR = 0x3a7f;
 
 	/*
 	 * Initialize interrupt controller
@@ -48,6 +49,41 @@ per_init(void)
 	 *  - set vector spacing to 32
          */
 	INTCON = 0x00041000;
+
+	/*
+	 * Initialize uSD card pins. Attach weak pull-ups to SPI pins.
+	 * Card detect pins are not connected to CNs pins, so they
+	 * can't be "pulled up". Will need to add external pull-ups.
+	 */
+#if 0
+	CNPUEbits.CNPUE8 = 1;	/* SCK2 - RG6 */
+	CNPUEbits.CNPUE9 = 1;	/* SDI2 - RG7 */
+	CNPUEbits.CNPUE10 = 1;	/* SDO2 - RG8 */
+	CNPUEbits.CNPUE11 = 1;	/* *SS2 - RG9 */
+
+	CNENbits.CNEN8 = 1;	/* SCK2 - RG6 */
+	CNENbits.CNEN9 = 1;	/* SDI2 - RG7 */
+	CNENbits.CNEN10 = 1;	/* SDO2 - RG8 */
+	CNENbits.CNEN11 = 1;	/* *SS2 - RG9 */
+
+	CNCONbits.ON = 1;
+
+	TRISG = 0x3c0;
+#endif
+
+	SD_CD1_TRIS = 1;
+	SD_CD2_TRIS = 1;
+
+	/*
+	 * CD pins are unusable w/o pull-ups, thus assume that SD Card
+	 * is inserted. Power it on and connect inactive chip select signal.
+	 */
+	SD_PWR = 0;
+	SD_PWR_TRIS = 0;
+
+	SD_CS = 1;
+//	SD_CS_TRIS = 0;
+	SD_CS_TRIS = 1;
 
 	return	0;
 }

@@ -11,14 +11,15 @@ BUILD_DIR= build
 
 # project directories containing header files
 HEADER_DIRS= -I ../common/Include -I. -I./Include -I./Include/peripheral \
--I./Include/HardwareProfile/ -I./Source/ -I./Include/USB/ \
+-I./Include/HardwareProfile/ -I./Source/ -I./Include/USB/ -I./Include/MDDFS/ \
 -I./Include/peripheral/int/
 
 # compiler flags
 #  - code optimized for size
 #  - soft float
-CFLAGS= -nostdinc -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DDEBUG_KWP2K -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
+CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
+-DOBDCONV_BOARD -DDEBUG_KWP2K -nostdinc -Os -Wall -msoft-float -march=m4k \
+$(HEADER_DIRS)
 
 # linker flags
 #  - soft float
@@ -36,7 +37,12 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/usb_function_cdc.o $(BUILD_DIR)/int_disable_interrupts_lib.o \
     $(BUILD_DIR)/int_enable_interrupts_lib.o \
     $(BUILD_DIR)/int_enable_mv_int_lib.o \
-    $(BUILD_DIR)/int_tbl_lib.o
+    $(BUILD_DIR)/int_tbl_lib.o \
+    $(BUILD_DIR)/spi_brg_tbl_lib_legacy.o \
+    $(BUILD_DIR)/spi_getc_spi2_lib_legacy.o \
+    $(BUILD_DIR)/spi_open_spi2_lib_legacy.o \
+    $(BUILD_DIR)/FSIO.o $(BUILD_DIR)/SD-SPI.o \
+
 
 APPNAME= main
 
@@ -122,6 +128,21 @@ $(BUILD_DIR)/int_tbl_lib.o: Source/peripheral/int/int_tbl_lib.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/int_enable_mv_int_lib.o: Source/peripheral/int/int_enable_mv_int_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_brg_tbl_lib_legacy.o: Source/peripheral/spi/legacy/spi_brg_tbl_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_getc_spi2_lib_legacy.o: Source/peripheral/spi/legacy/spi_getc_spi2_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_open_spi2_lib_legacy.o: Source/peripheral/spi/legacy/spi_open_spi2_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/FSIO.o: Source/MDDFS/FSIO.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/SD-SPI.o: Source/MDDFS/SD-SPI.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 clean:

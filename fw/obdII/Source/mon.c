@@ -9,6 +9,9 @@
 #include "GenericTypeDefs.h"
 #include "peripheral/uart.h"
 
+#include "SD-SPI.h"
+#include "FSIO.h"
+
 #include "usb.h"
 #include "usb_device_local.h"
 #include "usb_device.h"
@@ -63,6 +66,10 @@ static const char *mon_diag_main_menu = {
     "[1] Bluetooth module\n\r"
     "[2] Read Memory\n\r"
     "[3] Status of USB\n\r"
+    "[4] Status of SD card\n\r"
+    "[5] Initialize SD card\n\r"
+    "[6] List current directory\n\r"
+    "[w] Write test file Test-file.txt\n\r"
     "[d] Detach USB\n\r"
     "[D] Disable USB\n\r"
     "[a] Attach USB\n\r"
@@ -165,6 +172,38 @@ mon_print_str(const char *str)
 	return 0;
 }
 
+/*
+ * Prints information about directory or file.
+ */
+static int
+mon_print_finfo(SearchRec *rec)
+{
+	char s[9];
+	int i;
+
+	s[1] = s[2] = s[8] = '\0';
+	mon_print_str("\n\rFilename: ");
+	for (i = 0; rec->utf16LFNfound[i] != 0 &&
+	    i < rec->utf16LFNfoundLength ; i++) {
+		s[0] = (char)(rec->utf16LFNfound[i] & 0x7f);
+		mon_print_str(s);
+	}
+
+	mon_print_str("\n\rShort filename: ");
+	mon_print_str(rec->filename);
+	mon_print_str("\n\rAttributes: 0x");
+	uint2hex(rec->attributes, s, 1);
+	mon_print_str(s);
+	mon_print_str("\n\rSize: 0x");
+	uint2hex(rec->filesize, s, 4);
+	mon_print_str(s);
+	mon_print_str("\n\rTimestamp: 0x");
+	uint2hex(rec->timestamp, s, 4);
+	mon_print_str(s);
+
+	return 0;
+}
+
 /* public functions */
 
 /*
@@ -234,6 +273,10 @@ mon_svc(void)
 	char *tstr;
 	struct tm newtm;
 	struct timeval newtv;
+
+	SearchRec rec;
+	unsigned char attributes = ATTR_MASK;
+	FSFILE *fh;
 
 	switch (mon_st) {
 	case MON_ST_IDLE:
@@ -369,6 +412,98 @@ mon_svc(void)
 			mon_print_str(s);
 
 			mon_print_str("\n\r");
+
+			break;
+
+		/* print SD card status */
+		case '4':
+			SD_CS_TRIS = 0;
+			if (MDD_SDSPI_MediaDetect())
+				mon_print_str("\n\rSD card present.\n\r");
+			else
+				mon_print_str("\n\rSD card not present.\n\r");
+
+			break;
+
+		/* Initialize SD card and filesystem API */
+		case '5':
+			if (FSInit())
+				mon_print_str("\n\rSD card initialized.\n\r");
+			else
+				mon_print_str("\n\rSD card initialization"
+				    " failed.\n\r");
+
+			break;
+
+		/* Display content of current directory */
+		case '6':
+			rec.filename[FILE_NAME_SIZE_8P3 + 1] = '\0';
+
+			if (FindFirst("*.*", attributes, &rec) != 0) {
+				mon_print_str("\n\rDirectory is empty.\n\r");
+				break;
+			} else {
+				mon_print_finfo(&rec);
+			}
+
+			/* Keep listing files */
+			while(FindNext(&rec) == 0) {
+				mon_print_finfo(&rec);
+			}
+
+			mon_print_str("\n\r\n\r");
+
+			break;
+
+		/* Write chunk of data to test file */
+		case 'w':
+			/* Open file for append. */
+			mon_print_str("\n\rOpening file Test-file1.txt... ");
+			fh = FSfopen("Test-file1.txt", "a");
+			if (fh == NULL) {
+				int err = FSerror();
+
+				uint2hex(err, s, 2);
+				s[4] = '\0';
+
+				mon_print_str("Failed. err = 0x");
+				mon_print_str(s);
+				mon_print_str("\n\r");
+					
+				break;
+			} else {
+				mon_print_str("Done.");
+			}
+
+			/* Write chunk of data to the file. */
+			mon_print_str("\n\rWriting to file... ");
+			if (FSfwrite("Hello, world\n\r", 1, 14, fh) != 14) {
+				int err = FSerror();
+
+				uint2hex(err, s, 2);
+				s[4] = '\0';
+
+				mon_print_str("Failed. err = 0x");
+				mon_print_str(s);
+				mon_print_str("\n\r");
+			} else {
+				mon_print_str("Done.");
+			}
+
+			/* And finally close the file. */
+			mon_print_str("\n\rClosing the file... ");
+			if (FSfclose(fh) == 0) {
+				mon_print_str("Done.\n\r");
+			} else {
+				int err = FSerror();
+
+				uint2hex(err, s, 2);
+				s[4] = '\0';
+
+				mon_print_str("Failed. err = 0x");
+				mon_print_str(s);
+				mon_print_str("\n\r");
+			}
 
 			break;
 
