@@ -10,9 +10,9 @@ NM= $(TOOLS_BIN)/mipsel-nm
 BUILD_DIR= build
 
 # project directories containing header files
-HEADER_DIRS= -I ../common/Include -I. -I./Include -I./Include/peripheral \
--I./Include/HardwareProfile/ -I./Source/ -I./Include/USB/ -I./Include/MDDFS/ \
--I./Include/peripheral/int/
+HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
+-I../common/Include -I../common/Include/USB/ -I../common/Include/MDDFS/ \
+-I../common/Include/peripheral -I../commmon/Include/peripheral/int/
 
 # compiler flags
 #  - code optimized for size
@@ -51,7 +51,7 @@ all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
 
 $(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
 	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) $(LIB_DIRS) \
-	-ldsp -lc_s_n -lgcc_s_n -T ld/elf32pic32mx-app.x
+	-ldsp -lc_s_n -lgcc_s_n -T ../common/ld/elf32pic32mx-app.x
 
 $(APPNAME).dis: $(BUILD_DIR)/$(APPNAME).elf
 	$(OBJDUMP) -D $? > $(BUILD_DIR)/$@
@@ -70,16 +70,52 @@ $(APPNAME).hex: $(BUILD_DIR)/$(APPNAME).elf
 $(APPNAME).sym: $(BUILD_DIR)/$(APPNAME).elf
 	$(NM) -S -n $? > $(BUILD_DIR)/$@
 
-$(BUILD_DIR)/crt0-mipsel-app.o: Source/crt0-mipsel-app.S
+$(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
 	$(CC) -o $@ -c $(CFLAGS) $?
 
-$(BUILD_DIR)/bt.o: Source/bt.c
+$(BUILD_DIR)/bt.o: ../common/Source/bt.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/helpers.o: ../common/Source/helpers.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/utils.o: ../common/Source/utils.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/usb_device.o: ../common/Source/USB/usb_device.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/usb_function_cdc.o: ../common/Source/USB/usb_function_cdc.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/int_disable_interrupts_lib.o: ../common/Source/peripheral/int/int_disable_interrupts_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/int_enable_interrupts_lib.o: ../common/Source/peripheral/int/int_enable_interrupts_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/int_tbl_lib.o: ../common/Source/peripheral/int/int_tbl_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/int_enable_mv_int_lib.o: ../common/Source/peripheral/int/int_enable_mv_int_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_brg_tbl_lib_legacy.o: ../common/Source/peripheral/spi/legacy/spi_brg_tbl_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_getc_spi2_lib_legacy.o: ../common/Source/peripheral/spi/legacy/spi_getc_spi2_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/spi_open_spi2_lib_legacy.o: ../common/Source/peripheral/spi/legacy/spi_open_spi2_lib_legacy.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/FSIO.o: ../common/Source/MDDFS/FSIO.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/SD-SPI.o: ../common/Source/MDDFS/SD-SPI.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/data_acq.o: Source/data_acq.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/helpers.o: Source/helpers.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/kwp2k.o: Source/kwp2k.c
@@ -100,9 +136,6 @@ $(BUILD_DIR)/rt_light.o: Source/rt_light.c
 $(BUILD_DIR)/usb_descriptors.o: Source/usb_descriptors.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
-$(BUILD_DIR)/utils.o: Source/utils.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
 $(BUILD_DIR)/obd.o: Source/obd.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
@@ -110,39 +143,6 @@ $(BUILD_DIR)/pic_core.o: Source/pic_core.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/usb_app.o: Source/usb_app.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/usb_device.o: Source/USB/usb_device.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/usb_function_cdc.o: Source/USB/usb_function_cdc.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/int_disable_interrupts_lib.o: Source/peripheral/int/int_disable_interrupts_lib.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/int_enable_interrupts_lib.o: Source/peripheral/int/int_enable_interrupts_lib.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/int_tbl_lib.o: Source/peripheral/int/int_tbl_lib.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/int_enable_mv_int_lib.o: Source/peripheral/int/int_enable_mv_int_lib.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/spi_brg_tbl_lib_legacy.o: Source/peripheral/spi/legacy/spi_brg_tbl_lib_legacy.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/spi_getc_spi2_lib_legacy.o: Source/peripheral/spi/legacy/spi_getc_spi2_lib_legacy.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/spi_open_spi2_lib_legacy.o: Source/peripheral/spi/legacy/spi_open_spi2_lib_legacy.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/FSIO.o: Source/MDDFS/FSIO.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/SD-SPI.o: Source/MDDFS/SD-SPI.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 clean:
