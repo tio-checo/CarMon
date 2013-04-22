@@ -31,6 +31,4 @@ extern int obd_init(void);
 /* Processes query from master targeted to ECU module */
 extern int obd_process_query(char *, int);
 
-/* service routine */
-extern int obd_svc(void);
 #endif /* __OBD_H */

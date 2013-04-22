@@ -16,6 +16,7 @@
 #include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
+#include "utils.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -25,6 +26,17 @@
 /* constants */
 #define RTL_TIMER_POOL_SIZE	16	/* number of available timers */
 #define RTL_CV_POOL_SIZE	16	/* number of available cond vars */
+#define RTL_SVC_POOL_SIZE	16	/* number of available services */
+
+extern int bt_svc(void);
+
+/* types */
+/* service descriptor */
+typedef struct rtl_svc {
+	int	(*svc)(void);	/* service method */
+	BOOL	enabled;	/* service enabled */
+	BOOL	run_in_diag;	/* service should run in diagnostic mode */
+} rtl_svc_t;
 
 /* local variables */
 /* heartbeat LED blinking mode */
@@ -35,6 +47,9 @@ static rtl_timer_t rtl_pool_timers[RTL_TIMER_POOL_SIZE];
 
 /* pool of conditional variables */
 static rtl_cv_t rtl_pool_cvs[RTL_CV_POOL_SIZE];
+
+/* pool of service descriptors */
+static rtl_svc_t rtl_pool_svcs[RTL_SVC_POOL_SIZE];
 
 /* local functions */
 /*
@@ -193,6 +208,66 @@ rtl_cond_init(rtl_cv_t **pcv, const char *desc)
 }
 
 /*
+ * Initialize service. Return -1 in case of failure, otherwise return
+ * service handle.
+ */
+rtl_svc_handle_t
+rtl_svc_init(int (*svc)(void), BOOL enabled, BOOL run_in_diag)
+{
+	int	i;
+
+	/* Find free slot in service table. */
+	for (i = 0; i < RTL_SVC_POOL_SIZE && rtl_pool_svcs[i].svc != NULL; i++)
+		;
+
+	/* Service table is full, return. */
+	if (i == RTL_SVC_POOL_SIZE)
+		return -1;
+
+	/* Store service in the table and return service handle. */
+	/*
+	 * First initialize pointer to service routine, then enable it.
+	 * In such case we don't need to disable service routine invoked
+	 * from interrupt handler when manipulating service table.
+	 */
+	rtl_pool_svcs[i].svc = svc;
+	rtl_pool_svcs[i].enabled = enabled;
+	rtl_pool_svcs[i].run_in_diag = run_in_diag;
+
+	return (rtl_svc_handle_t) i;
+}
+
+/*
+ * Enable service.
+ */
+int
+rtl_svc_enable(rtl_svc_handle_t sh)
+{
+	/* Validate service handle */
+	if (sh < 0 || sh >= RTL_SVC_POOL_SIZE || rtl_pool_svcs[sh].svc == NULL)
+		return EINVAL;
+
+	rtl_pool_svcs[sh].enabled = TRUE;
+
+	return 0;
+}
+
+/*
+ * Disable service.
+ */
+int
+rtl_svc_disable(rtl_svc_handle_t sh)
+{
+	/* Validate service handle */
+	if (sh < 0 || sh >= RTL_SVC_POOL_SIZE || rtl_pool_svcs[sh].svc == NULL)
+		return EINVAL;
+
+	rtl_pool_svcs[sh].enabled = FALSE;
+
+	return 0;
+}
+
+/*
  * Initialize "Real Time Light" (RTL) module.
  */
 int
@@ -210,6 +285,13 @@ rtl_init(void)
 		rtl_pool_cvs[i].condition = FALSE;
 		rtl_pool_cvs[i].ptimer = NULL;
 		rtl_pool_cvs[i].description = "free cv";
+	}
+
+	/* Init pool of services - mark all services available */
+	for (i = 0; i < RTL_SVC_POOL_SIZE; i++) {
+		rtl_pool_svcs[i].svc = NULL;
+		rtl_pool_svcs[i].enabled = FALSE;
+		rtl_pool_svcs[i].run_in_diag = FALSE;
 	}
 
 	/*
@@ -230,8 +312,64 @@ rtl_init(void)
 	/* enable Timer 1 interrupt */
 	IEC0SET = 1 << 4;
 
-	/* Enable Timer 1 */
+	return 0;
+}
+
+/*
+ * Enable service handler.
+ */
+int
+rtl_svc_handler_enable(void)
+{
+	/* Start Timer 1 */
 	T1CONSET = 0x8000;
+
+	return 0;
+}
+
+/*
+ * Disable service handler.
+ */
+int
+rtl_svc_handler_disable(void)
+{
+	/* Stop Timer 1 */
+	T1CONCLR = 0x8000;
+
+	return 0;
+}
+
+/*
+ * Display service table for debugging purposes.
+ */
+int
+rtl_svc_display_table(int (*print_str)(const char *))
+{
+	char s[9];
+	int i;
+
+	/* print header */
+	print_str("-----------------");
+	print_str("\n\rSH SVC        E D");
+	print_str("\n\r-----------------");
+
+	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
+	    i++) {
+		print_str("\n\r ");
+		s[2] = '\0';
+		uint2hex(i, s, 1);
+		print_str(s + 1);
+
+		s[8] = '\0';
+		uint2hex((unsigned int) rtl_pool_svcs[i].svc, s, 4);
+		print_str(" 0x");
+		print_str(s);
+
+		print_str(rtl_pool_svcs[i].enabled ? " Y" : " N");
+		print_str(rtl_pool_svcs[i].run_in_diag ? " Y" : " N");
+	}
+
+	print_str("\n\r");
 
 	return 0;
 }
@@ -242,8 +380,8 @@ rtl_init(void)
 int
 rtl_suspend(void)
 {
-	/* Stop timer 1 */
-	T1CONCLR = 0x8000;
+	/* Disable service handler. */
+	rtl_svc_handler_disable();
 
 	return 0;
 }
@@ -254,32 +392,30 @@ rtl_suspend(void)
 void
 __attribute__ ((interrupt)) isr_timer1(void)
 {
+	int i;
+
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
-	if (mon_is_diag_mode()) {
-		/*
-		 * Diagnostic mode. 
-		 */
-		mon_svc();
-	} else {
-		kwp2k_svc();
-		obd_svc();
-		daq_svc();
-
-		/*
-		 * Must be located after kwp2k_svc() and obd_svc() state
-		 * machines, sice its role is to process KWP2K packets received
-		 * from ECU only if obd_svc() does not take care of it.
-		 */
-		mcom_svc();
-	}
-
-	/* Services which run in both normal and diagnostic modes */
+	/* Handle timers */
 	rtl_timer_svc();
-	bt_svc();
+	/* handle heartbeat LED */
 	rtl_heartbeat_svc();
-	uapp_svc();
-	pcore_svc();
+
+	/* Run enabled services */
+	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
+	    i++) {
+		/*
+		 * If in diagnostic mode, make sure that particular service
+		 * should run in that mode.
+		 */
+		if (rtl_pool_svcs[i].enabled) {
+			if (!mon_is_diag_mode()) {
+				rtl_pool_svcs[i].svc();
+			} else if (rtl_pool_svcs[i].run_in_diag) {
+				rtl_pool_svcs[i].svc();
+			}
+		}
+	}
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;

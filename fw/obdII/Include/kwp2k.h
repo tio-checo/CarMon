@@ -204,6 +204,4 @@ extern int kwp2k_set_mode(int mode);
 /* Return TRUE if communication with ECU is established. */
 extern BOOL kwp2k_comm_is_established(void);
 
-/* service routine */
-extern int kwp2k_svc(void);
 #endif /* __KWP2K_H */

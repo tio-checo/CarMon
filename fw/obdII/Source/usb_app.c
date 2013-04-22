@@ -9,6 +9,7 @@
 #include "usb.h"
 #include "usb_function_cdc.h"
 
+#include "rt_light.h"
 #include "usb_app.h"
 
 #include <errno.h>
@@ -126,6 +127,44 @@ static void ProcessIO(void)
     CDCTxService();
 } //end ProcessIO
 
+/*
+ * USB application service routine.
+ */
+//static int
+int
+uapp_svc(void)
+{
+#if defined(USB_INTERRUPT)
+	if (USB_BUS_SENSE && (USBGetDeviceState() == DETACHED_STATE)) {
+		USBDeviceAttach();
+	}
+#endif
+
+#if defined(USB_POLLING)
+	// Check bus status and service USB interrupts.
+	// Interrupt or polling method.  If using polling, must call
+	// this function periodically.  This function will take care
+	// of processing and responding to SETUP transactions 
+        // (such as during the enumeration process when you first
+        // plug in).  USB hosts require that USB devices should accept
+        // and process SETUP packets in a timely fashion.  Therefore,
+        // when using polling, this function should be called 
+        // regularly (such as once every 1.8ms or faster** [see 
+        // inline code comments in usb_device.c for explanation when
+        // "or faster" applies])  In most cases, the USBDeviceTasks() 
+        // function does not take very long to execute (ex: <100 
+        // instruction cycles) before it returns.
+	USBDeviceTasks();
+#endif
+
+	// Application-specific tasks.
+	// Application related code may be added here,
+	// or in the ProcessIO() function.
+        ProcessIO();        
+
+	return 0;
+}
+
 /********************************************************************
  * Function:        void uapp_init(void)
  *
@@ -200,6 +239,8 @@ uapp_init(void)
 	//variables to known states.
 	USBDeviceInit();
 
+	/* Register and enabled USB service */
+	rtl_svc_init(uapp_svc, TRUE, TRUE);
 
 	return 0;
 }
@@ -710,42 +751,5 @@ BOOL USER_USB_CALLBACK_EVENT_HANDLER(int event, void *pdata, WORD size)
             break;
     }      
     return TRUE; 
-}
-
-/*
- * USB application service routine.
- */
-int
-uapp_svc(void)
-{
-#if defined(USB_INTERRUPT)
-	if (USB_BUS_SENSE && (USBGetDeviceState() == DETACHED_STATE)) {
-		USBDeviceAttach();
-	}
-#endif
-
-#if defined(USB_POLLING)
-	// Check bus status and service USB interrupts.
-	// Interrupt or polling method.  If using polling, must call
-	// this function periodically.  This function will take care
-	// of processing and responding to SETUP transactions 
-        // (such as during the enumeration process when you first
-        // plug in).  USB hosts require that USB devices should accept
-        // and process SETUP packets in a timely fashion.  Therefore,
-        // when using polling, this function should be called 
-        // regularly (such as once every 1.8ms or faster** [see 
-        // inline code comments in usb_device.c for explanation when
-        // "or faster" applies])  In most cases, the USBDeviceTasks() 
-        // function does not take very long to execute (ex: <100 
-        // instruction cycles) before it returns.
-	USBDeviceTasks();
-#endif
-
-	// Application-specific tasks.
-	// Application related code may be added here,
-	// or in the ProcessIO() function.
-        ProcessIO();        
-
-	return 0;
 }
 

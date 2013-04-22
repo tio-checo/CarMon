@@ -395,175 +395,10 @@ kwp2k_decode_packet(unsigned char *buf, int buf_size, int *ln)
 	return 0;
 }
 
-/* public functions */
-
-/*
- * Sets communication speed (baudrate). Returns previous value.
- */
-int
-kwp2k_set_comm_speed(int speed)
-{
-	int old_speed = U1BRG;
-
-	U1BRG = (SYS_FREQ / 16 / speed - 1);
-
-	return old_speed;
-}
-
-/*
- * Initialize KWP2000 communication channel
- *  - UART1 is used to communicate with ECU
- */
-int
-kwp2k_init(void)
-{
-	/*
-	 * initialize IO pins
-	 */
-	/* set Tx to inactive before it is configured as digital output */
-	LATDCLR = KWP2K_TX_MASK;
-	TRISDCLR = KWP2K_TX_MASK;
-
-	/*
-	 * initialize UART1 used for communication with ECU
-	 *  - baudrate: KWP2K_BAUDRATE
-	 *  - 8 data bits, 1 stop bit
-	 *  - continue to operate in IDLE mode
-	 *  - IrDA mode disabled
-	 *  - HW flow control turned off
-	 *  - loopback mode disabled
-	 *  - autobaud mode disabled
-	 *  - standard speed mode - 16x baud clock enabled
-	 */
-	kwp2k_set_comm_speed(KWP2K_BAUDRATE_NORMAL);
-	U1MODE = UART_EN;
-
-	/* TX pin is inverted, so configure it as active in LOW */
-	U1STA = (UART_RX_ENABLE | UART_TX_ENABLE | UART_TX_INV);
-
-	/* Initialize timing parameters */
-	/* Max inter byte time in ECU response. */
-	kwp2k_p1 = KWP2K_T_P1_DEFMAX;
-
-	/*
-	 * P2 - Time between end of tester request and start of ECU response,
-	 * or time between end of ECU response and start of next ECU response.
-	 */
-	kwp2k_p2 = KWP2K_T_P2_DEFMAX;
-
-	/*
-	 * P3 - time between end of ECU response and start of new
-	 * tester request
-	 */
-	kwp2k_p3 = KWP2K_T_P3_DEFMIN;
-
-	/* P4 - inter byte time in tester request */
-	kwp2k_p4 = KWP2K_T_P4_DEFMIN;
-
-	/* Initialize timers */
-	kwp2k_p1_timer = NULL;
-	rtl_timer_init(&kwp2k_p1_timer, 0);
-
-	kwp2k_p2_timer = NULL;
-	rtl_timer_init(&kwp2k_p2_timer, 0);
-
-	kwp2k_p3_timer = NULL;
-	rtl_timer_init(&kwp2k_p3_timer, 0);
-
-	kwp2k_p4_timer = NULL;
-	rtl_timer_init(&kwp2k_p4_timer, 0);
-
-	kwp2k_comm_wdog_timer = NULL;
-	rtl_timer_init(&kwp2k_comm_wdog_timer, 0);
-
-	/* communication with ECU is not established */
-	kwp2k_comm_established = FALSE;
-	
-	/* communication parameters */
-	/* ECU address - functional */
-	kwp2k_params.ecu_address = 0x33;
-	/* tester address - physical */
-	kwp2k_params.tester_address = 0xf1;
-
-	/* lower layer communication object */
-	/* rx buffer empty */
-	kwp2k_ll_comm.rx_index = 0;
-	kwp2k_ll_comm.rx_ln = 0;
-	kwp2k_ll_comm.fl_rx_done = FALSE;
-
-	/* tx buffer ready */
-	kwp2k_ll_comm.tx_index = 0;
-	/* number of characters to be sent */
-	kwp2k_ll_comm.tx_ln = 0;
-	/* flag indicating that packet is being sent to ECU */
-	kwp2k_ll_comm.fl_send_packet = FALSE;
-
-	/* no error */
-	kwp2k_ll_comm.error = 0;
-
-	/* upper layer communication object */
-	/* rx buffer empty */
-	kwp2k_ul_comm.rx_index = 0;
-	kwp2k_ul_comm.rx_ln = 0;
-	kwp2k_ul_comm.fl_rx_done = FALSE;
-
-	/* tx buffer ready */
-	kwp2k_ul_comm.tx_index = 0;
-	/* number of characters to be sent */
-	kwp2k_ul_comm.tx_ln = 0;
-	/* flag indicating that packet is being sent to ECU */
-	kwp2k_ul_comm.fl_send_packet = FALSE;
-
-	/* no error */
-	kwp2k_ul_comm.error = 0;
-
-	/* operate in "enhanced" communication mode by default */
-//	kwp2k_comm_mode = KWP2K_MODE_BASIC;
-//	kwp2k_comm_mode = KWP2K_MODE_DEBUG;
-	kwp2k_comm_mode = KWP2K_MODE_ENHANCED;
-
-	/* lower layer state machine is IDLE */
-	kwp2k_ll_goto(KWP_STLL_IDLE);
-
-	/*
-	 * Start upper layer state machine - it will wait for packet
-	 * to be transmitted to ECU.
-	 */
-	kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
-
-	return 0;
-}
-
-/*
- * Returns TRUE if module operates in basic communication mode.
- * Otherwise return FALSE.
- */
-BOOL
-kwp2k_is_basic_mode(void)
-{
-	return kwp2k_comm_mode == KWP2K_MODE_BASIC;
-}
-
-/*
- * Suspend the module.
- */
-int
-kwp2k_suspend(void)
-{
-	/* Before turning off UART, make sure Tx line is inactive */
-	LATDCLR = KWP2K_TX_MASK;
-
-	/* turn off KWP2000 UART */
-	U1STA = UART_DIS;
-	U1MODE = UART_DIS;
-
-	return 0;
-}
-
 /*
  * Directly controls K line - used when sending Wake up Pattern.
  */
-int
+static int
 kwp2k_set_kline(BOOL active)
 {
 	if (active) {
@@ -587,106 +422,11 @@ kwp2k_set_kline(BOOL active)
 }
 
 /*
- * Receive character from ECU. Save receive errors if there are any.
- * Return EAGAIN if buffer is empty.
- */
-int
-kwp2k_getchar(kwp2k_rx_char_t *k2p2k_ch)
-{
-	/* Receive buffer is empty */
-	if (!U1STAbits.URXDA) {
-		/* If receiving was disabled due to 'buffer overflow',
-		 * re-enable it by clearing OERR error bit.
-		 */
-		if (U1STAbits.OERR)
-			U1STAbits.OERR = 0;
-
-		return EAGAIN;
-	}
-
-	/*
-	 * There is a character in receive buffer, return it along
-	 * with related status error bits. Need to get error bits first -
-	 * they are lost once character is pulled from buffer.
-	 */
-	k2p2k_ch->sts = U1STA & 0x000E;
-	k2p2k_ch->ch = U1RXREG;
-
-	return 0;
-}
-
-
-/*
- * Returns data received from ECU
- */
-int
-kwp2k_ul_recv(unsigned char **data, int *ln, int *err)
-{
-	/* wait either for data or error condition */
-	if (!kwp2k_ul_comm.fl_rx_done)
-		return EAGAIN;
-
-	/* delete flag */
-	kwp2k_ul_comm.fl_rx_done = FALSE;
-
-	/* error occurred */
-	if (kwp2k_ul_comm.error) {
-		*ln = 0;
-		*data = NULL;
-		*err = kwp2k_ul_comm.error;
-
-		return EPROTO;
-	}
-
-	/* valid packet received, return reference to data payload */
-	*err = 0;
-	*data = kwp2k_ul_comm.rx_buf;
-	*ln = kwp2k_ul_comm.rx_ln;
-
-	return 0;
-}
-
-/*
- * Instruct upper layer there are data to be sent to ECU.
- */
-int
-kwp2k_ul_send(unsigned char *data, int ln)
-{
-	int	i;
-
-	/* If previous packet is still being sent, return. */
-	if (kwp2k_ul_comm.fl_send_packet)
-		return EBUSY;
-
-	/*
-	 * Transfer data to upper layer transmit buffer
-	 */
-	for (i = 0; i < ln && i < sizeof (kwp2k_ul_comm.tx_buf); i++)
-		kwp2k_ul_comm.tx_buf[i] = data[i];
-
-	kwp2k_ul_comm.tx_ln = ln;
-
-	/*
-	 * Clear error code, discard any received packets.
-	 */
-	kwp2k_ul_comm.error = 0;
-	kwp2k_ul_comm.fl_rx_done = FALSE;
-
-	/*
-	 * Signal to state machine that it should initiate transmission
-	 * process.
-	 */
-	kwp2k_ul_comm.fl_send_packet = TRUE;
-
-	return 0;
-}
-
-/*
  * Receives raw KWP2000 packet from ECU.
  * Returns:
  *   ETIME - ECU didn't respond
  */
-int
+static int
 kwp2k_ll_recv(unsigned char *buf, int buf_size, int *ln, BOOL decode)
 {
 	int i;
@@ -714,132 +454,6 @@ kwp2k_ll_recv(unsigned char *buf, int buf_size, int *ln, BOOL decode)
 
 		*ln = i;
 	}
-
-	return 0;
-}
-
-/*
- * Send raw KWP2000 packet to ECU. Optionally send Wake up pattern and/or
- * encode packet (add header and checksum.
- */
-int
-kwp2k_ll_send(unsigned char *data, int ln, BOOL send_wup, BOOL encode)
-{
-	kwp2k_rx_char_t ch;
-
-	/*
-	 * Machine currently busy either with sending or receiving packet.
-	 */
-	if (kwp2k_ll_st != KWP_STLL_IDLE &&
-	    kwp2k_ll_st != KWP_STLL_RX_WAIT4PKT)
-		return EBUSY;
-
-	/* If there is nothing to be sent, return */
-	if (ln == 0)
-		return 0;
-
-	/*
-	 * If only data payload has been provided, add necessary service
-	 * bytes to assemble complete KWP2000 packet. Otherwise, just
-	 * directly transfer packet to transmit buffer.
-	 */
-	if (encode) {
-		/*
-		 * encodes packet. As a side effect, initializes other transmit
-		 * parameters:
-		 *  - kwp2k_ll_comm.tx_ln
-		 *  - kwp2k_ll_comm.tx_index
-		 */
-		kwp2k_encode_packet(data, ln);
-	} else {
-		int	i;
-
-		for (i = 0; i < ln && i < sizeof (kwp2k_ll_comm.tx_buf); i++)
-			kwp2k_ll_comm.tx_buf[i] = data[i];
-
-		/* initialize other transmit parameters */
-		/* total number of bytes to be transmitted */
-		kwp2k_ll_comm.tx_ln = ln;
-		/* index in transmit buffer */
-		kwp2k_ll_comm.tx_index = 0;
-	}
-
-	/*
-	 * Before transmission of packet is initiated, make sure receive
-	 * buffer is empty. That assures lower layer receiver can recover
-	 * from situations when incomplete packets are received for some reason
-	 * (e.g. due to incorrect packet timing) and garbage is left
-	 * unprocessed in receive buffer.
-	 */
-	while (kwp2k_getchar(&ch) == 0);
-
-	/* disable receiver during transmission, echoes are discarded */
-	U1STACLR = UART_RX_ENABLE;
-
-	/* clear RX errors */
-	kwp2k_ll_comm.error = 0;
-	kwp2k_ll_comm.fl_rx_done = FALSE;
-
-	if (send_wup)
-		/* Start with Wake Up Pattern, then send out data. */
-		kwp2k_ll_goto(KWP_STLL_TX_WUP_LOW);
-	else
-		/* Send out just data. */
-		kwp2k_ll_goto(KWP_STLL_TX_PKT1);
-
-	return 0;
-}
-
-/*
- * Check if transmission of packet to ECU is finished.
- */
-BOOL
-kwp2k_transmitter_busy(void)
-{
-	return (kwp2k_ll_st >= KWP_STLL_TX_WUP_LOW &&
-	    kwp2k_ll_st <= KWP_STLL_TX_PKT2);
-}
-
-/*
- * Return TRUE if communication module is IDLE
- * (neither sending nor receiving packet).
- */
-BOOL
-kwp2k_is_idle(void)
-{
-	return (kwp2k_ll_st == KWP_STLL_IDLE &&
-	    kwp2k_ul_st == KWP_STUL_WAIT4SEND &&
-	    !kwp2k_ul_comm.fl_send_packet);
-}
-
-/*
- * Return TRUE if communication with ECU is established.
- */
-BOOL
-kwp2k_comm_is_established(void)
-{
-	return kwp2k_comm_established;
-}
-
-/*
- * Set communication mode
- */
-int
-kwp2k_set_mode(int new_mode)
-{
-	int old_mode = kwp2k_comm_mode;
-
-	if (new_mode != KWP2K_MODE_BASIC && new_mode != KWP2K_MODE_ENHANCED
-	    && new_mode != KWP2K_MODE_DEBUG)
-		return EINVAL;
-
-	kwp2k_comm_mode = new_mode;
-
-	/* adjust baudrate if leaving or entering debug mode */
-	if (old_mode != new_mode &&
-	    (old_mode == KWP2K_MODE_DEBUG || new_mode == KWP2K_MODE_DEBUG))
-		kwp2k_set_comm_speed(new_mode == KWP2K_MODE_DEBUG ?
-		    KWP2K_BAUDRATE_DEBUG : KWP2K_BAUDRATE_NORMAL);
 
 	return 0;
 }
@@ -1308,7 +922,7 @@ kwp2k_ul_svc(void)
  * Main service routine
  * - handles KWP2000 protocol
  */
-int
+static int
 kwp2k_svc(void)
 {
 	/*
@@ -1324,6 +938,395 @@ kwp2k_svc(void)
 	kwp2k_ll_svc();
 	/* Upper communication layer */
 	kwp2k_ul_svc();
+
+	return 0;
+}
+
+/* public functions */
+
+/*
+ * Sets communication speed (baudrate). Returns previous value.
+ */
+int
+kwp2k_set_comm_speed(int speed)
+{
+	int old_speed = U1BRG;
+
+	U1BRG = (SYS_FREQ / 16 / speed - 1);
+
+	return old_speed;
+}
+
+/*
+ * Initialize KWP2000 communication channel
+ *  - UART1 is used to communicate with ECU
+ */
+int
+kwp2k_init(void)
+{
+	/*
+	 * initialize IO pins
+	 */
+	/* set Tx to inactive before it is configured as digital output */
+	LATDCLR = KWP2K_TX_MASK;
+	TRISDCLR = KWP2K_TX_MASK;
+
+	/*
+	 * initialize UART1 used for communication with ECU
+	 *  - baudrate: KWP2K_BAUDRATE
+	 *  - 8 data bits, 1 stop bit
+	 *  - continue to operate in IDLE mode
+	 *  - IrDA mode disabled
+	 *  - HW flow control turned off
+	 *  - loopback mode disabled
+	 *  - autobaud mode disabled
+	 *  - standard speed mode - 16x baud clock enabled
+	 */
+	kwp2k_set_comm_speed(KWP2K_BAUDRATE_NORMAL);
+	U1MODE = UART_EN;
+
+	/* TX pin is inverted, so configure it as active in LOW */
+	U1STA = (UART_RX_ENABLE | UART_TX_ENABLE | UART_TX_INV);
+
+	/* Initialize timing parameters */
+	/* Max inter byte time in ECU response. */
+	kwp2k_p1 = KWP2K_T_P1_DEFMAX;
+
+	/*
+	 * P2 - Time between end of tester request and start of ECU response,
+	 * or time between end of ECU response and start of next ECU response.
+	 */
+	kwp2k_p2 = KWP2K_T_P2_DEFMAX;
+
+	/*
+	 * P3 - time between end of ECU response and start of new
+	 * tester request
+	 */
+	kwp2k_p3 = KWP2K_T_P3_DEFMIN;
+
+	/* P4 - inter byte time in tester request */
+	kwp2k_p4 = KWP2K_T_P4_DEFMIN;
+
+	/* Initialize timers */
+	kwp2k_p1_timer = NULL;
+	rtl_timer_init(&kwp2k_p1_timer, 0);
+
+	kwp2k_p2_timer = NULL;
+	rtl_timer_init(&kwp2k_p2_timer, 0);
+
+	kwp2k_p3_timer = NULL;
+	rtl_timer_init(&kwp2k_p3_timer, 0);
+
+	kwp2k_p4_timer = NULL;
+	rtl_timer_init(&kwp2k_p4_timer, 0);
+
+	kwp2k_comm_wdog_timer = NULL;
+	rtl_timer_init(&kwp2k_comm_wdog_timer, 0);
+
+	/* communication with ECU is not established */
+	kwp2k_comm_established = FALSE;
+	
+	/* communication parameters */
+	/* ECU address - functional */
+	kwp2k_params.ecu_address = 0x33;
+	/* tester address - physical */
+	kwp2k_params.tester_address = 0xf1;
+
+	/* lower layer communication object */
+	/* rx buffer empty */
+	kwp2k_ll_comm.rx_index = 0;
+	kwp2k_ll_comm.rx_ln = 0;
+	kwp2k_ll_comm.fl_rx_done = FALSE;
+
+	/* tx buffer ready */
+	kwp2k_ll_comm.tx_index = 0;
+	/* number of characters to be sent */
+	kwp2k_ll_comm.tx_ln = 0;
+	/* flag indicating that packet is being sent to ECU */
+	kwp2k_ll_comm.fl_send_packet = FALSE;
+
+	/* no error */
+	kwp2k_ll_comm.error = 0;
+
+	/* upper layer communication object */
+	/* rx buffer empty */
+	kwp2k_ul_comm.rx_index = 0;
+	kwp2k_ul_comm.rx_ln = 0;
+	kwp2k_ul_comm.fl_rx_done = FALSE;
+
+	/* tx buffer ready */
+	kwp2k_ul_comm.tx_index = 0;
+	/* number of characters to be sent */
+	kwp2k_ul_comm.tx_ln = 0;
+	/* flag indicating that packet is being sent to ECU */
+	kwp2k_ul_comm.fl_send_packet = FALSE;
+
+	/* no error */
+	kwp2k_ul_comm.error = 0;
+
+	/* operate in "enhanced" communication mode by default */
+//	kwp2k_comm_mode = KWP2K_MODE_BASIC;
+//	kwp2k_comm_mode = KWP2K_MODE_DEBUG;
+	kwp2k_comm_mode = KWP2K_MODE_ENHANCED;
+
+	/* lower layer state machine is IDLE */
+	kwp2k_ll_goto(KWP_STLL_IDLE);
+
+	/*
+	 * Start upper layer state machine - it will wait for packet
+	 * to be transmitted to ECU.
+	 */
+	kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
+
+	/* register and enable main service */
+	rtl_svc_init(kwp2k_svc, TRUE, FALSE);
+
+	return 0;
+}
+
+/*
+ * Returns TRUE if module operates in basic communication mode.
+ * Otherwise return FALSE.
+ */
+BOOL
+kwp2k_is_basic_mode(void)
+{
+	return kwp2k_comm_mode == KWP2K_MODE_BASIC;
+}
+
+/*
+ * Suspend the module.
+ */
+int
+kwp2k_suspend(void)
+{
+	/* Before turning off UART, make sure Tx line is inactive */
+	LATDCLR = KWP2K_TX_MASK;
+
+	/* turn off KWP2000 UART */
+	U1STA = UART_DIS;
+	U1MODE = UART_DIS;
+
+	return 0;
+}
+
+/*
+ * Receive character from ECU. Save receive errors if there are any.
+ * Return EAGAIN if buffer is empty.
+ */
+int
+kwp2k_getchar(kwp2k_rx_char_t *k2p2k_ch)
+{
+	/* Receive buffer is empty */
+	if (!U1STAbits.URXDA) {
+		/* If receiving was disabled due to 'buffer overflow',
+		 * re-enable it by clearing OERR error bit.
+		 */
+		if (U1STAbits.OERR)
+			U1STAbits.OERR = 0;
+
+		return EAGAIN;
+	}
+
+	/*
+	 * There is a character in receive buffer, return it along
+	 * with related status error bits. Need to get error bits first -
+	 * they are lost once character is pulled from buffer.
+	 */
+	k2p2k_ch->sts = U1STA & 0x000E;
+	k2p2k_ch->ch = U1RXREG;
+
+	return 0;
+}
+
+
+/*
+ * Returns data received from ECU
+ */
+int
+kwp2k_ul_recv(unsigned char **data, int *ln, int *err)
+{
+	/* wait either for data or error condition */
+	if (!kwp2k_ul_comm.fl_rx_done)
+		return EAGAIN;
+
+	/* delete flag */
+	kwp2k_ul_comm.fl_rx_done = FALSE;
+
+	/* error occurred */
+	if (kwp2k_ul_comm.error) {
+		*ln = 0;
+		*data = NULL;
+		*err = kwp2k_ul_comm.error;
+
+		return EPROTO;
+	}
+
+	/* valid packet received, return reference to data payload */
+	*err = 0;
+	*data = kwp2k_ul_comm.rx_buf;
+	*ln = kwp2k_ul_comm.rx_ln;
+
+	return 0;
+}
+
+/*
+ * Instruct upper layer there are data to be sent to ECU.
+ */
+int
+kwp2k_ul_send(unsigned char *data, int ln)
+{
+	int	i;
+
+	/* If previous packet is still being sent, return. */
+	if (kwp2k_ul_comm.fl_send_packet)
+		return EBUSY;
+
+	/*
+	 * Transfer data to upper layer transmit buffer
+	 */
+	for (i = 0; i < ln && i < sizeof (kwp2k_ul_comm.tx_buf); i++)
+		kwp2k_ul_comm.tx_buf[i] = data[i];
+
+	kwp2k_ul_comm.tx_ln = ln;
+
+	/*
+	 * Clear error code, discard any received packets.
+	 */
+	kwp2k_ul_comm.error = 0;
+	kwp2k_ul_comm.fl_rx_done = FALSE;
+
+	/*
+	 * Signal to state machine that it should initiate transmission
+	 * process.
+	 */
+	kwp2k_ul_comm.fl_send_packet = TRUE;
+
+	return 0;
+}
+
+/*
+ * Send raw KWP2000 packet to ECU. Optionally send Wake up pattern and/or
+ * encode packet (add header and checksum.
+ */
+int
+kwp2k_ll_send(unsigned char *data, int ln, BOOL send_wup, BOOL encode)
+{
+	kwp2k_rx_char_t ch;
+
+	/*
+	 * Machine currently busy either with sending or receiving packet.
+	 */
+	if (kwp2k_ll_st != KWP_STLL_IDLE &&
+	    kwp2k_ll_st != KWP_STLL_RX_WAIT4PKT)
+		return EBUSY;
+
+	/* If there is nothing to be sent, return */
+	if (ln == 0)
+		return 0;
+
+	/*
+	 * If only data payload has been provided, add necessary service
+	 * bytes to assemble complete KWP2000 packet. Otherwise, just
+	 * directly transfer packet to transmit buffer.
+	 */
+	if (encode) {
+		/*
+		 * encodes packet. As a side effect, initializes other transmit
+		 * parameters:
+		 *  - kwp2k_ll_comm.tx_ln
+		 *  - kwp2k_ll_comm.tx_index
+		 */
+		kwp2k_encode_packet(data, ln);
+	} else {
+		int	i;
+
+		for (i = 0; i < ln && i < sizeof (kwp2k_ll_comm.tx_buf); i++)
+			kwp2k_ll_comm.tx_buf[i] = data[i];
+
+		/* initialize other transmit parameters */
+		/* total number of bytes to be transmitted */
+		kwp2k_ll_comm.tx_ln = ln;
+		/* index in transmit buffer */
+		kwp2k_ll_comm.tx_index = 0;
+	}
+
+	/*
+	 * Before transmission of packet is initiated, make sure receive
+	 * buffer is empty. That assures lower layer receiver can recover
+	 * from situations when incomplete packets are received for some reason
+	 * (e.g. due to incorrect packet timing) and garbage is left
+	 * unprocessed in receive buffer.
+	 */
+	while (kwp2k_getchar(&ch) == 0);
+
+	/* disable receiver during transmission, echoes are discarded */
+	U1STACLR = UART_RX_ENABLE;
+
+	/* clear RX errors */
+	kwp2k_ll_comm.error = 0;
+	kwp2k_ll_comm.fl_rx_done = FALSE;
+
+	if (send_wup)
+		/* Start with Wake Up Pattern, then send out data. */
+		kwp2k_ll_goto(KWP_STLL_TX_WUP_LOW);
+	else
+		/* Send out just data. */
+		kwp2k_ll_goto(KWP_STLL_TX_PKT1);
+
+	return 0;
+}
+
+/*
+ * Check if transmission of packet to ECU is finished.
+ */
+BOOL
+kwp2k_transmitter_busy(void)
+{
+	return (kwp2k_ll_st >= KWP_STLL_TX_WUP_LOW &&
+	    kwp2k_ll_st <= KWP_STLL_TX_PKT2);
+}
+
+/*
+ * Return TRUE if communication module is IDLE
+ * (neither sending nor receiving packet).
+ */
+BOOL
+kwp2k_is_idle(void)
+{
+	return (kwp2k_ll_st == KWP_STLL_IDLE &&
+	    kwp2k_ul_st == KWP_STUL_WAIT4SEND &&
+	    !kwp2k_ul_comm.fl_send_packet);
+}
+
+/*
+ * Return TRUE if communication with ECU is established.
+ */
+BOOL
+kwp2k_comm_is_established(void)
+{
+	return kwp2k_comm_established;
+}
+
+/*
+ * Set communication mode
+ */
+int
+kwp2k_set_mode(int new_mode)
+{
+	int old_mode = kwp2k_comm_mode;
+
+	if (new_mode != KWP2K_MODE_BASIC && new_mode != KWP2K_MODE_ENHANCED
+	    && new_mode != KWP2K_MODE_DEBUG)
+		return EINVAL;
+
+	kwp2k_comm_mode = new_mode;
+
+	/* adjust baudrate if leaving or entering debug mode */
+	if (old_mode != new_mode &&
+	    (old_mode == KWP2K_MODE_DEBUG || new_mode == KWP2K_MODE_DEBUG))
+		kwp2k_set_comm_speed(new_mode == KWP2K_MODE_DEBUG ?
+		    KWP2K_BAUDRATE_DEBUG : KWP2K_BAUDRATE_NORMAL);
 
 	return 0;
 }

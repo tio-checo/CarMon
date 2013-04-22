@@ -76,6 +76,9 @@ $(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
 $(BUILD_DIR)/bt.o: ../common/Source/bt.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
+$(BUILD_DIR)/rt_light.o: ../common/Source/rt_light.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
 $(BUILD_DIR)/helpers.o: ../common/Source/helpers.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
@@ -128,9 +131,6 @@ $(BUILD_DIR)/main.o: Source/main.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/mon.o: Source/mon.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/rt_light.o: Source/rt_light.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/usb_descriptors.o: Source/usb_descriptors.c

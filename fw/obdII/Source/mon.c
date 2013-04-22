@@ -20,6 +20,7 @@
 #include "kwp2k.h"
 #include "mon.h"
 #include "utils.h"
+#include "rt_light.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -65,10 +66,11 @@ static const char *mon_diag_main_menu = {
     "------------------------\n\r"
     "[1] Bluetooth module\n\r"
     "[2] Read Memory\n\r"
-    "[3] Status of USB\n\r"
-    "[4] Status of SD card\n\r"
-    "[5] Initialize SD card\n\r"
-    "[6] List current directory\n\r"
+    "[3] Display task table\n\r"
+    "[4] Status of USB\n\r"
+    "[5] Status of SD card\n\r"
+    "[6] Initialize SD card\n\r"
+    "[7] List current directory\n\r"
     "[w] Write test file Test-file.txt\n\r"
     "[d] Detach USB\n\r"
     "[D] Disable USB\n\r"
@@ -102,6 +104,8 @@ static BOOL mon_diag_mode_enabled;
 static int mon_old_speed;
 /* state of main state machine */
 static int mon_st;
+/* service handle */
+static rtl_svc_handle_t mon_sh;
 
 /* private functions */
 
@@ -204,43 +208,16 @@ mon_print_finfo(SearchRec *rec)
 	return 0;
 }
 
-/* public functions */
-
-/*
- * Initialize the module.
- */
-int
-mon_init(void)
-{
-	mon_st = MON_ST_IDLE;
-
-	return 0;
-}
-
-/*
- * Enter diagnostic mode.
- */
-int
-mon_diag_enter(void)
-{
-	mon_diag_mode_enabled = TRUE;
-
-	/* Wake up state machine. */
-	mon_st = MON_ST_MAIN_MENU;
-
-	/* Set communication speed. Save the original one. */
-	mon_old_speed = kwp2k_set_comm_speed(115200);
-
-	return 0;
-}
-
 /*
  * Leave diagnostic mode.
  */
-int
+static int
 mon_diag_leave(void)
 {
 	mon_diag_mode_enabled = FALSE;
+
+	/* Disable diagnostic service. */
+	rtl_svc_disable(mon_sh);
 
 	/* Switch state machine to idle mode. */
 	mon_st = MON_ST_IDLE;
@@ -252,18 +229,9 @@ mon_diag_leave(void)
 }
 
 /*
- * Return TRUE if running in diagnostic mode. Otherwise return FALSE.
- */
-BOOL
-mon_is_diag_mode(void)
-{
-	return mon_diag_mode_enabled;
-}
-
-/*
  * Service routine
  */
-int
+static int
 mon_svc(void)
 {
 	unsigned char ch;
@@ -372,8 +340,13 @@ mon_svc(void)
 
 			break;
 
-		/* print USB status */
+		/* Display service table */
 		case '3':
+			rtl_svc_display_table(mon_print_str);
+			break;
+
+		/* print USB status */
+		case '4':
 			s[8] = '\0';
 
 			v = USBDeviceState;
@@ -416,7 +389,7 @@ mon_svc(void)
 			break;
 
 		/* print SD card status */
-		case '4':
+		case '5':
 			SD_CS_TRIS = 0;
 			if (MDD_SDSPI_MediaDetect())
 				mon_print_str("\n\rSD card present.\n\r");
@@ -426,7 +399,7 @@ mon_svc(void)
 			break;
 
 		/* Initialize SD card and filesystem API */
-		case '5':
+		case '6':
 			if (FSInit())
 				mon_print_str("\n\rSD card initialized.\n\r");
 			else
@@ -436,7 +409,7 @@ mon_svc(void)
 			break;
 
 		/* Display content of current directory */
-		case '6':
+		case '7':
 			rec.filename[FILE_NAME_SIZE_8P3 + 1] = '\0';
 
 			if (FindFirst("*.*", attributes, &rec) != 0) {
@@ -605,5 +578,50 @@ mon_svc(void)
 	}
 
 	return 0;
+}
+
+/* public functions */
+
+/*
+ * Initialize the module.
+ */
+int
+mon_init(void)
+{
+	mon_st = MON_ST_IDLE;
+
+	/* Register, but not enable the service. */
+	mon_sh = rtl_svc_init(mon_svc, FALSE, TRUE);
+
+	return 0;
+}
+
+/*
+ * Enter diagnostic mode.
+ */
+int
+mon_diag_enter(void)
+{
+	mon_diag_mode_enabled = TRUE;
+
+	/* Enable diagnostic service. */
+	rtl_svc_enable(mon_sh);
+
+	/* Wake up state machine. */
+	mon_st = MON_ST_MAIN_MENU;
+
+	/* Set communication speed. Save the original one. */
+	mon_old_speed = kwp2k_set_comm_speed(115200);
+
+	return 0;
+}
+
+/*
+ * Return TRUE if running in diagnostic mode. Otherwise return FALSE.
+ */
+BOOL
+mon_is_diag_mode(void)
+{
+	return mon_diag_mode_enabled;
 }
 

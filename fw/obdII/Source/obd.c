@@ -11,6 +11,7 @@
 #include "master_comm.h"
 #include "obd.h"
 #include "utils.h"
+#include "rt_light.h"
 
 /* states of OBD ECU state machine */
 #define	OBD_ECU_ST_IDLE		0	/* machine idle */
@@ -207,6 +208,23 @@ obd_comm_master_svc(void)
 	return 0;
 }
 
+
+/*
+ * Main service routine
+ */
+static int
+obd_svc(void)
+{
+
+	/* Handle OBD communication with ECU */
+	obd_comm_ecu_svc();
+
+	/* Send response to master */
+	obd_comm_master_svc();
+
+	return 0;
+}
+
 /* global functions */
 
 /*
@@ -317,21 +335,8 @@ obd_init(void)
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;
 
-	return 0;
-}
-
-/*
- * Main service routine
- */
-int
-obd_svc(void)
-{
-
-	/* Handle OBD communication with ECU */
-	obd_comm_ecu_svc();
-
-	/* Send response to master */
-	obd_comm_master_svc();
+	/* register and enable OBD service */
+	rtl_svc_init(obd_svc, TRUE, FALSE);
 
 	return 0;
 }

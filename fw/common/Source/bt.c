@@ -5,6 +5,7 @@
 #include "bt.h"
 #include "mon.h"
 #include "master_comm.h"
+#include "rt_light.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -22,6 +23,40 @@ static int bt_st;
 /* flag that BT module is paired */
 static BOOL bt_paired = FALSE;
 
+/* local functions */
+/*
+ * Service function handling all BT events.
+ */
+static int
+bt_svc(void)
+{
+	/* Handle transmit buffer */
+	switch (bt_st) {
+	case BT_ST_IDLE:
+		break;
+
+	/*
+	 * Wait for a space in HW TX buffer, then transmit character
+	 * waiting in SW buffer
+	 */
+	case BT_ST_TX:
+		/* There is no space in transmit buffer, try later */
+		if (U2STAbits.UTXBF)
+			break;
+
+		U2TXREG = bt_tx_buffer[0];
+		bt_st = BT_ST_IDLE;
+		break;
+
+	/* Should not happen, but... */
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+/* global functions */
 /*
  * Initialize Bluetooth BTM-112 module.
  *  - connect power (active LOW)
@@ -58,6 +93,9 @@ bt_init(void)
 
 	/* State machine is idle */
 	bt_st = BT_ST_IDLE;
+
+	/* Register and enable BT service routine */
+	rtl_svc_init(bt_svc, TRUE, TRUE);
 
 	return 0;
 }
@@ -174,37 +212,5 @@ BOOL
 bt_is_paired(void)
 {
 	return (bt_paired);
-}
-
-/*
- * Service function handling all BT events.
- */
-int
-bt_svc(void)
-{
-	/* Handle transmit buffer */
-	switch (bt_st) {
-	case BT_ST_IDLE:
-		break;
-
-	/*
-	 * Wait for a space in HW TX buffer, then transmit character
-	 * waiting in SW buffer
-	 */
-	case BT_ST_TX:
-		/* There is no space in transmit buffer, try later */
-		if (U2STAbits.UTXBF)
-			break;
-
-		U2TXREG = bt_tx_buffer[0];
-		bt_st = BT_ST_IDLE;
-		break;
-
-	/* Should not happen, but... */
-	default:
-		break;
-	}
-
-	return 0;
 }
 

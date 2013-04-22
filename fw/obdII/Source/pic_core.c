@@ -178,6 +178,20 @@ pcore_send_data_response_to_master(char *buf, int ln)
 	return 0;
 }
 
+/*
+ * Main acquisition service routine - called periodically from timer interrupt.
+ */
+static int
+pcore_svc(void)
+{
+	/* update time of the day */
+	updatetimeofday(RTL_SERVICE_PERIOD);
+
+	pcore_comm_svc();
+
+	return 0;
+}
+
 /* global functions */
 /*
  * Initialization routine.
@@ -188,6 +202,9 @@ pcore_init(void)
 	/* initialize communication data */
 	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
 	pcore_resp_data.id = MCOMM_PIC_ID;
+
+	/* Register and enable pcore service */
+	rtl_svc_init(pcore_svc, TRUE, TRUE);
 
 	return 0;
 }
@@ -245,16 +262,3 @@ pcore_process_query(char *data, int ln)
 	return 0;
 }
 
-/*
- * Main acquisition service routine - called periodically from timer interrupt.
- */
-int
-pcore_svc(void)
-{
-	/* update time of the day */
-	updatetimeofday(RTL_SERVICE_PERIOD);
-
-	pcore_comm_svc();
-
-	return 0;
-}

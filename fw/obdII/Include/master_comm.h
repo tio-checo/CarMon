@@ -93,6 +93,4 @@ extern int mcom_getchar(unsigned char *);
 
 /* callback function called when character from master is received */
 extern int mcom_rx_cb(unsigned char);
-/* service routine */
-extern int mcom_svc(void);
 #endif /* __MCOMM_H */

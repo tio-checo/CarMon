@@ -110,8 +110,6 @@ extern int daq_acq_process_query(char *, int);
 /* Processes query from master targeted to A/D low level module */
 extern int daq_adc_process_query(char *, int);
 
-/* Main service routine - called periodically from timer interrupt. */
-extern int daq_svc(void);
 /* Provides data measured by A/D converter */
 extern int daq_get_adc_value(unsigned int, unsigned int *);
 /* Upper half of post processing service routine - called from main(). */

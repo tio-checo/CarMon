@@ -100,15 +100,26 @@ main(int argc, char **argv)
 	per_init();
         rtl_init();
 	bt_init();
-	daq_init();
 	kwp2k_init();
+	obd_init();
+	daq_init();
+
+	/*
+	 * Must be called after kwp2k_init() and obd_init(),
+	 * since init routines register services. Those services are then
+	 * being called in order they were initially registered and the role
+	 * of mcom service is to process KWP2K packets received from ECU only
+	 * if obd service does not take care of it.
+	 */
 	mcom_init();
 	mon_init();
-	obd_init();
 	pcore_init();
 
 	/* USB module */
 	uapp_init();
+
+	/* All services are initialized, thus enable main service handler. */
+	rtl_svc_handler_enable();
 
 	/* Immediately enter diagnostic mode */
 /*

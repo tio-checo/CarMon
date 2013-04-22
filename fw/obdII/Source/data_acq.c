@@ -1155,6 +1155,27 @@ daq_process_pp_id(char *cfg, int ln)
 	return EINVAL;
 }
 
+/*
+ * Main acquisition service routine - called periodically from timer interrupt.
+ */
+static int
+daq_svc(void)
+{
+	/* Collect data from sensors connected to internal AD converter */
+	daq_adc_svc();
+
+	/* Handle 'oscilloscope' module */
+	daq_scope_svc();
+
+	/* Process acquired data */
+	daq_pp_bottom_svc();
+
+	/* Send response to master */
+	daq_comm_svc();
+
+	return 0;
+}
+
 /* public functions */
 /*
  * Initialization routine.
@@ -1246,6 +1267,9 @@ daq_init(void)
 	daq_adc_sample_rate = daq_time_base.srate / RTL_SERVICE_PERIOD;
 	daq_adc_sample_acquired = FALSE;
 
+	/* Register and enabled service. */
+	rtl_svc_init(daq_svc, TRUE, FALSE);
+
 	return 0;
 }
 
@@ -1275,27 +1299,6 @@ daq_get_adc_value(unsigned int ch, unsigned int *result)
 	}
 
 	*result = adc_data[ch];
-
-	return 0;
-}
-
-/*
- * Main acquisition service routine - called periodically from timer interrupt.
- */
-int
-daq_svc(void)
-{
-	/* Collect data from sensors connected to internal AD converter */
-	daq_adc_svc();
-
-	/* Handle 'oscilloscope' module */
-	daq_scope_svc();
-
-	/* Process acquired data */
-	daq_pp_bottom_svc();
-
-	/* Send response to master */
-	daq_comm_svc();
 
 	return 0;
 }

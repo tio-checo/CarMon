@@ -27,6 +27,9 @@ typedef struct _rtl_cv_t {
 	const char	*description;
 } rtl_cv_t;
 
+/* service handle */
+typedef int rtl_svc_handle_t;
+
 /* public functions */
 extern int rtl_init(void);
 
@@ -36,5 +39,22 @@ extern int rtl_suspend(void);
 /* timers */
 extern int rtl_timer_init(rtl_timer_t **, rtl_time_t);
 extern BOOL rtl_timer_expired(rtl_timer_t *);
+
+/* services */
+/*
+ * Initialize service. Return -1 in case of failure, otherwise return
+ * service handle.
+ */
+extern rtl_svc_handle_t rtl_svc_init(int (*)(void), BOOL, BOOL);
+/* Enable service. */
+extern int rtl_svc_enable(rtl_svc_handle_t);
+/* Disable service. */
+extern int rtl_svc_disable(rtl_svc_handle_t);
+/* Enable service handler. */
+extern int rtl_svc_handler_enable(void);
+/* Disable service handler. */
+extern int rtl_svc_handler_disable(void);
+/* Display service table for debugging purposes. */
+extern int rtl_svc_display_table(int (*)(const char *));
 
 #endif /* __RTL_H */

@@ -27,6 +27,7 @@
 #include "mon.h"
 #include "obd.h"
 #include "pic_core.h"
+#include "rt_light.h"
 #include "utils.h"
 
 #include <errno.h>
@@ -135,126 +136,6 @@ mcom_jump_to_bootloader(void)
 	 * until reset occurs
 	 */
 	while(1);
-}
-
-/*
- * Check if suspend is required.
- */
-BOOL
-mcom_suspend(void)
-{
-	BOOL tmp = mcom_suspend_fl;
-
-	mcom_suspend_fl = FALSE;
-
-	return tmp;
-}
-
-/*
- * Go to sleep mode
- */
-/*
- * Initialize module
- */
-int
-mcom_init(void)
-{
-	/* Initialize main communication object */
- 	/* method for receiving char from master */
-	mcom_co.getchar = bt_getchar;
-	/* method for sending char to master */
-	mcom_co.putchar = bt_putchar;
-
-	/* receive buffer */
-	/* rx buffer tail  */
-	mcom_co.rx_tail = 0;
-	/* flag indicating that buffer contains received packet */
-	mcom_co.fl_packet_received = FALSE;
-
-	/* pointer to current response to master */
-	mcom_co.resp = NULL;
-
-	/* local structure holding response to master - unset module ID */
-	mcom_resp.id = MCOMM_COMM_ID;
-
-	/* flag indicating that response is to be sent to master */
-	mcom_co.fl_send_packet = FALSE;
-
-	/* receiver - wait for packet from master */
-	mcom_st_rx = MCOM_ST_RX_W4SOF;
-	/* transmitter idle */
-	mcom_st_tx = MCOM_ST_TX_IDLE;
-	/* main state machine - wait for packet from master */
-	mcom_st = MCOM_ST_W4PACKET;
-
-	/* Do not suspend */
-	mcom_suspend_fl = FALSE;
-
-	return 0;
-}
-
-/*
- * Put response to master to the transmit queue.
- * If the queue is full, return EAGAIN, otherwise return 0.
- */
-int
-mcom_queue_response(mcom_response_t *resp)
-{
-	/* If there is currently response being sent, signal it */
-	if (mcom_co.fl_send_packet) {
-		return EAGAIN;
-	}
-
-	mcom_co.resp = resp;
-	mcom_co.fl_send_packet = TRUE;
-
-	return 0;
-}
-
-/*
- * Send generic response to master.
- */
-int
-mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
-    int dtype, int dln)
-{
-	/* pointer to packet header */
-	resp->header = header;
-	/* pointer to data payload */
-	resp->data = data;
-	/* data type */
-	resp->data_type = dtype;
-	/* data length */
-	resp->data_ln = dln;
-
-	return 0;
-}
-
-/*
- * Send ACK response to master.
- */
-int
-mcom_prepare_ack_response(mcom_response_t *resp)
-{
-	mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
-	    MCOM_DATA_TYPE_BYTE, 0);
-
-	return 0;
-}
-
-/*
- * Send NAK response to master.
- */
-int
-mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
-{
-	static unsigned char e;
-
-	e = err;
-	mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
-	    MCOM_DATA_TYPE_BYTE, 1);
-
-	return 0;
 }
 
 /*
@@ -833,7 +714,7 @@ mcom_tx_st(void)
 /*
  * Main service routine
  */
-int
+static int
 mcom_svc(void)
 {
 //	kwp2k_rx_char_t	kwp2k_ch;
@@ -846,6 +727,126 @@ mcom_svc(void)
 
 	/* Transmit packet to master */
 	mcom_tx_st();	
+
+	return 0;
+}
+
+/*
+ * Check if suspend is required.
+ */
+BOOL
+mcom_suspend(void)
+{
+	BOOL tmp = mcom_suspend_fl;
+
+	mcom_suspend_fl = FALSE;
+
+	return tmp;
+}
+
+/*
+ * Initialize module
+ */
+int
+mcom_init(void)
+{
+	/* Initialize main communication object */
+ 	/* method for receiving char from master */
+	mcom_co.getchar = bt_getchar;
+	/* method for sending char to master */
+	mcom_co.putchar = bt_putchar;
+
+	/* receive buffer */
+	/* rx buffer tail  */
+	mcom_co.rx_tail = 0;
+	/* flag indicating that buffer contains received packet */
+	mcom_co.fl_packet_received = FALSE;
+
+	/* pointer to current response to master */
+	mcom_co.resp = NULL;
+
+	/* local structure holding response to master - unset module ID */
+	mcom_resp.id = MCOMM_COMM_ID;
+
+	/* flag indicating that response is to be sent to master */
+	mcom_co.fl_send_packet = FALSE;
+
+	/* receiver - wait for packet from master */
+	mcom_st_rx = MCOM_ST_RX_W4SOF;
+	/* transmitter idle */
+	mcom_st_tx = MCOM_ST_TX_IDLE;
+	/* main state machine - wait for packet from master */
+	mcom_st = MCOM_ST_W4PACKET;
+
+	/* Do not suspend */
+	mcom_suspend_fl = FALSE;
+
+	/* Register service and enable it. */
+	rtl_svc_init(mcom_svc, TRUE, FALSE);
+
+	return 0;
+}
+
+/*
+ * Put response to master to the transmit queue.
+ * If the queue is full, return EAGAIN, otherwise return 0.
+ */
+int
+mcom_queue_response(mcom_response_t *resp)
+{
+	/* If there is currently response being sent, signal it */
+	if (mcom_co.fl_send_packet) {
+		return EAGAIN;
+	}
+
+	mcom_co.resp = resp;
+	mcom_co.fl_send_packet = TRUE;
+
+	return 0;
+}
+
+/*
+ * Send generic response to master.
+ */
+int
+mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
+    int dtype, int dln)
+{
+	/* pointer to packet header */
+	resp->header = header;
+	/* pointer to data payload */
+	resp->data = data;
+	/* data type */
+	resp->data_type = dtype;
+	/* data length */
+	resp->data_ln = dln;
+
+	return 0;
+}
+
+/*
+ * Send ACK response to master.
+ */
+int
+mcom_prepare_ack_response(mcom_response_t *resp)
+{
+	mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
+	    MCOM_DATA_TYPE_BYTE, 0);
+
+	return 0;
+}
+
+/*
+ * Send NAK response to master.
+ */
+int
+mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
+{
+	static unsigned char e;
+
+	e = err;
+	mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
+	    MCOM_DATA_TYPE_BYTE, 1);
 
 	return 0;
 }

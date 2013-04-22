@@ -15,6 +15,4 @@ extern int bt_getchar(unsigned char *ch);
 /* Return TRUE if BT module is paired with master, otherwise return FALSE */
 extern BOOL bt_is_paired(void);
 
-/* main service routine */
-extern int bt_svc(void);
 #endif /* __BT_H */

@@ -10,6 +10,4 @@ extern int mon_diag_enter(void);
 /* Return TRUE if running in diagnostic mode. Otherwise returns FALSE. */
 extern BOOL mon_is_diag_mode(void);
 
-/* service routine */
-extern int mon_svc(void);
 #endif /* __MON_H */
