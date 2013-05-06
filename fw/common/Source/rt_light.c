@@ -27,9 +27,11 @@
 #include <time.h>
 
 /* constants */
-#define RTL_TIMER_POOL_SIZE	16	/* number of available timers */
-#define RTL_CV_POOL_SIZE	16	/* number of available cond vars */
-#define RTL_SVC_POOL_SIZE	16	/* number of available services */
+#define RTL_TIMER_POOL_SIZE	16	/* # of available timers */
+#define RTL_CV_POOL_SIZE	16	/* # of available cond vars */
+#define RTL_SVC_POOL_SIZE	16	/* # of available services */
+#define RTL_ISTAT_NUM		1	/* # of tracked interrupt statistics */
+#define RTL_ISTAT_TIMER1	0	/* index of Timer 1 int. statistic */
 
 extern int bt_svc(void);
 
@@ -54,6 +56,14 @@ static rtl_cv_t rtl_pool_cvs[RTL_CV_POOL_SIZE];
 
 /* pool of service descriptors */
 static rtl_svc_t rtl_pool_svcs[RTL_SVC_POOL_SIZE];
+
+/* interrupt statistics */
+static struct rtl_istat_t {
+	char	*name;		/* Interrupt description */
+	int	num;		/* Interrupt number */
+	unsigned long	min_time;	/* Min timer ticks spent in handler */
+	unsigned long	max_time;	/* Max timer ticks spent in handler */
+} rtl_istat[RTL_ISTAT_NUM];
 
 /* local functions */
 /*
@@ -301,6 +311,12 @@ rtl_init(void)
 		rtl_pool_svcs[i].run_in_diag = FALSE;
 	}
 
+	/* Initialize interrupt statistics */
+	rtl_istat[RTL_ISTAT_TIMER1].name = "Timer1";
+	rtl_istat[RTL_ISTAT_TIMER1].num = _TIMER_1_IRQ;
+	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
+	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
+
 	/*
 	 * Timer 1 used to generate interrupt for main service loop.
 	 * Main service loop is called every RTL_SERVICE_PERIOD us.
@@ -347,7 +363,7 @@ rtl_svc_handler_disable(void)
 }
 
 /*
- * Display service table for debugging purposes.
+ * Display service table and statistics for debugging purposes.
  */
 int
 rtl_svc_display_table(int (*print_str)(const char *))
@@ -368,6 +384,17 @@ rtl_svc_display_table(int (*print_str)(const char *))
 		    rtl_pool_svcs[i].run_in_diag ? "Y" : "N",
 		    rtl_pool_svcs[i].name);
 
+		print_str(s);
+	}
+
+	print_str("-------------------------------------\n\r");
+	print_str("IRQ# min[ticks] max[ticks] NAME\n\r");
+	print_str("-------------------------------------\n\r");
+
+	for (i = 0; i < RTL_ISTAT_NUM; i++) {
+		snprintf(s, sizeof (s), "%4d %10ld %10ld %s\n\r",
+		    rtl_istat[0].num, rtl_istat[0].min_time,
+		    rtl_istat[0].max_time, rtl_istat[0].name);
 		print_str(s);
 	}
 
@@ -395,6 +422,7 @@ void
 __attribute__ ((interrupt)) isr_timer1(void)
 {
 	int i;
+	unsigned long t;
 
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
@@ -418,6 +446,14 @@ __attribute__ ((interrupt)) isr_timer1(void)
 			}
 		}
 	}
+
+	/* Record time spent in this handler */
+	t = TMR1;
+	if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t)
+		rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
+
+	if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t)
+		rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;
