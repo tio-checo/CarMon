@@ -7,6 +7,9 @@ extern int mon_init(void);
 /* Enter diagnostic mode. */
 extern int mon_diag_enter(void);
 
+/* Leave diagnostic mode. */
+extern int mon_diag_leave(void);
+
 /* Return TRUE if running in diagnostic mode. Otherwise returns FALSE. */
 extern BOOL mon_is_diag_mode(void);
 

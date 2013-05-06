@@ -240,7 +240,7 @@ uapp_init(void)
 	USBDeviceInit();
 
 	/* Register and enabled USB service */
-	rtl_svc_init(uapp_svc, TRUE, TRUE);
+	rtl_svc_init("UsbApp", uapp_svc, TRUE, TRUE);
 
 	return 0;
 }

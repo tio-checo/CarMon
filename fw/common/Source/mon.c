@@ -17,7 +17,6 @@
 #include "usb_device.h"
 
 #include "bt.h"
-#include "kwp2k.h"
 #include "mon.h"
 #include "utils.h"
 #include "rt_light.h"
@@ -72,6 +71,7 @@ static const char *mon_diag_main_menu = {
     "[6] Initialize SD card\n\r"
     "[7] List current directory\n\r"
     "[w] Write test file Test-file.txt\n\r"
+    "[r] Read RFID log file rfid.log\n\r"
     "[d] Detach USB\n\r"
     "[D] Disable USB\n\r"
     "[a] Attach USB\n\r"
@@ -209,23 +209,16 @@ mon_print_finfo(SearchRec *rec)
 }
 
 /*
- * Leave diagnostic mode.
+ * Sets communication speed (baudrate). Returns previous value.
  */
 static int
-mon_diag_leave(void)
+mon_set_comm_speed(int speed)
 {
-	mon_diag_mode_enabled = FALSE;
+	int old_speed = U1BRG;
 
-	/* Disable diagnostic service. */
-	rtl_svc_disable(mon_sh);
+	U1BRG = (SYS_FREQ / 16 / speed - 1);
 
-	/* Switch state machine to idle mode. */
-	mon_st = MON_ST_IDLE;
-
-	/* Set communication to previous value. */
-	kwp2k_set_comm_speed(mon_old_speed);
-
-	return 0;
+	return old_speed;
 }
 
 /*
@@ -237,10 +230,12 @@ mon_svc(void)
 	unsigned char ch;
 	unsigned int v;
 	char s[9];
+	char str[81];
 	time_t t;
 	char *tstr;
 	struct tm newtm;
 	struct timeval newtv;
+	int err;
 
 	SearchRec rec;
 	unsigned char attributes = ATTR_MASK;
@@ -264,6 +259,8 @@ mon_svc(void)
 			break;
 
 		mon_print_str("\n\r");
+
+		mon_st = MON_ST_MAIN_MENU;
 
 		/* Process input */
 		switch (ch) {
@@ -480,6 +477,65 @@ mon_svc(void)
 
 			break;
 
+		/* Read RFID log file */
+		case 'r':
+			/* Open file for reading. */
+			mon_print_str("\n\rOpening file rfid.log... ");
+			fh = FSfopen("rfid.log", "r");
+			if (fh == NULL) {
+				err = FSerror();
+
+				snprintf(str, sizeof (str),
+				    "Failed. err = %d\n\r", err);
+
+				mon_print_str(str);
+					
+				break;
+			} else {
+				mon_print_str("Done.\n\r");
+			}
+
+			/* Read the file. */
+			mon_print_str("Reading the file...\n\r");
+
+			do {
+				int ln;
+
+				ln = FSfread(str, 1, sizeof (str) - 1, fh);
+				str[ln] = '\0';
+
+				err = FSerror();
+
+				if ((err != CE_GOOD) && (err != CE_EOF)) {
+					snprintf(str, sizeof (str),
+					    "\n\rFailed. err = %d\n\r", err);
+
+					mon_print_str(str);
+
+					break;
+				}
+
+				mon_print_str(str);
+			} while (err != CE_EOF);
+
+			if (err == CE_EOF)
+				mon_print_str("\n\rDone.");
+
+			/* And finally close the file. */
+			mon_print_str("\n\rClosing the file... ");
+			if (FSfclose(fh) == 0) {
+				mon_print_str("Done.\n\r");
+			} else {
+				err = FSerror();
+
+				snprintf(str, sizeof (str),
+				    "Failed. err = %d\n\r", err);
+
+				mon_print_str(str);
+			}
+
+			break;
+
 		/* detach USB */
 		case 'd':
 			USBDeviceDetach();
@@ -552,10 +608,7 @@ mon_svc(void)
 #endif
 		} /* switch */
 
-		mon_st = MON_ST_MAIN_MENU;
-
 		break;
-
 
 	/*
 	 * Diagnose bluetooth module. For now just forward characters between
@@ -591,7 +644,7 @@ mon_init(void)
 	mon_st = MON_ST_IDLE;
 
 	/* Register, but not enable the service. */
-	mon_sh = rtl_svc_init(mon_svc, FALSE, TRUE);
+	mon_sh = rtl_svc_init("Monitor", mon_svc, FALSE, TRUE);
 
 	return 0;
 }
@@ -611,7 +664,27 @@ mon_diag_enter(void)
 	mon_st = MON_ST_MAIN_MENU;
 
 	/* Set communication speed. Save the original one. */
-	mon_old_speed = kwp2k_set_comm_speed(115200);
+	mon_old_speed = mon_set_comm_speed(115200);
+
+	return 0;
+}
+
+/*
+ * Leave diagnostic mode.
+ */
+int
+mon_diag_leave(void)
+{
+	mon_diag_mode_enabled = FALSE;
+
+	/* Disable diagnostic service. */
+	rtl_svc_disable(mon_sh);
+
+	/* Switch state machine to idle mode. */
+	mon_st = MON_ST_IDLE;
+
+	/* Set communication to previous value. */
+	mon_set_comm_speed(mon_old_speed);
 
 	return 0;
 }

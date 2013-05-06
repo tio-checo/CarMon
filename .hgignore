@@ -1,9 +1,12 @@
 android/.*/bin
 android/\.metadata
 /bootloader\.X/
+/gen/
 build
 design_notes
 docs
+make.err
+make.log
 namery
 gerber
 konstrukce

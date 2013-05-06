@@ -74,7 +74,9 @@ typedef enum _CETYPE
     CE_WRITEONLY,                   // The file is write-only
     CE_INVALID_ARGUMENT,            // Invalid argument
     CE_TOO_MANY_FILES_OPEN,         // Too many files are already open
-    CE_UNSUPPORTED_SECTOR_SIZE      // Unsupported sector size
+    CE_UNSUPPORTED_SECTOR_SIZE,     // Unsupported sector size
+    CE_FAT_EOF = 60,                // Error that indicates an attempt to read FAT entries beyond the end of the file
+    CE_EOF                          // Error that indicates that the end of the file has been reached
 } CETYPE;
 
 

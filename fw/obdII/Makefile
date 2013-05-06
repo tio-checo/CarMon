@@ -18,8 +18,8 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - code optimized for size
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DDEBUG_KWP2K -nostdinc -Os -Wall -msoft-float -march=m4k \
-$(HEADER_DIRS)
+-DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE \
+-nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
 #  - soft float
@@ -76,6 +76,24 @@ $(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
 $(BUILD_DIR)/bt.o: ../common/Source/bt.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
+$(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/kwp2k.o: ../common/Source/kwp2k.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/master_comm.o: ../common/Source/master_comm.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/mon.o: ../common/Source/mon.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/obd.o: ../common/Source/obd.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/pic_core.o: ../common/Source/pic_core.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
 $(BUILD_DIR)/rt_light.o: ../common/Source/rt_light.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
@@ -118,28 +136,10 @@ $(BUILD_DIR)/FSIO.o: ../common/Source/MDDFS/FSIO.c
 $(BUILD_DIR)/SD-SPI.o: ../common/Source/MDDFS/SD-SPI.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
-$(BUILD_DIR)/data_acq.o: Source/data_acq.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/kwp2k.o: Source/kwp2k.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/master_comm.o: Source/master_comm.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
 $(BUILD_DIR)/main.o: Source/main.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
-$(BUILD_DIR)/mon.o: Source/mon.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
 $(BUILD_DIR)/usb_descriptors.o: Source/usb_descriptors.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/obd.o: Source/obd.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/pic_core.o: Source/pic_core.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/usb_app.o: Source/usb_app.c

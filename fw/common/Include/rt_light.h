@@ -45,7 +45,7 @@ extern BOOL rtl_timer_expired(rtl_timer_t *);
  * Initialize service. Return -1 in case of failure, otherwise return
  * service handle.
  */
-extern rtl_svc_handle_t rtl_svc_init(int (*)(void), BOOL, BOOL);
+extern rtl_svc_handle_t rtl_svc_init(const char *, int (*)(), BOOL, BOOL);
 /* Enable service. */
 extern int rtl_svc_enable(rtl_svc_handle_t);
 /* Disable service. */

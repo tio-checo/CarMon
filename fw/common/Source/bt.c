@@ -95,7 +95,7 @@ bt_init(void)
 	bt_st = BT_ST_IDLE;
 
 	/* Register and enable BT service routine */
-	rtl_svc_init(bt_svc, TRUE, TRUE);
+	rtl_svc_init("Bluetooth", bt_svc, TRUE, TRUE);
 
 	return 0;
 }

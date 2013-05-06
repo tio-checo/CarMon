@@ -270,10 +270,6 @@ typedef enum
     NAME_ERROR
 } FILE_DIR_NAME_TYPE;
 
-// internal errors
-#define CE_FAT_EOF            60   // Error that indicates an attempt to read FAT entries beyond the end of the file
-#define CE_EOF                61   // Error that indicates that the end of the file has been reached
-
 typedef FSFILE   * FILEOBJ;         // Pointer to an FSFILE object
 
 #ifdef ALLOW_FSFPRINTF

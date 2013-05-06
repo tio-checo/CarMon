@@ -9,10 +9,13 @@
 
 #include "bt.h"
 #include "data_acq.h"
+
+#ifdef KWP2K_MODULE
 #include "kwp2k.h"
+#endif
+
 #include "master_comm.h"
 #include "mon.h"
-#include "obd.h"
 #include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
@@ -33,9 +36,10 @@ extern int bt_svc(void);
 /* types */
 /* service descriptor */
 typedef struct rtl_svc {
-	int	(*svc)(void);	/* service method */
-	BOOL	enabled;	/* service enabled */
-	BOOL	run_in_diag;	/* service should run in diagnostic mode */
+	const char	*name;		/* service name */
+	int		(*svc)(void);	/* service method */
+	BOOL		enabled;	/* service enabled */
+	BOOL		run_in_diag;	/* service enabled in diagnostic mode */
 } rtl_svc_t;
 
 /* local variables */
@@ -87,6 +91,7 @@ rtl_heartbeat_svc(void)
 	if (bt_is_paired()) {
 		heartbeat_mode = HB_MODE_TICKS;
 
+#ifdef KWP2K_MODULE
 		/*
 		 * Add one more tick if communication with ECU has been
 		 * established.
@@ -94,6 +99,7 @@ rtl_heartbeat_svc(void)
 		if (kwp2k_comm_is_established())
 			hb_num_ticks = 2;
 		else
+#endif
 			hb_num_ticks = 1;
 	} else {
 		heartbeat_mode = HB_MODE_FIFTY_FIFTY;
@@ -212,7 +218,7 @@ rtl_cond_init(rtl_cv_t **pcv, const char *desc)
  * service handle.
  */
 rtl_svc_handle_t
-rtl_svc_init(int (*svc)(void), BOOL enabled, BOOL run_in_diag)
+rtl_svc_init(const char *name, int (*svc)(void), BOOL en, BOOL run_in_diag)
 {
 	int	i;
 
@@ -230,8 +236,9 @@ rtl_svc_init(int (*svc)(void), BOOL enabled, BOOL run_in_diag)
 	 * In such case we don't need to disable service routine invoked
 	 * from interrupt handler when manipulating service table.
 	 */
+	rtl_pool_svcs[i].name = name;
 	rtl_pool_svcs[i].svc = svc;
-	rtl_pool_svcs[i].enabled = enabled;
+	rtl_pool_svcs[i].enabled = en;
 	rtl_pool_svcs[i].run_in_diag = run_in_diag;
 
 	return (rtl_svc_handle_t) i;
@@ -300,7 +307,7 @@ rtl_init(void)
 	 */
 	T1CON = 0;
 	TMR1 = 0;
-	PR1 = (GetPeripheralClock() / 1000000) * RTL_SERVICE_PERIOD;
+	PR1 = (GetPeripheralClock() / 1000000) * RTL_SERVICE_PERIOD - 1;
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;
@@ -345,31 +352,26 @@ rtl_svc_handler_disable(void)
 int
 rtl_svc_display_table(int (*print_str)(const char *))
 {
-	char s[9];
+	char s[81];
 	int i;
 
 	/* print header */
-	print_str("-----------------");
-	print_str("\n\rSH SVC        E D");
-	print_str("\n\r-----------------");
+	print_str("-------------------------------------\n\r");
+	print_str("SH ADDRESS     E  D  N\n\r");
+	print_str("-------------------------------------\n\r");
 
 	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
 	    i++) {
-		print_str("\n\r ");
-		s[2] = '\0';
-		uint2hex(i, s, 1);
-		print_str(s + 1);
+		snprintf(s, sizeof (s), "%2d 0x%08X  %s  %s  %s\n\r",
+		    i, (unsigned int) rtl_pool_svcs[i].svc,
+		    rtl_pool_svcs[i].enabled ? "Y" : "N",
+		    rtl_pool_svcs[i].run_in_diag ? "Y" : "N",
+		    rtl_pool_svcs[i].name);
 
-		s[8] = '\0';
-		uint2hex((unsigned int) rtl_pool_svcs[i].svc, s, 4);
-		print_str(" 0x");
 		print_str(s);
-
-		print_str(rtl_pool_svcs[i].enabled ? " Y" : " N");
-		print_str(rtl_pool_svcs[i].run_in_diag ? " Y" : " N");
 	}
 
-	print_str("\n\r");
+	print_str("-------------------------------------\n\r");
 
 	return 0;
 }

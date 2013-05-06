@@ -24,6 +24,7 @@ extern "C" {
 #define	EBUSY	16	/* Device busy */
 #define	EXDEV	17
 #define	ENFILE	18
+#define	ENODEV	19	/* No such device */
 #define	ENOSPC	28	/* No space left on device */
 #define	EPROTO	71	/* Protocol error */
 

@@ -96,33 +96,6 @@ pcore_settime(char *td, int ln)
 }
 
 /*
- * Reads date and time.
- * Returns pointer to resulting string.
- */
-static char *
-pcore_gettime(void)
-{
-	static char tds[15];
-
-	time_t t;
-	struct tm *currtm;
-
-	t = time(NULL);
-	currtm = gmtime(&t);
-
-	ulong2dec(currtm->tm_year + 1900, tds, 4);
-	ulong2dec(currtm->tm_mon + 1, tds + 4, 2);
-	ulong2dec(currtm->tm_mday, tds + 6, 2);
-	ulong2dec(currtm->tm_hour, tds + 8, 2);
-	ulong2dec(currtm->tm_min, tds + 10, 2);
-	ulong2dec(currtm->tm_sec, tds + 12, 2);
-
-	tds[14] = '\0';
-
-	return tds;
-}
-
-/*
  * Takes care of sending response to master. Two responses might be scheduled
  * for transmission - ack/nak one and data one.
  * ack/nak response takes precedence over data response, since it is short,
@@ -204,7 +177,7 @@ pcore_init(void)
 	pcore_resp_data.id = MCOMM_PIC_ID;
 
 	/* Register and enable pcore service */
-	rtl_svc_init(pcore_svc, TRUE, TRUE);
+	rtl_svc_init("PicCore", pcore_svc, TRUE, TRUE);
 
 	return 0;
 }
@@ -260,5 +233,32 @@ pcore_process_query(char *data, int ln)
 	}
 
 	return 0;
+}
+
+/*
+ * Reads date and time.
+ * Returns pointer to resulting string.
+ */
+char *
+pcore_gettime(void)
+{
+	static char tds[15];
+
+	time_t t;
+	struct tm *currtm;
+
+	t = time(NULL);
+	currtm = gmtime(&t);
+
+	ulong2dec(currtm->tm_year + 1900, tds, 4);
+	ulong2dec(currtm->tm_mon + 1, tds + 4, 2);
+	ulong2dec(currtm->tm_mday, tds + 6, 2);
+	ulong2dec(currtm->tm_hour, tds + 8, 2);
+	ulong2dec(currtm->tm_min, tds + 10, 2);
+	ulong2dec(currtm->tm_sec, tds + 12, 2);
+
+	tds[14] = '\0';
+
+	return tds;
 }
 

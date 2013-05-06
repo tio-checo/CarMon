@@ -22,11 +22,24 @@
 
 #include "bt.h"
 #include "data_acq.h"
+
+#ifdef KWP2K_MODULE
 #include "kwp2k.h"
+#endif
+
 #include "master_comm.h"
 #include "mon.h"
+
+#ifdef OBD_MODULE
 #include "obd.h"
+#endif
+
 #include "pic_core.h"
+
+#ifdef RFID_MODULE
+#include "rfid.h"
+#endif
+
 #include "rt_light.h"
 #include "utils.h"
 
@@ -91,9 +104,6 @@ static mcom_response_t mcom_resp;
 
 /* flag indicating desired to suspend the system */
 static BOOL mcom_suspend_fl;
-
-/* packet to be sent to ECU */
-static unsigned char mcom_packet_ecu[MCOM_PACKET_MAXLN];
 
 /* main state machine */
 static int mcom_st;
@@ -209,8 +219,14 @@ mcom_rx_st(void)
 static int
 mcom_decode_packet(void)
 {
+#ifdef KWP2K_MODULE
+	/* packet to be sent to ECU */
+	static unsigned char mcom_packet_ecu[MCOM_PACKET_MAXLN];
+
 	BOOL send_wup;
 	int j;
+#endif
+
 	int err;
 	int ret = 0;
 	int ln = mcom_co.rx_tail - 1;
@@ -227,6 +243,19 @@ mcom_decode_packet(void)
 		}
 
 		break;
+
+#ifdef RFID_MODULE
+	/* RFID module */
+	case MCOMM_RFID_ID:
+		err = rfid_process_query(&mcom_co.rx_buf[1], ln);
+
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
+
+		break;
+#endif
 
 	/* A/D converter */
 	case MCOMM_ADC_ID:
@@ -250,6 +279,7 @@ mcom_decode_packet(void)
 
 		break;
 
+#ifdef OBD_MODULE
 	/* module handling communication with ECUs */
 	case MCOMM_ECU_ID:
 		err = obd_process_query(&mcom_co.rx_buf[1], ln);
@@ -260,9 +290,11 @@ mcom_decode_packet(void)
 		}
 
 		break;
+#endif
 
 	/* now process legacy packets */
 
+#ifdef KWP2K_MODULE
 	/*
 	 * Send raw KWP packet prepended with Wake up Pattern.
 	 * This command is only supported in "basic" mode.
@@ -316,11 +348,6 @@ mcom_decode_packet(void)
 
 		break;
 
-	/* Enter diagnostic mode */
-	case MCOM_CMD_DIAG_MODE:
-		mon_diag_enter();
-		break;
-
 	/* Change communication mode */
 	case MCOM_CMD_CHANGE_MODE:
 		/*
@@ -342,6 +369,12 @@ mcom_decode_packet(void)
 
 		ret = 1;
 
+		break;
+#endif
+
+	/* Enter diagnostic mode */
+	case MCOM_CMD_DIAG_MODE:
+		mon_diag_enter();
 		break;
 
 	/* Go to sleep */
@@ -376,12 +409,11 @@ mcom_decode_packet(void)
 static int
 mcom_process_packet_st(void)
 {
+#ifdef KWP2K_MODULE
 	static unsigned char data[2];
 
-	int ln;
-	int ret;
-	int rx_err;
 	kwp2k_rx_char_t kwp2k_ch;
+#endif
 
 	switch (mcom_st) {
 	case MCOM_ST_IDLE:
@@ -410,6 +442,7 @@ mcom_process_packet_st(void)
 			break;
 		}
 
+#ifdef KWP2K_MODULE
 		/* Handle packet received from ECU */
 		/* In basic mode, send every byte received from ECU */
 		if (kwp2k_is_basic_mode() && (kwp2k_getchar(&kwp2k_ch) == 0)) {
@@ -438,6 +471,7 @@ mcom_process_packet_st(void)
 			}
 		} else {
 			unsigned char *d;
+			int rx_err, ln, ret;
 
 			ret = kwp2k_ul_recv(&d, &ln, &rx_err);
 
@@ -463,9 +497,11 @@ mcom_process_packet_st(void)
 
 		/* Wait until response is queued for transmission */
 		mcom_st = MCOM_ST_SEND2MASTER;
-
+#endif
 		break;
 
+
+#ifdef KWP2K_MODULE
 	/*
 	 * Wait until packet is completely transmitted to ECU.
 	 * Then (if in basic mode) send ACK to master. In enhanced mode,
@@ -487,6 +523,7 @@ mcom_process_packet_st(void)
 		}
 
 		break;
+#endif
 
 	/*
 	 * Wait until packet response to master is queued for transmission,
@@ -717,8 +754,6 @@ mcom_tx_st(void)
 static int
 mcom_svc(void)
 {
-//	kwp2k_rx_char_t	kwp2k_ch;
-
 	/* Receive packet from master */
 	mcom_rx_st();
 
@@ -726,7 +761,7 @@ mcom_svc(void)
 	mcom_process_packet_st();
 
 	/* Transmit packet to master */
-	mcom_tx_st();	
+	mcom_tx_st();
 
 	return 0;
 }
@@ -782,7 +817,7 @@ mcom_init(void)
 	mcom_suspend_fl = FALSE;
 
 	/* Register service and enable it. */
-	rtl_svc_init(mcom_svc, TRUE, FALSE);
+	rtl_svc_init("MasterCom", mcom_svc, TRUE, FALSE);
 
 	return 0;
 }

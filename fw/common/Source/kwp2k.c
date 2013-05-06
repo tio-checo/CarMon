@@ -1079,7 +1079,7 @@ kwp2k_init(void)
 	kwp2k_ul_goto(KWP_STUL_WAIT4SEND);
 
 	/* register and enable main service */
-	rtl_svc_init(kwp2k_svc, TRUE, FALSE);
+	rtl_svc_init("Kwp2k", kwp2k_svc, TRUE, FALSE);
 
 	return 0;
 }

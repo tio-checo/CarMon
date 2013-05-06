@@ -336,7 +336,7 @@ obd_init(void)
 	obd_autoscan_run = FALSE;
 
 	/* register and enable OBD service */
-	rtl_svc_init(obd_svc, TRUE, FALSE);
+	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);
 
 	return 0;
 }

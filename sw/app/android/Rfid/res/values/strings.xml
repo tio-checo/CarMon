@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rfid</string>
+    <string name="indicator1Label">ID</string>
+    <string name="indicator2Label">Date</string>
+    <string name="indicator3Label">Time</string>
+    <string name="indicator4Label">Vbatt</string>
+    <string name="indicator5Label"></string>
+    <string name="indicator6Label"></string>
+    <string name="indicator7Label"></string>
+    <string name="indicator8Label"></string>
+
+    <string name="indicator1Value">-</string>
+    <string name="indicator2Value">-</string>
+    <string name="indicator3Value">-</string>
+    <string name="indicator4Value">-</string>
+    <string name="indicator5Value"></string>
+    <string name="indicator6Value"></string>
+    <string name="indicator7Value"></string>
+    <string name="indicator8Value"></string>
+
+<!--
+    <string name="ecuStateButton">ECU</string>
+    <string name="gpsStateButton">GPS</string>
+-->
+    <string name="picStateButton">PIC</string>
+</resources>

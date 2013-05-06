@@ -5,8 +5,8 @@
 
 /* module IDs and commands */
 #define	MCOMM_COMM_ID		'M'	/* communication module ID */
-
 #define	MCOMM_PIC_ID		'P'	/* PIC module ID */
+#define MCOMM_RFID_ID		'R'	/* RFID module ID */
 
 /* data type in data payload sent in response to master */
 #define	MCOM_DATA_TYPE_ASCII	'A'	/* raw ASCII data */
