@@ -81,8 +81,20 @@ void UartInit(UINT pbClk)
 	UxBRG = (pbClk / 16 / DEFAULT_BAUDRATE - 1);
 	UxMODE = UART_EN;
 
-	/* TX pin is inverted, so configure it as active in LOW */
+#ifdef UART_BT
+	UxSTA = (UART_RX_ENABLE | UART_TX_ENABLE);
+
+	/* connect power to BT module (PB14) - active LOW */
+	LATBCLR = 0x4000;
+	TRISBCLR = 0x4000;
+
+	/* deactivate  RESET signal (PB15) - active HIGH */
+	LATBCLR = 0x8000;
+	TRISBCLR = 0x8000;
+#else
+	/* KWP2000 UART has TX pin inverted, so configure it as active in LOW */
 	UxSTA = (UART_RX_ENABLE | UART_TX_ENABLE | UART_TX_INV);
+#endif
 }
 
 
@@ -208,14 +220,18 @@ BOOL GetChar(UINT8 *byte)
 ********************************************************************/
 void PutChar(UINT8 txChar)
 {
+#ifndef UART_BT
     UINT8 b;
+#endif
 
     while(UxSTAbits.UTXBF); // wait for TX buffer to be empty
     UxTXREG = txChar;
 
-    // Since we are running in half duplex mode, every sent character
-    // is echoed back. Discard those echos.
+#ifndef UART_BT
+    // KWP2000 UART runs in half duplex mode which means that every
+    // character transmitted is echoed back. Discard those echos.
     while (!GetChar(&b));
+#endif
 }
 
 /***************************************End Of File*************************************/

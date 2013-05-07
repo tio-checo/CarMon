@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python -u
 
 import argparse
 import serial
@@ -41,11 +41,13 @@ class Bootloader():
     # At this point, only UART is supported as low level communication
     # protocol.
     #
-    def __init__(self, comm_device, baudrate = 115200, timeout = 1.0):
+    def __init__(self, comm_device, baudrate = 115200, timeout = 1.0,
+                 half_duplex = False):
 
         self.comm_device = comm_device
         self.baudrate = baudrate
         self.timeout = timeout
+        self.half_duplex = half_duplex
 
         self.ser = serial.Serial(self.comm_device, self.baudrate,
                                  timeout = self.timeout)
@@ -76,19 +78,16 @@ class Bootloader():
             #print "->0x%X" % ord(b[0])
             return ord(b[0])
 
-        # Running in half duplex mode, so every sent character is echoed back.
-        # Discard that echo
-        self
-
     def send_l2_char(self, ch):
         '''
         '''
         #print "<-0x%X" % ord(ch)
         self.ser.write(ch)
 
-        # Running in half duplex mode, so every sent character is echoed back.
+        # If running in half duplex mode, every sent character is echoed back.
         # Discard that echo
-        self.recv_l2_char()
+        if self.half_duplex:
+            self.recv_l2_char()
 
     def send_l3_char(self, ch):
         '''
@@ -268,6 +267,10 @@ def main():
                         default='/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a',
                         help='device port (e.g. /dev/ttya)')
 
+    parser.add_argument('-H', dest='half_duplex', action='store_true',
+                        default=False,
+                        help='run in half duplex mode')
+
     parser.add_argument('-v', dest='get_version', action='store_true',
                         default=False,
                         help='get bootloader version from device')
@@ -289,11 +292,26 @@ def main():
     # Instantiate bootloader object
     #   - serial port is initialized
     #   - Intel HEX file is loaded to memory
-    bl = Bootloader(args.comm_device)
+    bl = Bootloader(args.comm_device, half_duplex = args.half_duplex)
 
     # open serial port for communication with PIC module
     #ser = serial.Serial('/dev/rfcomm0', 115200, timeout=1.0)
     #ser = serial.Serial(args.comm_device, 115200, timeout=1.0)
+
+    # Try to establish connection first
+    print "Establishing connection",
+    for i in range(5):
+        print ".",
+
+        v = bl.get_version()
+        if v != None:
+            break
+
+    if v == None:
+        print "Failed."
+        sys.exit(1)
+    else:
+        print "Done."
 
     # Get and display version of bootloader
     if args.get_version:

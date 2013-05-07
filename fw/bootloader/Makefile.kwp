@@ -1,12 +1,24 @@
-CC= /opt/mipsel/bin/mipsel-gcc
-OBJCOPY= /opt/mipsel/bin/mipsel-objcopy
-OBJDUMP= /opt/mipsel/bin/mipsel-objdump
-NM= /opt/mipsel/bin/mipsel-nm
+TOOLS_DIR= /opt/mipsel
+TOOLS_BIN= $(TOOLS_DIR)/bin
 
+CC= $(TOOLS_BIN)/mipsel-gcc
+OBJCOPY= $(TOOLS_BIN)/mipsel-objcopy
+OBJDUMP= $(TOOLS_BIN)/mipsel-objdump
+NM= $(TOOLS_BIN)/mipsel-nm
+
+# project directories containing header files
+HEADER_DIRS= -I. -I./Include  -I../common/Include
+
+# compiler flags
+#  - code optimized for size
+#  - soft float
 CFLAGS= -D__XC32 -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DTRANSPORT_LAYER_UART -Os -Wall -msoft-float \
--march=m4k -I. -I./Include
-LDFLAGS= -msoft-float -march=m4k -nostartfiles
+-DOBDCONV_BOARD -DTRANSPORT_LAYER_UART \
+-nostdinc -Os -Wall -msoft-float -march=m4k  $(HEADER_DIRS)
+
+# linker flags
+#  - soft float
+LDFLAGS= -msoft-float -march=m4k -nostdlib
 
 OBJFILES = BootLoader.o NVMem.o Uart.o Framework.o
 

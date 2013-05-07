@@ -25,10 +25,7 @@
 
 #ifndef __HARDWAREPROFILE_PIC32MX_OBDCONV_H__
 #define __HARDWAREPROFILE_PIC32MX_OBDCONV_H__
-
-
-
- 	/*******************************************************************/
+    /*******************************************************************/
     /******** USB stack hardware selection options *********************/
     /*******************************************************************/
     //This section is the set of definitions required by the MCHPFSUSB

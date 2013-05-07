@@ -26,7 +26,11 @@
 
 #define DEFAULT_BAUDRATE 115200
 
-#define Ux(y)         U1##y
+#ifdef UART_BT
+#define Ux(y)         U2##y		/* Bluetooth UART */
+#else
+#define Ux(y)         U1##y		/* KWP2000 UART */
+#endif
 
 #define UxBRG           Ux(BRG)
 #define UxMODE          Ux(MODE)
