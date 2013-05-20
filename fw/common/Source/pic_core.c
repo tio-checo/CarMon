@@ -12,6 +12,11 @@
 #include "xc.h"
 
 #include "master_comm.h"
+
+#ifdef MCP9801_MODULE
+#include "mcp9801.h"
+#endif
+
 #include "pic_core.h"
 #include "rt_light.h"
 #include "strings.h"
@@ -141,10 +146,10 @@ pcore_comm_svc(void)
  * Sends data packet to master.
  */
 static int
-pcore_send_data_response_to_master(char *buf, int ln)
+pcore_send_data_response_to_master(void *buf, int ln, int type)
 {
 	mcom_prepare_generic_response(&pcore_resp_data, "00",
-	    buf, MCOM_DATA_TYPE_ASCII, ln);
+	    buf, type, ln);
 
 	fl_send_data = TRUE;
 
@@ -191,6 +196,7 @@ pcore_process_query(char *data, int ln)
 	int err;
 	BOOL respond_with_ack = TRUE;
 	char *tds;
+	unsigned int temp;
 
 	/* Assume ACK/NAK will be sent to master */
 	fl_send_ack_nak = TRUE;
@@ -209,11 +215,25 @@ pcore_process_query(char *data, int ln)
 		case MCOMM_PCORE_CMD_GETTIME:
 			tds = pcore_gettime();
 
-			pcore_send_data_response_to_master(tds, strlen(tds));
+			pcore_send_data_response_to_master(tds, strlen(tds),
+			    MCOM_DATA_TYPE_ASCII);
 
 			/* Data will be sent to master instead of ACK/NAK */
 			fl_send_ack_nak = FALSE;
 			break;
+
+#ifdef MCP9801_MODULE
+		/* Get temperature */
+		case MCOMM_PCORE_CMD_GETTEMP:
+			temp = mcp9801_get_temperature();
+
+			pcore_send_data_response_to_master(&temp, 1,
+			    MCOM_DATA_TYPE_WORD);
+
+			/* Data will be sent to master instead of ACK/NAK */
+			fl_send_ack_nak = FALSE;
+			break;
+#endif
 
 		/* unknown command */
 		default:

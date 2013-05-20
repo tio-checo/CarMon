@@ -549,7 +549,7 @@ class PicCom {
      * -1 otherwise.
      */
     public int setDateTime(String dt) {
-        if (!sendPacket("PT", dt)) {
+        if (!sendPacket("PD", dt)) {
             return -1;
         }
 
@@ -868,17 +868,17 @@ class CommunicationService {
 		        } else if (mState == ST_COMM_WAIT4RFID) {
                     String p;
 
-                    /* Ask PIC module for battery voltage */
-                    pc.sendPacket("A", "08");
+                    /* Ask PIC module for temperature */
+                    pc.sendPacket("P", "t");
 
                     /* Process packets received from PIC module. */
                     while ((p = pc.recvPacket()) != null) {
 
-                        /* Packet from AD module */
-                        if (p.startsWith("A00")) {
-                            final int adv;
+                        /* Temperature */
+                        if (p.startsWith("P00")) {
+                            final int adv, temp;
 
-                            /* AD value obtained, refresh indicator */
+                            /* Temperature obtained, refresh indicator */
                             int[] picData = new int[2];
 
                             for (int i = 0; i < picData.length; i++) {
@@ -888,13 +888,24 @@ class CommunicationService {
 
                             adv = picData[0] * 256 + picData[1];
 
+                            /* temperature is coded as two's complement */
+                            if (adv >= 32768) {
+                                temp = adv - 65536;
+                            } else {
+                                temp = adv;
+                            }
+
                             final TextView lbl = (TextView) mActivity.findViewById(
                                 R.id.indicator4Value);
 
                             mActivity.runOnUiThread(new Runnable() {
                                 public void run() {
+/*
                                     lbl.setText(String.format("%.1f V",
                                             0.01837 * adv));
+*/
+                                    lbl.setText(String.format("%.1f stC",
+                                            temp / 256.0));
                                 }
                             });
                         } else if (p.startsWith("R00")) {

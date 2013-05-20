@@ -4,7 +4,7 @@
     <string name="indicator1Label">ID</string>
     <string name="indicator2Label">Date</string>
     <string name="indicator3Label">Time</string>
-    <string name="indicator4Label">Vbatt</string>
+    <string name="indicator4Label">Temp</string>
     <string name="indicator5Label"></string>
     <string name="indicator6Label"></string>
     <string name="indicator7Label"></string>

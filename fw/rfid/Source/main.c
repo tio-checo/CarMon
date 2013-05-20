@@ -23,6 +23,11 @@
 #endif
 
 #include "pic_core.h"
+
+#ifdef MCP9801_MODULE
+#include "mcp9801.h"
+#endif
+
 #include "rfid.h"
 #include "rt_light.h"
 #include "usb_app.h"
@@ -115,6 +120,10 @@ main(int argc, char **argv)
 
 	bt_init();
 	rfid_init();
+
+#ifdef MCP9801_MODULE
+	mcp9801_init();
+#endif
 
 #ifdef KWP2K_MODULE
 	kwp2k_init();

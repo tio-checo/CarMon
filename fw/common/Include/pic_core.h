@@ -11,8 +11,9 @@
 
 /* constants */
 /* PIC core module commands */
-#define	MCOMM_PCORE_CMD_SETTIME	'T'	/* set time and date */
-#define	MCOMM_PCORE_CMD_GETTIME	'D'	/* get time and date */
+#define	MCOMM_PCORE_CMD_SETTIME	'D'	/* set time and date */
+#define	MCOMM_PCORE_CMD_GETTIME	'd'	/* get time and date */
+#define	MCOMM_PCORE_CMD_GETTEMP	't'	/* get temperature from MCP9801 */
 
 /* types */
 
