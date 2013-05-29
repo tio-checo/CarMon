@@ -18,7 +18,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - code optimized for size
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DRFID_MODULE -DMCP9801_MODULE \
+-DOBDCONV_BOARD -DRFID_MODULE -DI2CSW_MODULE -DMCP9801_MODULE \
 -nostdinc -Os -Wall -msoft-float \-march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -30,7 +30,8 @@ LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
 
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/helpers.o $(BUILD_DIR)/pic_core.o $(BUILD_DIR)/rfid.o \
-    $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mcp9801.o $(BUILD_DIR)/mon.o \
+    $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/i2c_sw.o $(BUILD_DIR)/mcp9801.o \
+    $(BUILD_DIR)/mon.o \
     $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/log.o $(BUILD_DIR)/utils.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
     $(BUILD_DIR)/usb_device.o \
@@ -46,8 +47,11 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
 
 APPNAME= main
 
-all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
-    $(APPNAME).sym
+all: $(BUILD_DIR) $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex \
+    $(APPNAME).hdr $(APPNAME).sym
+
+$(BUILD_DIR):
+	[[ ! -d $@ ]] && mkdir $@
 
 $(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
 	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) $(LIB_DIRS) \
@@ -101,6 +105,9 @@ $(BUILD_DIR)/rt_light.o: ../common/Source/rt_light.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/helpers.o: ../common/Source/helpers.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/i2c_sw.o: ../common/Source/i2c_sw.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/utils.o: ../common/Source/utils.c

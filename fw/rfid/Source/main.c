@@ -24,6 +24,10 @@
 
 #include "pic_core.h"
 
+#ifdef I2CSW_MODULE
+#include "i2c_sw.h"
+#endif
+
 #ifdef MCP9801_MODULE
 #include "mcp9801.h"
 #endif
@@ -120,6 +124,10 @@ main(int argc, char **argv)
 
 	bt_init();
 	rfid_init();
+
+#ifdef I2CSW_MODULE
+	i2csw_init();
+#endif
 
 #ifdef MCP9801_MODULE
 	mcp9801_init();

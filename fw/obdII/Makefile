@@ -46,8 +46,11 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
 
 APPNAME= main
 
-all: $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex $(APPNAME).hdr \
-    $(APPNAME).sym
+all: $(BUILD_DIR) $(APPNAME).elf $(APPNAME).dis $(APPNAME).hex \
+    $(APPNAME).hdr $(APPNAME).sym
+
+$(BUILD_DIR):
+	[[ ! -d $@ ]] && mkdir $@
 
 $(APPNAME).elf: $(OBJFILES) $(BUILD_DIR)/crt0-mipsel-app.o
 	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $(OBJFILES) $(LIB_DIRS) \

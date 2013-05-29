@@ -196,7 +196,6 @@ pcore_process_query(char *data, int ln)
 	int err;
 	BOOL respond_with_ack = TRUE;
 	char *tds;
-	unsigned int temp;
 
 	/* Assume ACK/NAK will be sent to master */
 	fl_send_ack_nak = TRUE;
@@ -224,7 +223,9 @@ pcore_process_query(char *data, int ln)
 
 #ifdef MCP9801_MODULE
 		/* Get temperature */
-		case MCOMM_PCORE_CMD_GETTEMP:
+		case MCOMM_PCORE_CMD_GETTEMP: {
+			static unsigned int temp;
+
 			temp = mcp9801_get_temperature();
 
 			pcore_send_data_response_to_master(&temp, 1,
@@ -232,7 +233,7 @@ pcore_process_query(char *data, int ln)
 
 			/* Data will be sent to master instead of ACK/NAK */
 			fl_send_ack_nak = FALSE;
-			break;
+		} break;
 #endif
 
 		/* unknown command */
