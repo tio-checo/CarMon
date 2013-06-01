@@ -17,6 +17,10 @@
 #include "mcp9801.h"
 #endif
 
+#ifdef PCF8563_MODULE
+#include "pcf8563.h"
+#endif
+
 #include "pic_core.h"
 #include "rt_light.h"
 #include "strings.h"
@@ -82,9 +86,9 @@ pcore_settime(char *td, int ln)
 	if (newtm.tm_min < 0 || newtm.tm_min > 59)
 		return EINVAL;
 
-	/* td[12..13] - seconds 00..61 - allows for up to two leap seconds */
+	/* td[12..13] - seconds 00..59 */
 	newtm.tm_sec = (int) dec2ulong(td + 12, 2);
-	if (newtm.tm_sec < 0 || newtm.tm_sec > 61)
+	if (newtm.tm_sec < 0 || newtm.tm_sec > 59)
 		return EINVAL;
 
 	t = mktime(&newtm);
@@ -96,6 +100,11 @@ pcore_settime(char *td, int ln)
 
 	if (settimeofday(&newtv, NULL) != 0)
 		return EINVAL;
+
+#ifdef PCF8563_MODULE
+	/* Set time in RTC */
+	pcf8563_settime(&newtm);
+#endif
 
 	return 0;
 }
@@ -162,9 +171,44 @@ pcore_send_data_response_to_master(void *buf, int ln, int type)
 static int
 pcore_svc(void)
 {
-	/* update time of the day */
+#ifdef PCF8563_MODULE
+	static BOOL pcore_time_initialized = FALSE;
+
+	time_t t;
+	struct tm newtm;
+	struct timeval newtv;
+
+	/* initialize time from RTC */
+	if (!pcore_time_initialized) {
+		switch (pcf8563_gettime(&newtm)) {
+		/* operation in progress */
+		case EAGAIN:
+			break;
+
+		/* operation successfully finished */
+		case 0:
+			t = mktime(&newtm);
+			if (t != (time_t) -1) {
+				newtv.tv_sec = t;
+				newtv.tv_usec = 0;
+
+				settimeofday(&newtv, NULL);
+			}
+
+			/* PASS THROUGH */
+
+		/* operation failed - do not initialize core time from RTC */
+		default:
+			pcore_time_initialized = TRUE;
+			break;
+		} /*switch*/
+	}
+#endif
+
+	/* Update time of the day. */
 	updatetimeofday(RTL_SERVICE_PERIOD);
 
+	/* Handle communication service. */
 	pcore_comm_svc();
 
 	return 0;

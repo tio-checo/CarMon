@@ -19,6 +19,7 @@ extern "C" {
 #define	EAGAIN	11
 #define	EPERM	12
 #define	EDATA	13
+#define EFAULT	14	/* Bad address */
 #define	EDRIVE	15
 #define	ECURDIR	16
 #define	EBUSY	16	/* Device busy */

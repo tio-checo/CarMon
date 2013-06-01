@@ -32,6 +32,10 @@
 #include "mcp9801.h"
 #endif
 
+#ifdef PCF8563_MODULE
+#include "pcf8563.h"
+#endif
+
 #include "rfid.h"
 #include "rt_light.h"
 #include "usb_app.h"
@@ -131,6 +135,10 @@ main(int argc, char **argv)
 
 #ifdef MCP9801_MODULE
 	mcp9801_init();
+#endif
+
+#ifdef PCF8563_MODULE
+	pcf8563_init();
 #endif
 
 #ifdef KWP2K_MODULE
