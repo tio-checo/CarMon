@@ -865,11 +865,15 @@ class CommunicationService {
                     updateStatusIndicator(mStsPic, true);
 
                     mState = ST_COMM_WAIT4RFID;
-		        } else if (mState == ST_COMM_WAIT4RFID) {
+                } else if (mState == ST_COMM_WAIT4RFID) {
                     String p;
 
                     /* Ask PIC module for temperature */
+/*
                     pc.sendPacket("P", "t");
+*/
+                    /* Ask PIC module for battery voltage */
+                    pc.sendPacket("A", "08");
 
                     /* Process packets received from PIC module. */
                     while ((p = pc.recvPacket()) != null) {
@@ -900,18 +904,36 @@ class CommunicationService {
 
                             mActivity.runOnUiThread(new Runnable() {
                                 public void run() {
-/*
-                                    lbl.setText(String.format("%.1f V",
-                                            0.01837 * adv));
-*/
                                     lbl.setText(String.format("%.1f stC",
                                             temp / 256.0));
+                                }
+                            });
+                        } else if (p.startsWith("A00")) {
+                            final int adv;
+
+                            /* Battery voltage obtained, refresh indicator */
+                            int[] picData = new int[2];
+
+                            for (int i = 0; i < picData.length; i++) {
+                                picData[i] = Integer.parseInt(p.substring(
+                                        3 + (i * 2), 3 + (i + 1) * 2), 16);
+                            }
+
+                            adv = picData[0] * 256 + picData[1];
+
+                            final TextView lbl = (TextView) mActivity.findViewById(
+                                    R.id.indicator5Value);
+
+                            mActivity.runOnUiThread(new Runnable() {
+                                public void run() {
+                                    lbl.setText(String.format("%.1f V",
+                                            0.018369 * adv));
                                 }
                             });
                         } else if (p.startsWith("R00")) {
                             final String pr = p;
 
-                            /* Packet received, process it. */
+                            /* RFID packet received, process it. */
                             Log.i(Rfid.TAG, pr);
 
                             /* Log packet to the file. */

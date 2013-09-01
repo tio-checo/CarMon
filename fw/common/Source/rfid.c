@@ -106,7 +106,88 @@ static mcom_response_t rfid_resp_data;
 /* If set to TRUE, send response containing data to master */
 static BOOL fl_send_data;
 
+/* heartbeat LED blinking mode */
+static unsigned char rfid_heartbeat_mode;
+
+/* When set to TRUE, turn the LED on for a while. */
+static BOOL rfid_turn_led_on;
+
 /* local functions */
+/*
+ * handle heartbeat LED
+ */
+static void
+rfid_heartbeat_svc(void)
+{
+	static int hb_counter = RTL_TIME_250_MSEC;
+	static int hb_num_ticks = 1;
+	static int hb_curr_tick = 1;
+
+	/* Indicate packet received from RFID reader. */
+	if (rfid_turn_led_on) {
+		rfid_turn_led_on = FALSE;
+
+		/* Turn LED on for 1 second. */
+		LATBCLR = 1 << 6;
+		hb_counter = RTL_TIME_1_SEC;
+
+		rfid_heartbeat_mode = HB_MODE_ON;
+	} else {
+		rfid_heartbeat_mode = HB_MODE_TICKS;
+
+		hb_num_ticks = 1;
+	}
+
+	switch (rfid_heartbeat_mode) {
+	case HB_MODE_FIFTY_FIFTY:
+		if (--hb_counter <= 0) {
+			hb_counter = RTL_TIME_250_MSEC;
+			LATBINV = 1 << 6;
+		}
+		break;
+
+	case HB_MODE_TICKS:
+		if (hb_curr_tick > 0) {
+			hb_counter--;
+			if (hb_counter <= 0) {
+				hb_curr_tick--;
+				if (hb_curr_tick > 0)
+					hb_counter = RTL_TIME_200_MSEC;
+				else
+					hb_counter = RTL_TIME_1_SEC;
+			} else if (hb_counter <= RTL_TIME_175_MSEC) {
+				LATBSET = 1 << 6;
+			} else {
+				LATBCLR = 1 << 6;
+			}
+		} else {
+			/* silent period */
+			if (--hb_counter <= 0) {
+				hb_counter = RTL_TIME_200_MSEC;
+				hb_curr_tick = hb_num_ticks;
+				LATBCLR = 1 << 6;
+			}
+		}
+		break;
+
+	case HB_MODE_ON:
+		if (--hb_counter <= 0) {
+			/* Turn the LED off */
+			LATBSET = 1 << 6;
+
+			/*
+			 * Switch to the normal mode - start with period
+			 * of silence.
+			 */
+			hb_curr_tick = 0;
+			hb_counter = RTL_TIME_1_SEC;
+			rfid_heartbeat_mode = HB_MODE_TICKS;
+		}
+		break;
+
+	}
+}
+
 /*
  * Receive character from ID20. Save receive errors if there are any.
  * Return EAGAIN if buffer is empty.
@@ -293,9 +374,11 @@ rfid_id20_svc(void)
 		}
 
 		/*
-		 * Valid packet received, check if it should
-		 * be passed to master.
+		 * Valid packet received. Turn on heartbeat LED for a while
+		 * and pass the packet to master if applicable.
 		 */
+		rfid_turn_led_on = TRUE;
+
 		if (rfid_send2bt) {
 			char *ts;
 
@@ -396,6 +479,9 @@ rfid_log_svc(void)
 static int
 rfid_svc(void)
 {
+	/* Handle heartbeat LED */
+	rfid_heartbeat_svc();
+
 	/* Handle communication with RFID reader */
 	rfid_id20_svc();
 
@@ -457,6 +543,10 @@ rfid_init(void)
 	/* Set module ID for purposes of communication with master. */
 	rfid_resp_ack_nak.id = MCOMM_RFID_ID;
 	rfid_resp_data.id = MCOMM_RFID_ID;
+
+	/* Let LED indicator flash. */
+	rfid_turn_led_on = FALSE;
+	rfid_heartbeat_mode = HB_MODE_TICKS;
 
 	return 0;
 }

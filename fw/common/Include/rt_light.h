@@ -9,6 +9,13 @@
 /* heartbeat modes */
 #define HB_MODE_FIFTY_FIFTY	0
 #define HB_MODE_TICKS		1
+#define HB_MODE_ON		2
+
+/* various time constants */
+#define RTL_TIME_175_MSEC	(175000 / RTL_SERVICE_PERIOD)	/* 175 ms */
+#define RTL_TIME_200_MSEC	(200000 / RTL_SERVICE_PERIOD)	/* 200 ms */
+#define RTL_TIME_250_MSEC	(250000 / RTL_SERVICE_PERIOD)	/* 250 ms */
+#define RTL_TIME_1_SEC		(1000000 / RTL_SERVICE_PERIOD)	/* 1 second */
 
 /* types */
 /* time */

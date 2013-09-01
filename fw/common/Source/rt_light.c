@@ -88,12 +88,12 @@ rtl_timer_svc(void)
 }
 
 /*
- * handle hartbeat LED
+ * handle heartbeat LED
  */
 static void
 rtl_heartbeat_svc(void)
 {
-	static int hb_counter = 250000 / RTL_SERVICE_PERIOD;
+	static int hb_counter = RTL_TIME_250_MSEC;
 	static int hb_num_ticks = 1;
 	static int hb_curr_tick = 1;
 
@@ -118,7 +118,7 @@ rtl_heartbeat_svc(void)
 	switch (heartbeat_mode) {
 	case HB_MODE_FIFTY_FIFTY:
 		if (--hb_counter <= 0) {
-			hb_counter = 250000 / RTL_SERVICE_PERIOD;
+			hb_counter = RTL_TIME_250_MSEC;
 			LATBINV = 1 << 13;
 		}
 		break;
@@ -129,12 +129,10 @@ rtl_heartbeat_svc(void)
 			if (hb_counter <= 0) {
 				hb_curr_tick--;
 				if (hb_curr_tick > 0)
-					hb_counter =
-					    200000 / RTL_SERVICE_PERIOD;
+					hb_counter = RTL_TIME_200_MSEC;
 				else
-					hb_counter =
-					    1000000 / RTL_SERVICE_PERIOD;
-			} else if (hb_counter <= 175000 / RTL_SERVICE_PERIOD) {
+					hb_counter = RTL_TIME_1_SEC;
+			} else if (hb_counter <= RTL_TIME_175_MSEC) {
 				LATBSET = 1 << 13;
 			} else {
 				LATBCLR = 1 << 13;
@@ -142,7 +140,7 @@ rtl_heartbeat_svc(void)
 		} else {
 			/* silent period */
 			if (--hb_counter <= 0) {
-				hb_counter = 200000 / RTL_SERVICE_PERIOD;
+				hb_counter = RTL_TIME_200_MSEC;
 				hb_curr_tick = hb_num_ticks;
 				LATBCLR = 1 << 13;
 			}

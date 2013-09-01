@@ -1,0 +1,63 @@
+REF	VALUE	MAN.	VENDOR	P/N
+------------------------------------------------
+B1	unknown	unknown	GME	819-023	
+
+C1	100M/35V	LZ	GME	908-037	
+C6	100M/35V	LZ	GME	908-037	
+C8	100M/35V	LZ	GME	908-037	
+
+C2	100n	Yageo	SOS	117369	
+C4	100n	Yageo	SOS	117369	
+C7	100n	Yageo	SOS	117369	
+C9	100n	Yageo	SOS	117369	
+C10	100n	Yageo	SOS	117369	
+C11	100n	Yageo	SOS	117369	
+C12	100n	Yageo	SOS	117369	
+
+C3	15p	Yageo	GME	906-078	
+
+C5	0,1F/5,5V	Panasonic	GME	123-382	
+
+CONN1	unknown	unknown	unknown	unknown	
+CONN3	unknown	unknown	unknown	unknown	
+
+D1	1N4007	unknown	GME	917-005	
+D3	1N4007	unknown	GME	917-005	
+
+D2	LED_GREEN	Kingbright	SOS	12659	
+
+F1	unknown	Hitano	GME	633-342	
+
+L1	unknown	GYM/CYM	GME	611-095	
+
+Q1	BSS138	Fairchild	SOS	34802	
+Q2	BSS138	Fairchild	SOS	34802	
+
+R1	JUMPER	unknown	unknown	unknown	
+R2	JUMPER	unknown	unknown	unknown	
+
+R9	100R	Yageo	GME	901-212
+R11	100R	Yageo	GME	901-212
+
+R4	1k	Yageo	SOS	117323
+R5	1k	Yageo	SOS	117323	
+R12	1k	Yageo	SOS	117323	
+R13	1k	Yageo	SOS	117323	
+
+R7	10k	Yageo	SOS	117335	
+R8	10k	Yageo	SOS	117335	
+
+R3	100k	Yageo	SOS	117347	
+R6	100k	Yageo	SOS	117347	
+R10	100k	Yageo	SOS	117347	
+
+S1	unknown	unknown	GME	631-377	
+SPK1	unknown	www.hitpoint.com.tw ?	GME	641-006	
+U1	ID20LA	ID-innovations	SOS	142011	
+U10	LF33CDT	ST	SOS	43893	
+U2	M24C02	ST 	SOS	29509	
+U3	MCP9801-M/SN	Microchip	Microchip	MCP9801-M/SN	
+U4	PCF8563T	NXP	GME	959-259	
+U5	74HC04	Philips	GME	951-003	
+U6	pic32mxobd	unknown	tio.cz	unknown	
+X1	32,768 kHz	unknown	GME	131-036	
