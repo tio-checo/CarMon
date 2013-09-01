@@ -273,7 +273,7 @@ symversion=0.1
 T 48500 38100 5 10 0 0 0 0 1
 vendor=GME
 T 48500 38100 5 10 0 0 0 0 1
-vendor_part_number=131-073
+vendor_part_number=970-023
 T 48500 38100 5 10 0 0 0 0 1
 refdes=X1
 T 48500 38100 5 10 0 0 0 0 1
