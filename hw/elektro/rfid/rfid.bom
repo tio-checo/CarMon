@@ -2,9 +2,9 @@ REF	VALUE	MAN.	VENDOR	P/N
 ------------------------------------------------
 B1	unknown	unknown	GME	819-023	
 
-C1	100M/35V	LZ	GME	908-037	
-C6	100M/35V	LZ	GME	908-037	
-C8	100M/35V	LZ	GME	908-037	
+C1	100M/35V	Maxcap	GME	123-491
+C6	100M/35V	Maxcap	GME	123-491
+C8	100M/35V	Maxcap	GME	123-491
 
 C2	100n	Yageo	SOS	117369	
 C4	100n	Yageo	SOS	117369	

@@ -108,9 +108,9 @@ symversion=0.1
 T 44500 49600 5 10 0 0 0 0 1
 vendor=GME
 T 44500 49600 5 10 0 0 0 0 1
-vendor_part_number=908-037
+vendor_part_number=123-491
 T 44500 49600 5 10 0 0 0 0 1
-manufacturer=LZ
+manufacturer=Maxcap
 T 44500 49600 5 10 0 0 0 0 1
 footprint=CAP_63_25
 T 44400 49700 5 10 1 1 0 0 1
@@ -376,9 +376,9 @@ symversion=0.1
 T 57300 37800 5 10 0 0 0 0 1
 vendor=GME
 T 57300 37800 5 10 0 0 0 0 1
-vendor_part_number=908-037
+vendor_part_number=123-491
 T 57300 37800 5 10 0 0 0 0 1
-manufacturer=LZ
+manufacturer=Maxcap
 T 57300 37800 5 10 0 0 0 0 1
 footprint=CAP_63_25
 T 57300 36300 5 10 1 1 0 0 1
@@ -448,9 +448,9 @@ symversion=0.1
 T 60100 37700 5 10 0 0 0 0 1
 vendor=GME
 T 60100 37700 5 10 0 0 0 0 1
-vendor_part_number=908-037
+vendor_part_number=123-491
 T 60100 37700 5 10 0 0 0 0 1
-manufacturer=LZ
+manufacturer=Maxcap
 T 60100 37700 5 10 0 0 0 0 1
 footprint=CAP_63_25
 T 60100 36200 5 10 1 1 0 0 1
