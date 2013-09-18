@@ -783,6 +783,8 @@ class CommunicationService {
     /* Waits for packet from RFID reader. */
     private static final int ST_COMM_WAIT4RFID = 1;
 
+    private static long mNextSampleTime = 0;
+
     private boolean mDebug = false;
     private boolean mQuit = false;
     private int mState;
@@ -868,12 +870,17 @@ class CommunicationService {
                 } else if (mState == ST_COMM_WAIT4RFID) {
                     String p;
 
-                    /* Ask PIC module for temperature */
-/*
-                    pc.sendPacket("P", "t");
-*/
-                    /* Ask PIC module for battery voltage */
-                    pc.sendPacket("A", "08");
+                    if (mNextSampleTime <= System.currentTimeMillis() / 1000) {
+                        if ((mNextSampleTime & 0x02) == 0) {
+                            /* Ask PIC module for temperature */
+                            pc.sendPacket("P", "t");
+                        } else {
+                            /* Ask PIC module for battery voltage */
+                            pc.sendPacket("A", "08");
+                        }
+
+                        mNextSampleTime = System.currentTimeMillis() / 1000 + 2;
+                    }
 
                     /* Process packets received from PIC module. */
                     while ((p = pc.recvPacket()) != null) {
@@ -1056,7 +1063,7 @@ public class Rfid extends Activity {
                     sppDevice.getAddress(), Toast.LENGTH_LONG).show();
 
             /* If it is PIC module, establish a connection */
-            if (sppDevice.getName().equals("Rfid")) {
+            if (sppDevice.getName().startsWith("Rfid")) {
                 try {
                     mBtSocket = sppDevice.createRfcommSocketToServiceRecord(
                             UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
