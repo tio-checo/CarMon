@@ -677,7 +677,7 @@ footprint=0805-d
 T 41500 36100 5 10 0 0 0 0 1
 manufacturer=Yageo
 T 40900 36100 5 10 1 1 0 0 1
-value=15p
+value=10p
 }
 C 42100 49500 1 0 0 resistor-2.sym
 {
