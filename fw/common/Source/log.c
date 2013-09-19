@@ -52,6 +52,9 @@ static BOOL log_cmd_run;
  */
 static BOOL log_record_read;
 
+/* File handle used when upper layer is reading records from the log file. */
+static FSFILE *read_fh;
+
 /* Logging command */
 static enum {
 	LOG_CMD_NOOP = 0,	/* No operation currently in progress. */
@@ -114,27 +117,26 @@ log_clean_svc(void)
 static int
 log_read_svc(int cmd)
 {
-	static FSFILE *fh = NULL;
 	int err = 0;
 	int ln;
 
 	/* If first record is to be read, open the log device. */
 	if (cmd == LOG_CMD_GET_FIRST) {
 		/* File already open, just set file pointer to the beginning. */
-		if (fh != NULL) {
-			if (FSfseek(fh, 0, SEEK_SET) != 0) {
+		if (read_fh != NULL) {
+			if (FSfseek(read_fh, 0, SEEK_SET) != 0) {
 				return FSerror();
 			}
 		} else {
-			fh = FSfopen(LOG_FILENAME, "r");
-			if (fh == NULL) {
+			read_fh = FSfopen(LOG_FILENAME, "r");
+			if (read_fh == NULL) {
 				return FSerror();
 			}
 		}
 	}
 
 	/* File handle not initialized, signal EOF. */
-	if (fh == NULL) {
+	if (read_fh == NULL) {
 		log_read_rec_pointer = NULL;
 		log_record_read = TRUE;
 
@@ -142,7 +144,7 @@ log_read_svc(int cmd)
 	}
 
 	/* Read the record. */
-	ln = FSfread(log_rec_buf, 1, log_rec_size, fh);
+	ln = FSfread(log_rec_buf, 1, log_rec_size, read_fh);
 
 	/* Make sure, it's null terminated. */
 	log_rec_buf[ln] = '\0';
@@ -152,9 +154,9 @@ log_read_svc(int cmd)
 	/* End of file reached. */
 	if (err == CE_EOF) {
 		/* Close the file. */
-		err = FSfclose(fh);
+		err = FSfclose(read_fh);
 		if (err == 0) {
-			fh = NULL;
+			read_fh = NULL;
 		} else {
 			err = FSerror();
 		}
@@ -222,6 +224,12 @@ log_init(void)
 	}
 
 	/*
+	 * Initialize file handle used when upper layer is reading records
+	 * from the log file.
+	 */
+	read_fh = NULL;
+
+	/*
 	 * Log device has been initialized and is now ready
 	 * to receive messages.
 	 */
@@ -239,8 +247,12 @@ log_clean(void)
 	if (!log_device_ready)
 		return ENODEV;
 
-	/* Clean up already in progress. */
-	if (log_busy())
+	/*
+	 * Either there is a logging operation currently in progress
+	 * or log file is now being read by upper layer. Refuse deleting
+	 * the file in such situations.
+	 */
+	if (log_busy() || (read_fh != NULL))
 		return EBUSY;
 
 	/* Kick off clean up process */
