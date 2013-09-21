@@ -635,6 +635,34 @@ FSFILE * wFSfopen(const unsigned short int * fileName, const char *mode);
 
 /************************************************************
   Function:
+    int FSfflush(FSFILE *fo)
+  Summary:
+    Flushes data buffered in global buffer gDataBuffer to the file.
+    Updates file information.
+  Conditions:
+    File opened
+  Input:
+    fo -  Pointer to the file to flush
+  Return Values:
+    0 -   Data flushed successfully
+    EOF - Error encountered during the operation
+  Side Effects:
+    The FSerrno variable will be changed.
+  Description:
+    This function will update the directory entry for the
+    file pointed to by 'fo' with the information contained
+    in 'fo,' including the new file size and attributes.
+    Timestamp information will also be loaded based on the
+    method selected by the user and written to the entry
+    as the last modified time and date.  The file entry will
+    then be written to the device.
+  ************************************************************/
+
+int FSfflush(FSFILE *fo);
+
+
+/************************************************************
+  Function:
     int FSfclose(FSFILE *fo)
   Summary:
     Update file information and free FSFILE objects
@@ -643,12 +671,12 @@ FSFILE * wFSfopen(const unsigned short int * fileName, const char *mode);
   Input:
     fo -  Pointer to the file to close
   Return Values:
-    0 -   File closed successfully 
+    0 -   File closed successfully
     EOF - Error closing the file
   Side Effects:
     The FSerrno variable will be changed.
   Description:
-    This function will update the directory entry for the 
+    This function will update the directory entry for the
     file pointed to by 'fo' with the information contained
     in 'fo,' including the new file size and attributes.
     Timestamp information will also be loaded based on the
@@ -657,11 +685,6 @@ FSFILE * wFSfopen(const unsigned short int * fileName, const char *mode);
     then be written to the device.  Finally, the memory
     used for the specified file object will be freed from
     the dynamic heap or the array of FSFILE objects.
-  Remarks:
-    A function to flush data to the device without closing the
-    file can be created by removing the portion of this
-    function that frees the memory and the line that clears
-    the write flag.
   ************************************************************/
 
 int FSfclose(FSFILE *fo);

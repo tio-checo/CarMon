@@ -55,6 +55,9 @@ static BOOL log_record_read;
 /* File handle used when upper layer is reading records from the log file. */
 static FSFILE *read_fh;
 
+/* File handle used for writing records to the log file. */
+static FSFILE *write_fh;
+
 /* Logging command */
 static enum {
 	LOG_CMD_NOOP = 0,	/* No operation currently in progress. */
@@ -71,20 +74,37 @@ static enum {
 static int
 log_post_svc(void)
 {
-	FSFILE *fh;
 	int ln;
 
-	fh = FSfopen(LOG_FILENAME, "a");
-	if (fh == NULL) {
-		return ENODEV;
+	/*
+	 * If file is locked for reading, discard the message, though signal
+	 * success to the caller, since this is not a fatal error.
+	 */
+	if (read_fh != NULL) {
+		return 0;
+	}
+
+	/*
+	 * If log file is not open, try to open it. It is normally open during
+	 * init phase, but it may have been closed afterwards as a result
+	 * of clean operation.
+	 */
+	if (write_fh == NULL) {
+		write_fh = FSfopen(LOG_FILENAME, "a");
+
+		/* Open failed, return. */
+		if (write_fh == NULL) {
+			return ENODEV;
+		}
 	}
 
 	ln = strlen(log_msg_buf);
-	if (FSfwrite(log_msg_buf, 1, ln, fh) != ln) {
+	if (FSfwrite(log_msg_buf, 1, ln, write_fh) != ln) {
 		return ENODEV;
 	}
 
-	if (FSfclose(fh) != 0) {
+	/* Make sure data are written to the device. */
+	if (FSfflush(write_fh) != 0) {
 		return ENODEV;
 	}
 
@@ -98,6 +118,41 @@ static int
 log_clean_svc(void)
 {
 	FSFILE *fh;
+	int err;
+
+	/*
+	 * Log file open for reading, close it. This is just sanity test,
+	 * as we should not get here, since removal is forbidden if file
+	 * is being read.
+	 */
+	if (read_fh != NULL) {
+		err = FSfclose(read_fh);
+
+		/* Close operation failed, do not proceed with removal. */
+		if (err != 0) {
+			return ENODEV;
+		}
+
+		/* Release file handle. */
+		read_fh = NULL;
+	}
+
+	/*
+	 * Log file open for writing, close it. That assures file is reopen
+	 * next time there is a message to be logged in which case writing
+	 * starts from the beginning of the file.
+	 */
+	if (write_fh != NULL) {
+		err = FSfclose(write_fh);
+
+		/* Close operation failed, do not proceed with removal. */
+		if (err != 0) {
+			return ENODEV;
+		}
+
+		/* Release file handle. */
+		write_fh = NULL;
+	}
 
 	fh = FSfopen(LOG_FILENAME, "w");
 	if (fh == NULL) {
@@ -188,8 +243,6 @@ log_read_svc(int cmd)
 int
 log_init(void)
 {
-	FSFILE *fh;
-
 	/* Assume that log device is not present. */
 	log_device_ready = FALSE;
 
@@ -213,13 +266,9 @@ log_init(void)
 		return ENODEV;
 	}
 
-	/* Create log file if it does not exist and verify it can be written. */
-	fh = FSfopen(LOG_FILENAME, "a");
-	if (fh == NULL) {
-		return ENODEV;
-	}
-
-	if (FSfclose(fh) != 0) {
+	/* Open log file. Create it if it does not exist. */
+	write_fh = FSfopen(LOG_FILENAME, "a");
+	if (write_fh == NULL) {
 		return ENODEV;
 	}
 

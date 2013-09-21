@@ -4414,6 +4414,117 @@ void FSGetDiskProperties(FS_DISK_PROPERTIES* properties)
 
 /************************************************************
   Function:
+    int FSfflush(FSFILE *fo)
+  Summary:
+    Flushes data buffered in global buffer gDataBuffer to the file.
+    Updates file information.
+  Conditions:
+    File opened
+  Input:
+    fo -  Pointer to the file to flush
+  Return Values:
+    0 -   Data flushed successfully
+    EOF - Error encountered during the operation
+  Side Effects:
+    The FSerrno variable will be changed.
+  Description:
+    This function will update the directory entry for the
+    file pointed to by 'fo' with the information contained
+    in 'fo,' including the new file size and attributes.
+    Timestamp information will also be loaded based on the
+    method selected by the user and written to the entry
+    as the last modified time and date.  The file entry will
+    then be written to the device.
+  ************************************************************/
+
+int FSfflush(FSFILE *fo)
+{
+    WORD	fHandle;
+    int	error = 72;
+#ifdef ALLOW_WRITES
+    DIRENTRY	dir;
+#endif
+
+    FSerrno = CE_GOOD;
+    fHandle = fo->entry;
+
+#ifdef ALLOW_WRITES
+    if(fo->flags.write)
+    {
+        if (gNeedDataWrite)
+        {
+            if (flushData())
+            {
+                FSerrno = CE_WRITE_ERROR;
+                return EOF;
+            }
+        }
+
+        // Write the current FAT sector to the disk
+        WriteFAT (fo->dsk, 0, 0, TRUE);
+
+        // Invalidate the currently cached FAT entry so that the next read will
+        //   result in an actual read from the physical media instead of a read
+        //   from the RAM cache.
+        gLastFATSectorRead = 0;
+
+        // Read the FAT entry from the physical media.  This is required because
+        //   some physical media cache the entries in RAM and only write them 
+        //   after a time expires for until the sector is accessed again.
+        ReadFAT (fo->dsk, fo->ccls);
+
+        // Get the file entry
+        dir = LoadDirAttrib(fo, &fHandle);
+
+        if (dir == NULL)
+        {
+            FSerrno = CE_BADCACHEREAD;
+            return EOF;
+        }
+
+      // update the time
+#ifdef INCREMENTTIMESTAMP
+        IncrementTimeStamp(dir);
+#elif defined USERDEFINEDCLOCK
+        dir->DIR_WrtTime = gTimeWrtTime;
+        dir->DIR_WrtDate = gTimeWrtDate;
+#elif defined USEREALTIMECLOCK
+        CacheTime();
+        dir->DIR_WrtTime = gTimeWrtTime;
+        dir->DIR_WrtDate = gTimeWrtDate;
+#endif
+
+        dir->DIR_FileSize = fo->size;
+
+        dir->DIR_Attr = fo->attributes;
+
+        // just write the last entry in
+        if (Write_File_Entry(fo,&fHandle))
+        {
+            // Read the folder entry from the physical media. This is required
+            //   because some physical media cache the entries in RAM and only
+            //   write them after a time expires for until the sector
+            //   is accessed again.
+            dir = LoadDirAttrib(fo, &fHandle);
+            error = 0;
+        }
+        else
+        {
+            FSerrno = CE_WRITE_ERROR;
+            return EOF;
+        }
+    }
+#endif
+
+    // File opened in read mode
+    if (error == 72)
+        error = 0;
+
+    return(error);
+} // FSfflush
+
+/************************************************************
+  Function:
     int FSfclose(FSFILE *fo)
   Summary:
     Update file information and free FSFILE objects
@@ -4436,108 +4547,49 @@ void FSGetDiskProperties(FS_DISK_PROPERTIES* properties)
     then be written to the device.  Finally, the memory
     used for the specified file object will be freed from
     the dynamic heap or the array of FSFILE objects.
-  Remarks:
-    A function to flush data to the device without closing the
-    file can be created by removing the portion of this
-    function that frees the memory and the line that clears
-    the write flag.
   ************************************************************/
 
-int FSfclose(FSFILE   *fo)
+int FSfclose(FSFILE *fo)
 {
-    WORD        fHandle;
+	int	error = 0;
 #ifndef FS_DYNAMIC_MEM
-    WORD        fIndex;
+	WORD	fIndex;
 #endif
-    int        error = 72;
+
+	/* Close file for write. */
 #ifdef ALLOW_WRITES
-    DIRENTRY    dir;
+	if (fo->flags.write) {
+		/* Flush unwritten data to the file. */
+		error = FSfflush(fo);
+
+		/*
+		 * If flush operation failed, do not proceed with closing
+		 * the file, so that consumer can investigate what went wrong.
+		 */
+		if (error != 0)
+		{
+			return EOF;
+		}
+
+        	fo->flags.write = FALSE;
+	}
 #endif
 
-    FSerrno = CE_GOOD;
-    fHandle = fo->entry;
+	/* Close file for read. */
+	fo->flags.read = FALSE;
 
-#ifdef ALLOW_WRITES
-    if(fo->flags.write)
-    {
-        if (gNeedDataWrite)
-        {
-            if (flushData())
-            {
-                FSerrno = CE_WRITE_ERROR;
-                return EOF;
-            }
-        }
-
-        // Write the current FAT sector to the disk
-        WriteFAT (fo->dsk, 0, 0, TRUE);
-
-        // Invalidate the currently cached FAT entry so that the next read will
-        //   result in an acutal read from the physical media instead of a read
-        //   from the RAM cache.
-        gLastFATSectorRead = 0;
-
-        // Read the FAT entry from the physical media.  This is required because
-        //   some physical media cache the entries in RAM and only write them 
-        //   after a time expires for until the sector is accessed again.
-        ReadFAT (fo->dsk, fo->ccls);
-
-        // Get the file entry
-        dir = LoadDirAttrib(fo, &fHandle);
-
-        if (dir == NULL)
-        {
-            FSerrno = CE_BADCACHEREAD;
-            error = EOF;
-            return error;
-        }
-
-      // update the time
-#ifdef INCREMENTTIMESTAMP
-        IncrementTimeStamp(dir);
-#elif defined USERDEFINEDCLOCK
-        dir->DIR_WrtTime = gTimeWrtTime;
-        dir->DIR_WrtDate = gTimeWrtDate;
-#elif defined USEREALTIMECLOCK
-        CacheTime();
-        dir->DIR_WrtTime = gTimeWrtTime;
-        dir->DIR_WrtDate = gTimeWrtDate;
-#endif
-
-        dir->DIR_FileSize = fo->size;
-
-        dir->DIR_Attr = fo->attributes;
-
-        // just write the last entry in
-        if(Write_File_Entry(fo,&fHandle))
-        {
-            // Read the folder entry from the physical media.  This is required because
-            //   some physical media cache the entries in RAM and only write them 
-            //   after a time expires for until the sector is accessed again.
-            dir = LoadDirAttrib(fo, &fHandle);
-            error = 0;
-        }
-        else
-        {
-            FSerrno = CE_WRITE_ERROR;
-            error = EOF;
-        }
-
-        // it's now closed
-        fo->flags.write = FALSE;
-    }
-#endif
+	/* Release file handle. */
 
 #ifdef FS_DYNAMIC_MEM
     #ifdef	SUPPORT_LFN
-		FS_free((unsigned char *)fo->utf16LFNptr);
-	#endif
+	FS_free((unsigned char *)fo->utf16LFNptr);
+    #endif
 	FS_free((unsigned char *)fo);
 #else
 
-    for( fIndex = 0; fIndex < FS_MAX_FILES_OPEN; fIndex++ )
+    for (fIndex = 0; fIndex < FS_MAX_FILES_OPEN; fIndex++)
     {
-        if( fo == &gFileArray[fIndex] )
+        if (fo == &gFileArray[fIndex])
         {
             gFileSlotOpen[fIndex] = TRUE;
             break;
@@ -4545,13 +4597,8 @@ int FSfclose(FSFILE   *fo)
     }
 #endif
 
-    // File opened in read mode
-    if (error == 72)
-        error = 0;
-
     return(error);
 } // FSfclose
-
 
 /*******************************************************
   Function:
