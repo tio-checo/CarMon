@@ -21,16 +21,13 @@
 #include "pcf8563.h"
 #endif
 
+#include "helpers.h"
 #include "pic_core.h"
 #include "rt_light.h"
 #include "strings.h"
 #include "utils.h"
 
 /* constants */
-
-/* external functions */
-/* updatetimeofday() */
-extern int updatetimeofday(time_t us);
 
 /* local variables */
 /* communication module */

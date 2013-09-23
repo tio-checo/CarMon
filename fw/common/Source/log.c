@@ -279,6 +279,14 @@ log_init(void)
 	read_fh = NULL;
 
 	/*
+	 * Clear IO statistics.
+	 * Must be called after we are done with initializing log file,
+	 * as previous FSfopen() reads sectors before measuring time
+	 * is functional which could distort IO read statistics.
+	 */
+	FSkstat_clear();
+
+	/*
 	 * Log device has been initialized and is now ready
 	 * to receive messages.
 	 */

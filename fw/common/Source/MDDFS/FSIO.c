@@ -96,9 +96,11 @@
 #include "Compiler.h"
 #include "FSIO.h"
 #include "GenericTypeDefs.h"
+#include "helpers.h"
 #include "string.h"
 #include "stdlib.h"
 #include "ctype.h"
+#include "sys/time.h"
 #include "time.h"
 #include "FSDefs.h"
 
@@ -211,6 +213,39 @@ unsigned short int fileNameLength;
 	BOOL	utfModeFileName = FALSE;
 	BOOL	twoByteMode = FALSE;
 #endif
+
+/* structure for measuring IO statistics */
+#define FSKSTAT_HIST_SIZE	5	/* Number of histogram items. */
+/* Read histogram labels */
+static const char *FSkstatHistRead[FSKSTAT_HIST_SIZE] = {
+    "< 1ms : ",
+    "< 2ms : ",
+    "< 5ms : ",
+    "< 8ms : ",
+    "> 8ms : "
+};
+
+/* Write histogram labels */
+static const char *FSkstatHistWrite[FSKSTAT_HIST_SIZE] = {
+    "< 10ms : ",
+    "< 20ms : ",
+    "< 50ms : ",
+    "< 80ms : ",
+    "> 80ms : "
+};
+
+static struct FSkstat_t {
+	long		srn;		/* total number of sectors read */
+	struct timeval	srt_min;	/* Min sector read time. */
+	struct timeval	srt_max;	/* Max sector read time. */
+	long		rhist[FSKSTAT_HIST_SIZE];	/* Time histogram. */
+
+	long		swn;		/* total number of sectors written */
+	struct timeval	swt_min;	/* Min sector write time. */
+	struct timeval	swt_max;	/* Max sector write time. */
+	long		whist[FSKSTAT_HIST_SIZE];	/* Time histogram. */
+} FSkstat;
+
 /************************************************************************/
 /*                        Structures and defines                        */
 /************************************************************************/
@@ -386,6 +421,223 @@ BYTE LoadMBR(DISK *dsk);
 BYTE LoadBootSector(DISK *dsk);
 DWORD GetFullClusterNumber(DIRENTRY entry);
 
+/* local functions */
+
+/*************************************************************************
+  Function:
+    BYTE MDD_SectorRead(DWORD sector_addr, BYTE* buffer)
+  Summary:
+    Function to read one sector from physical device.
+  *************************************************************************/
+static BYTE
+MDD_SectorRead(DWORD sector_addr, BYTE* buffer)
+{
+	BYTE res;
+	struct timeval ct, dt;
+
+	/* Capture current time for purposes of measuring statistics. */
+	get_curr_hrtime(&ct);
+
+#ifdef USE_SD_INTERFACE_WITH_SPI
+	res = MDD_SDSPI_SectorRead(sector_addr, buffer);
+#elif defined USE_CF_INTERFACE_WITH_PMP       // CF-PMP.c and .h
+	res = MDD_CFPMP_SectorRead(sector_addr, buffer);
+#elif defined USE_MANUAL_CF_INTERFACE         // CF-Bit transaction.c and .h
+	res = MDD_CFBT_SectorRead(sector_addr, buffer);
+#elif defined USE_USB_INTERFACE               // USB host MSD library
+	res = USBHostMSDSCSISectorRead(sector_addr, buffer);
+#else
+#error Platform dependent MDD_SectorRead() function undefined.
+#endif
+
+	/* If sector read successfully, update statistics. */
+	if (res) {
+		unsigned long ms;
+
+		/* Update total number of sectors read. */
+		FSkstat.srn++;
+
+		/* Calculate time difference. */
+		get_diff_hrtime(&ct, &dt);
+
+		/* Update min time if appropriate */
+		if (cmp_hrtime(&dt, &FSkstat.srt_min) == -1) {
+			FSkstat.srt_min = dt;
+		}
+
+		/* Update max time if appropriate */
+		if (cmp_hrtime(&dt, &FSkstat.srt_max) == 1) {
+			FSkstat.srt_max = dt;
+		}
+
+		/* Update histogram. */
+		ms = dt.tv_sec * 1000 + dt.tv_usec / 1000;
+
+		if (ms < 1)
+			FSkstat.rhist[0]++;
+		else if (ms < 2)
+			FSkstat.rhist[1]++;
+		else if (ms < 5)
+			FSkstat.rhist[2]++;
+		else if (ms < 8)
+			FSkstat.rhist[3]++;
+		else
+			FSkstat.rhist[4]++;
+	}
+
+	return res;
+}
+
+/*************************************************************************
+  Function:
+    BYTE MDD_SectorWrite(DWORD sector_addr, BYTE *buffer, BYTE allowWriteToZero)
+  Summary:
+    Function to read one sector from physical device.
+  *************************************************************************/
+static BYTE
+MDD_SectorWrite(DWORD sector_addr, BYTE *buffer, BYTE allowWriteToZero)
+{
+	BYTE res;
+	struct timeval ct, dt;
+
+	/* Capture current time for purposes of measuring statistics. */
+	get_curr_hrtime(&ct);
+
+#ifdef USE_SD_INTERFACE_WITH_SPI
+	res = MDD_SDSPI_SectorWrite(sector_addr, buffer, allowWriteToZero);
+#elif defined USE_CF_INTERFACE_WITH_PMP       // CF-PMP.c and .h
+	res = MDD_CFPMP_SectorWrite(sector_addr, buffer, allowWriteToZero);
+#elif defined USE_MANUAL_CF_INTERFACE         // CF-Bit transaction.c and .h
+	res = MDD_CFBT_SectorWrite(sector_addr, buffer, allowWriteToZero);
+#elif defined USE_USB_INTERFACE               // USB host MSD library
+	res = USBHostMSDSCSISectorWrite(sector_addr, buffer, allowWriteToZero);
+#else
+#error Platform dependent MDD_SectorWrite() function undefined.
+#endif
+
+	/* If sector written successfully, update statistics. */
+	if (res) {
+		unsigned long ms;
+
+		/* Update total number of sectors written. */
+		FSkstat.swn++;
+
+		/* Calculate time difference. */
+		get_diff_hrtime(&ct, &dt);
+
+		/* Update min time if appropriate */
+		if (cmp_hrtime(&dt, &FSkstat.swt_min) == -1) {
+			FSkstat.swt_min = dt;
+		}
+
+		/* Update max time if appropriate */
+		if (cmp_hrtime(&dt, &FSkstat.swt_max) == 1) {
+			FSkstat.swt_max = dt;
+		}
+
+		/* Update histogram. */
+		ms = dt.tv_sec * 1000 + dt.tv_usec / 1000;
+
+		if (ms < 10)
+			FSkstat.whist[0]++;
+		else if (ms < 20)
+			FSkstat.whist[1]++;
+		else if (ms < 50)
+			FSkstat.whist[2]++;
+		else if (ms < 80)
+			FSkstat.whist[3]++;
+		else
+			FSkstat.whist[4]++;
+	}
+
+	return res;
+}
+
+/* public functions */
+
+/*************************************************************************
+  Function:
+    int FSkstat_display(int (*print_str)(const char *))
+  Summary:
+    Display IO statistics.
+  *************************************************************************/
+int
+FSkstat_display(int (*print_str)(const char *))
+{
+	char s[81];
+	int i;
+
+	/* header */
+	print_str("-------------------------------------\n\r");
+	snprintf(s, sizeof (s), "sectors read: %ld\n\r", FSkstat.srn);
+	print_str(s);
+
+	/* Read statistics. */
+	snprintf(s, sizeof (s), "ior min time: %ld.%03ld[ms]\n\r",
+	    FSkstat.srt_min.tv_sec * 1000 + FSkstat.srt_min.tv_usec / 1000,
+	    FSkstat.srt_min.tv_usec % 1000);
+	print_str(s);
+
+	snprintf(s, sizeof (s), "ior max time: %ld.%03ld[ms]\n\r",
+	    FSkstat.srt_max.tv_sec * 1000 + FSkstat.srt_max.tv_usec / 1000,
+	    FSkstat.srt_max.tv_usec % 1000);
+	print_str(s);
+
+	for (i = 0; i < FSKSTAT_HIST_SIZE; i++) {
+		snprintf(s, sizeof (s), "%s %ld\n\r", FSkstatHistRead[i],
+		    FSkstat.rhist[i]);
+		print_str(s);
+	}
+
+	/* Write statistics. */
+	snprintf(s, sizeof (s), "\n\rsectors written: %ld\n\r", FSkstat.swn);
+	print_str(s);
+
+	snprintf(s, sizeof (s), "iow min time: %ld.%03ld[ms]\n\r",
+	    FSkstat.swt_min.tv_sec * 1000 + FSkstat.swt_min.tv_usec / 1000,
+	    FSkstat.swt_min.tv_usec % 1000);
+	print_str(s);
+
+	snprintf(s, sizeof (s), "iow max time: %ld.%03ld[ms]\n\r",
+	    FSkstat.swt_max.tv_sec * 1000 + FSkstat.swt_max.tv_usec / 1000,
+	    FSkstat.swt_max.tv_usec % 1000);
+	print_str(s);
+
+	for (i = 0; i < FSKSTAT_HIST_SIZE; i++) {
+		snprintf(s, sizeof (s), "%s %ld\n\r", FSkstatHistWrite[i],
+		    FSkstat.whist[i]);
+		print_str(s);
+	}
+
+	/* footer */
+	print_str("-------------------------------------\n\r");
+	return 0;
+}
+
+
+/*************************************************************************
+  Function:
+    int FSkstat_clear(void)
+  Summary:
+    Clear IO statistics.
+  *************************************************************************/
+int
+FSkstat_clear(void)
+{
+	int i;
+
+	FSkstat.srn = FSkstat.swn = 0;
+	FSkstat.srt_min.tv_sec = FSkstat.swt_min.tv_sec = 1000;
+	FSkstat.srt_min.tv_usec = FSkstat.swt_min.tv_usec = 0;
+	FSkstat.srt_max.tv_sec = FSkstat.swt_max.tv_sec = 0;
+	FSkstat.srt_max.tv_usec = FSkstat.swt_max.tv_usec = 0;
+
+	for (i = 0; i < FSKSTAT_HIST_SIZE; i++) {
+		FSkstat.rhist[i] = FSkstat.whist[i] = 0;
+	}
+
+	return 0;
+}
 
 /*************************************************************************
   Function:
@@ -430,6 +682,9 @@ int FSInit(void)
     gLastDataSectorRead = 0xFFFFFFFF;  
 
     MDD_InitIO();
+
+    /* Initialize structure for measuring IO statistics. */
+    FSkstat_clear();
 
     if(DISKmount(&gDiskData) == CE_GOOD)
     {

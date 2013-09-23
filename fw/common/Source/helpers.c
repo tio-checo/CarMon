@@ -5,16 +5,21 @@
  *********************************************************************/
 
 #include "GenericTypeDefs.h"
+#include "HardwareProfile.h"
+#include "xc.h"
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
 
+#include "helpers.h"
+#include "rt_light.h"
 #include "utils.h"
 
 /* local variables */
 /* local CPU time - updated from timer interrupt */
-static struct timeval tv_cpu;
+static volatile struct timeval tv_cpu;
 
 /* dynamic memory allocation not utilized for now */
 #if 0
@@ -126,8 +131,8 @@ updatetimeofday(time_t us)
 	tv_cpu.tv_usec += us;
 
 	/* Handle overflow */
-	while (tv_cpu.tv_usec > 1000000) {
-		tv_cpu.tv_usec -= 1000000;
+	while (tv_cpu.tv_usec >= US_PER_SECOND) {
+		tv_cpu.tv_usec -= US_PER_SECOND;
 		tv_cpu.tv_sec++;
 	}
 
@@ -143,6 +148,96 @@ time_t time(time_t *tod)
 		*tod = tv_cpu.tv_sec;
 
 	return tv_cpu.tv_sec;
+}
+
+/*
+ * get_curr_hrtime()
+ * 
+ * Return current time with us resolution.
+ *
+ */
+int
+get_curr_hrtime(struct timeval *hrtod)
+{
+/*	unsigned long t1, t2; */
+
+	if (hrtod == NULL)
+		return EINVAL;
+
+	/*
+	 * This function may be called outside of interrupt context,
+	 * so time can be updated while we are reading it. Account for that.
+	 */
+	do {
+		hrtod->tv_usec = tv_cpu.tv_usec;
+		hrtod->tv_sec = tv_cpu.tv_sec;
+	} while (hrtod->tv_sec != tv_cpu.tv_sec);
+
+	return 0;
+}
+
+/*
+ * get_diff_hrtime()
+ * 
+ * Return difference between current time and specified time with us resolution.
+ *
+ */
+int
+get_diff_hrtime(struct timeval *hrt, struct timeval *hrdiff)
+{
+	struct timeval chrt;
+
+	/* Get current time. */
+	if (get_curr_hrtime(&chrt) != 0)
+		return EINVAL;
+
+	/*
+	 * Adjust microseconds to simplify further comparison and calculation
+	 * of difference.
+	 */
+	while ((hrt->tv_usec > chrt.tv_usec) && (chrt.tv_sec > 0)) {
+		chrt.tv_usec += US_PER_SECOND;
+		chrt.tv_sec--;
+	}
+
+	/* Return with error if current time is older than given time. */
+	if (hrt->tv_sec > chrt.tv_sec)
+		return EINVAL;
+
+	/* Calculate the difference. */
+	hrdiff->tv_usec = chrt.tv_usec - hrt->tv_usec;
+	hrdiff->tv_sec = chrt.tv_sec - hrt->tv_sec;
+
+	return 0;
+}
+
+/*
+ * cmp_hrtime()
+ * 
+ * Compare two times with us resolution. Assumes times are normalized.
+ *
+ * Return: -1 - the first time is older
+ *          0 - times are the same
+ *          1 - the second time is older
+ *
+ */
+int
+cmp_hrtime(struct timeval *hrt1, struct timeval *hrt2)
+{
+	if (hrt1->tv_sec < hrt2->tv_sec)
+		return -1;
+
+	if (hrt1->tv_sec > hrt2->tv_sec)
+		return 1;
+
+	if (hrt1->tv_usec < hrt2->tv_usec)
+		return -1;
+
+	if (hrt1->tv_usec > hrt2->tv_usec)
+		return 1;
+
+	/* Times are the same. */
+	return 0;
 }
 
 /*

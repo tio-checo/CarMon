@@ -99,8 +99,8 @@
         #define SPI_START_CFG_2     (SPI_ENABLE)
 
         // Define the SPI frequency
-//        #define SPI_FREQUENCY			(20000000)
-        #define SPI_FREQUENCY			(10000000)
+        #define SPI_FREQUENCY			(20000000)
+//        #define SPI_FREQUENCY			(10000000)
     
         #if defined MDD_USE_SPI_1
             // Description: SD-SPI Chip Select Output bit
