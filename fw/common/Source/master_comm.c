@@ -374,7 +374,13 @@ mcom_decode_packet(void)
 
 	/* Enter diagnostic mode */
 	case MCOM_CMD_DIAG_MODE:
-		mon_diag_enter();
+		err = mon_diag_enter(mcom_co.rx_buf[1]);
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_EINVAL);
+
+			ret = 1;
+		}
 		break;
 
 	/* Go to sleep */

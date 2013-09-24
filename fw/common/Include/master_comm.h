@@ -27,7 +27,7 @@
 /* change communication mode */
 #define MCOM_CMD_CHANGE_MODE	'M'
 /* Interrupt the application, jump to diagnostic mode */
-#define MCOM_CMD_DIAG_MODE	'd'
+#define MCOM_CMD_DIAG_MODE	'D'
 /* Quit the application, jump to bootloader */
 #define MCOM_CMD_QUIT		'q'
 /* Go to sleep */

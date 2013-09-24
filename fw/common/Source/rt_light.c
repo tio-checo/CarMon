@@ -445,13 +445,15 @@ __attribute__ ((interrupt)) isr_timer1(void)
 		}
 	}
 
-	/* Record time spent in this handler */
-	t = TMR1;
-	if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t)
-		rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
+	/* Record time spent in this handler, but only if not in diag mode. */
+	if (!mon_is_diag_mode()) {
+		t = TMR1;
+		if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t)
+			rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
 
-	if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t)
-		rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
+		if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t)
+			rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
+	}
 
 	/* clear Timer 1 interrupt flag */
 	IFS0CLR = 1 << 4;

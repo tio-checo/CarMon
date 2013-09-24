@@ -46,19 +46,6 @@ extern USB_VOLATILE long USBEP0Service;
 /* print information about memory allocation requests */
 extern int print_alloc_requests(int (*printstr)());
 
-/*
-static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
-    '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-
-static int hex2ascii(unsigned char b)
-{
-	mon_putchar('^');
-	mon_putchar(hex2ascii_tbl[(b >> 4) & 0x0f]);
-	mon_putchar(hex2ascii_tbl[b & 0x0f]);
-	mon_putchar('$');
-}
-*/
-
 /* local functions */
 /* Handler for main menu. */
 static int mon_main_menu(unsigned char);
@@ -134,6 +121,8 @@ static BOOL mon_diag_mode_enabled;
 static int mon_old_speed;
 /* state of main state machine */
 static int mon_st;
+/* diagnostic mode */
+static unsigned char mon_diag_mode;
 /* service handle */
 static rtl_svc_handle_t mon_sh;
 
@@ -147,23 +136,45 @@ mon_getchar(unsigned char *ch, BOOL block)
 {
 	unsigned char dummy;
 
-	/* handle receive errors */
-	if (U1STA & 0x000E) {
-		/* dummy read to clear FERR/PERR */
-		dummy = U1RXREG;
-		/* clear OERR to keep receiving */
-		U1STAbits.OERR = 0;
+	/* Bluetooth used as a communication device. */
+	if (mon_diag_mode == MON_DIAG_MODE_BT) {
+		/* handle receive errors */
+		if (U2STA & 0x000E) {
+			/* dummy read to clear FERR/PERR */
+			dummy = U2RXREG;
+			/* clear OERR to keep receiving */
+			U2STAbits.OERR = 0;
+		}
+
+		/* Block only if required */
+		if (!block && !U2STAbits.URXDA)
+			return EAGAIN;
+
+		/* Block until character is available */
+		while (!U2STAbits.URXDA);
+
+		/* get data from UART RX FIFO */
+		*ch = U2RXREG;
+	} else {
+		/* UART used as a communication device. */
+		/* handle receive errors */
+		if (U1STA & 0x000E) {
+			/* dummy read to clear FERR/PERR */
+			dummy = U1RXREG;
+			/* clear OERR to keep receiving */
+			U1STAbits.OERR = 0;
+		}
+
+		/* Block only if required */
+		if (!block && !U1STAbits.URXDA)
+			return EAGAIN;
+
+		/* Block until character is available */
+		while (!U1STAbits.URXDA);
+
+		/* get data from UART RX FIFO */
+		*ch = U1RXREG;
 	}
-
-	/* Block only if required */
-	if (!block && !U1STAbits.URXDA)
-		return EAGAIN;
-
-	/* Block until character is available */
-	while (!U1STAbits.URXDA);
-
-	/* get data from UART RX FIFO */
-	*ch = U1RXREG;
 
 	return 0;
 }
@@ -177,17 +188,27 @@ mon_putchar(unsigned char ch)
 {
 	unsigned char echo;
 
-	/* Wait until transmitter is ready */
-	while (!U1STAbits.TRMT);
+	/* Bluetooth used as a communication device. */
+	if (mon_diag_mode == MON_DIAG_MODE_BT) {
+		/* Wait until transmitter is ready */
+		while (!U2STAbits.TRMT);
 
-	/* Send out the character */
-	U1TXREG = ch;
+		/* Send out the character */
+		U2TXREG = ch;
+	} else {
+		/* UART used as a communication device. */
+		/* Wait until transmitter is ready */
+		while (!U1STAbits.TRMT);
 
-	/*
-	 * Since we are running in half duplex mode, every sent character
-	 * is echoed back. Wait for that echo and discard it.
-	 */
-	mon_getchar(&echo, TRUE);
+		/* Send out the character */
+		U1TXREG = ch;
+
+		/*
+		 * Since we are running in half duplex mode, every sent
+		 * character is echoed back. Wait for that echo and discard it.
+		 */
+		mon_getchar(&echo, TRUE);
+	}
 
 	return 0;
 }
@@ -280,9 +301,15 @@ mon_main_menu(unsigned char ch)
 		next_st = MON_ST_SD_CARD;
 		break;
 
-	/* Bluetooth module */
+	/*
+	 * Bluetooth module. Disabled if Bluetooth is in use as a diag
+	 * communication device.
+	 */
 	case '2':
-		next_st = MON_ST_BLUETOOTH;
+		if (mon_diag_mode == MON_DIAG_MODE_BT)
+			next_st = -2;
+		else
+			next_st = MON_ST_BLUETOOTH;
 		break;
 
 	/* Read memory - for now just print content of config regs */
@@ -656,19 +683,31 @@ mon_svc(void)
 		break;
 
 	/*
-	 * Diagnose bluetooth module. For now just forward characters between
-	 * bluetooth module and diagnostic port.
+	 * Diagnose Bluetooth module. For now just forward characters between
+	 * Bluetooth module and diagnostic port.
 	 */
-	case MON_ST_BLUETOOTH:
-		while (1) {
-			if (bt_getchar(&ch) == 0)
+	case MON_ST_BLUETOOTH: {
+		BOOL exit_bt = FALSE;
+
+		while (!exit_bt) {
+			if (bt_getchar(&ch) == 0) {
 				mon_putchar(ch);
+
+				/* '#' escapes from Bluetooth mode */
+				if (ch == '#')
+					exit_bt = TRUE;
+			}
 
 			if (mon_getchar(&ch, FALSE) == 0)
 				bt_putchar(ch);
 		}
 
-		break;
+		/* Switch to main menu */
+		mon_st = MON_ST_MAIN;
+		mon_print_str(mon_st2menu_map[mon_st].menu);
+		mon_print_str(MON_DIAG_PROMPT);
+
+	} /* PASS THROUGH */
 
 	/* Main menu and its submenus */
 	default:
@@ -730,8 +769,14 @@ mon_init(void)
  * Enter diagnostic mode.
  */
 int
-mon_diag_enter(void)
+mon_diag_enter(unsigned char mode)
 {
+	/* Validate the input */
+	if ((mode != MON_DIAG_MODE_BT) && (mode != MON_DIAG_MODE_SER))
+		return EINVAL;
+
+	mon_diag_mode = mode;
+
 	mon_diag_mode_enabled = TRUE;
 
 	/* Enable diagnostic service. */
@@ -740,8 +785,12 @@ mon_diag_enter(void)
 	/* Wake up state machine. */
 	mon_st = MON_ST_MAIN;
 
-	/* Set communication speed. Save the original one. */
-	mon_old_speed = mon_set_comm_speed(115200);
+	/*
+	 * If communicating over UART, set communication speed
+	 * and save the original one.
+	 */
+	if (mode == MON_DIAG_MODE_SER)
+		mon_old_speed = mon_set_comm_speed(115200);
 
 	/* Display main menu. */
 	mon_print_str(MON_DIAG_MAIN_MENU);
@@ -764,7 +813,13 @@ mon_diag_leave(void)
 	/* Switch state machine to idle mode. */
 	mon_st = MON_ST_IDLE;
 
-	/* Set communication to previous value. */
+	if (mon_diag_mode != MON_DIAG_MODE_SER)
+		return 0;
+
+	/*
+	 * If communicating over UART, set communication speed
+	 * to previous value.
+	 */
 	mon_set_comm_speed(mon_old_speed);
 
 	return 0;
