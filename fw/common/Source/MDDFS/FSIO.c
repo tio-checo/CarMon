@@ -236,14 +236,16 @@ static const char *FSkstatHistWrite[FSKSTAT_HIST_SIZE] = {
 
 static struct FSkstat_t {
 	long		srn;		/* total number of sectors read */
-	struct timeval	srt_min;	/* Min sector read time. */
-	struct timeval	srt_max;	/* Max sector read time. */
-	long		rhist[FSKSTAT_HIST_SIZE];	/* Time histogram. */
+	struct timeval	srt_min;	/* min sector read time */
+	struct timeval	srt_max;	/* max sector read time */
+	long		rhist[FSKSTAT_HIST_SIZE];	/* time histogram */
+	long		rsen;		/* read sector error counter */
 
 	long		swn;		/* total number of sectors written */
-	struct timeval	swt_min;	/* Min sector write time. */
-	struct timeval	swt_max;	/* Max sector write time. */
-	long		whist[FSKSTAT_HIST_SIZE];	/* Time histogram. */
+	struct timeval	swt_min;	/* min sector write time */
+	struct timeval	swt_max;	/* max sector write time */
+	long		whist[FSKSTAT_HIST_SIZE];	/* time histogram */
+	long		wsen;		/* write sector error counter */
 } FSkstat;
 
 /************************************************************************/
@@ -483,6 +485,9 @@ MDD_SectorRead(DWORD sector_addr, BYTE* buffer)
 			FSkstat.rhist[3]++;
 		else
 			FSkstat.rhist[4]++;
+	} else {
+		/* Operation failed, update error counter. */
+		FSkstat.rsen++;
 	}
 
 	return res;
@@ -548,6 +553,9 @@ MDD_SectorWrite(DWORD sector_addr, BYTE *buffer, BYTE allowWriteToZero)
 			FSkstat.whist[3]++;
 		else
 			FSkstat.whist[4]++;
+	} else {
+		/* Operation failed, update error counter. */
+		FSkstat.wsen++;
 	}
 
 	return res;
@@ -569,10 +577,14 @@ FSkstat_display(int (*print_str)(const char *))
 
 	/* header */
 	print_str("-------------------------------------\n\r");
+
+	/* Read statistics. */
 	snprintf(s, sizeof (s), "sectors read: %ld\n\r", FSkstat.srn);
 	print_str(s);
 
-	/* Read statistics. */
+	snprintf(s, sizeof (s), "read errors: %ld\n\r", FSkstat.rsen);
+	print_str(s);
+
 	snprintf(s, sizeof (s), "ior min time: %ld.%03ld[ms]\n\r",
 	    FSkstat.srt_min.tv_sec * 1000 + FSkstat.srt_min.tv_usec / 1000,
 	    FSkstat.srt_min.tv_usec % 1000);
@@ -591,6 +603,9 @@ FSkstat_display(int (*print_str)(const char *))
 
 	/* Write statistics. */
 	snprintf(s, sizeof (s), "\n\rsectors written: %ld\n\r", FSkstat.swn);
+	print_str(s);
+
+	snprintf(s, sizeof (s), "write errors: %ld\n\r", FSkstat.wsen);
 	print_str(s);
 
 	snprintf(s, sizeof (s), "iow min time: %ld.%03ld[ms]\n\r",
@@ -627,6 +642,8 @@ FSkstat_clear(void)
 	int i;
 
 	FSkstat.srn = FSkstat.swn = 0;
+	FSkstat.rsen = FSkstat.wsen = 0;
+
 	FSkstat.srt_min.tv_sec = FSkstat.swt_min.tv_sec = 1000;
 	FSkstat.srt_min.tv_usec = FSkstat.swt_min.tv_usec = 0;
 	FSkstat.srt_max.tv_sec = FSkstat.swt_max.tv_sec = 0;
