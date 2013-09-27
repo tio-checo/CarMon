@@ -106,18 +106,3 @@ dec2ulong(char *a, int ln)
 	return res;
 }
 
-/*
- * Converts unsigned long to given number of ASCII decimal characters
- */
-int
-ulong2dec(unsigned long in, char *out, int ln)
-{
-	int i;
-
-	for (i = ln - 1; i >= 0; i--) {
-		out[i] = (in % 10) + '0';
-		in /= 10;
-	}
-
-	return 0;
-}

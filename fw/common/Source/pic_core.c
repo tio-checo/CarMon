@@ -5,6 +5,7 @@
  *********************************************************************/
 
 #include <errno.h>
+#include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -312,14 +313,9 @@ pcore_gettime(void)
 	t = time(NULL);
 	currtm = gmtime(&t);
 
-	ulong2dec(currtm->tm_year + 1900, tds, 4);
-	ulong2dec(currtm->tm_mon + 1, tds + 4, 2);
-	ulong2dec(currtm->tm_mday, tds + 6, 2);
-	ulong2dec(currtm->tm_hour, tds + 8, 2);
-	ulong2dec(currtm->tm_min, tds + 10, 2);
-	ulong2dec(currtm->tm_sec, tds + 12, 2);
-
-	tds[14] = '\0';
+	snprintf(tds, sizeof (tds), "%04d%02d%02d%02d%02d%02d",
+	    currtm->tm_year + 1900, currtm->tm_mon + 1, currtm->tm_mday,
+	    currtm->tm_hour, currtm->tm_min, currtm->tm_sec);
 
 	return tds;
 }

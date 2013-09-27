@@ -25,8 +25,5 @@ extern int hex2ucharbuf(char *, unsigned char *, int);
 /* Converts given number of ASCII decimal characters (max 10) to unsigned long */
 extern unsigned long dec2ulong(char *, int);
 
-/* Converts unsigned long to given number of ASCII decimal characters */
-extern int ulong2dec(unsigned long, char *, int);
-
 #endif /* __UTILS_H */
 
