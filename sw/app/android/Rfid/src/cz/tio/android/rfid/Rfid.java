@@ -954,7 +954,7 @@ class CommunicationService {
 
                             mActivity.runOnUiThread(new Runnable() {
                                 public void run() {
-                                    lblId.setText(pr.substring(17));
+                                    lblId.setText(pr.substring(20));
                                 }
                             });
 
@@ -980,7 +980,8 @@ class CommunicationService {
                                 public void run() {
                                     lblT.setText(pr.substring(11, 13) + ":" +
                                             pr.substring(13, 15) + ":" +
-                                            pr.substring(15, 17));
+                                            pr.substring(15, 17) + "." +
+                                            pr.substring(17, 19));
                                 }
                             });
                         } else {

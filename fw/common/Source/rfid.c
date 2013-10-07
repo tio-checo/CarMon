@@ -45,8 +45,8 @@
 /* Length of data portion of RFID message including check sum. */
 #define RFID_MSG_LN		12
 
-/* Length of timestamp. */
-#define RFID_TIMESTAMP_LN	14
+/* Length of timestamp - YYYYMMDDHHMMSSmmm */
+#define RFID_TIMESTAMP_LN	17
 
 /*
  * Size of buffer for RFID message to be sent to master. Account for

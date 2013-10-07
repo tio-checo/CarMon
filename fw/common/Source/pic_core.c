@@ -305,17 +305,20 @@ pcore_process_query(char *data, int ln)
 char *
 pcore_gettime(void)
 {
-	static char tds[15];
+	static char tds[18];
 
 	time_t t;
 	struct tm *currtm;
+	struct timeval currtv;
 
-	t = time(NULL);
+	get_curr_hrtime(&currtv);
+	t = currtv.tv_sec;
 	currtm = gmtime(&t);
 
-	snprintf(tds, sizeof (tds), "%04d%02d%02d%02d%02d%02d",
+	snprintf(tds, sizeof (tds), "%04d%02d%02d%02d%02d%02d%03ld",
 	    currtm->tm_year + 1900, currtm->tm_mon + 1, currtm->tm_mday,
-	    currtm->tm_hour, currtm->tm_min, currtm->tm_sec);
+	    currtm->tm_hour, currtm->tm_min, currtm->tm_sec,
+	    currtv.tv_usec / 1000);
 
 	return tds;
 }
