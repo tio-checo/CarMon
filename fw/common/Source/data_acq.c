@@ -10,6 +10,7 @@
 #include <errno.h>
 
 #include "adc10.h"
+#include "bt.h"
 #include "dsplib_dsp.h"
 #include "fftc.h"
 
@@ -389,6 +390,12 @@ daq_scope_svc(void)
 		/* Acquisition stopped */
 		if (!daq_main.run)
 			break;
+
+		/* Connection with master lost, cancel acquisition. */
+		if (!bt_is_paired()) {
+			daq_main.run = FALSE;
+			break;
+		}
 
 		/* Wait until previously acquired data are processed */
 		if (daq_buffer.ready)

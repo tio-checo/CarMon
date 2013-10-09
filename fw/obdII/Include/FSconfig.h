@@ -183,12 +183,6 @@
     // Description: Function pointer to the Media Detect Physical Layer function
     #define MDD_MediaDetect         MDD_SDSPI_MediaDetect
 
-    // Description: Function pointer to the Sector Read Physical Layer function
-    #define MDD_SectorRead          MDD_SDSPI_SectorRead
-
-    // Description: Function pointer to the Sector Write Physical Layer function
-    #define MDD_SectorWrite         MDD_SDSPI_SectorWrite
-
     // Description: Function pointer to the I/O Initialization Physical Layer function
     #define MDD_InitIO              MDD_SDSPI_InitIO
 
@@ -211,12 +205,6 @@
 
     // Description: Function pointer to the Media Detect Physical Layer function
     #define MDD_MediaDetect         MDD_CFPMP_MediaDetect
-
-    // Description: Function pointer to the Sector Read Physical Layer function
-    #define MDD_SectorRead          MDD_CFPMP_SectorRead
-
-    // Description: Function pointer to the Sector Write Physical Layer function
-    #define MDD_SectorWrite         MDD_CFPMP_SectorWrite
 
     // Description: Function pointer to the I/O Initialization Physical Layer function
     #define MDD_InitIO              MDD_CFPMP_InitIO
@@ -244,12 +232,6 @@
     // Description: Function pointer to the Media Detect Physical Layer function
     #define MDD_MediaDetect         MDD_CFBT_MediaDetect
 
-    // Description: Function pointer to the Sector Read Physical Layer function
-    #define MDD_SectorRead          MDD_CFBT_SectorRead
-
-    // Description: Function pointer to the Sector Write Physical Layer function
-    #define MDD_SectorWrite         MDD_CFBT_SectorWrite
-
     // Description: Function pointer to the I/O Initialization Physical Layer function
     #define MDD_InitIO              MDD_CFBT_InitIO
 
@@ -275,12 +257,6 @@
 
     // Description: Function pointer to the Media Detect Physical Layer function
     #define MDD_MediaDetect         USBHostMSDSCSIMediaDetect
-
-    // Description: Function pointer to the Sector Read Physical Layer function
-    #define MDD_SectorRead          USBHostMSDSCSISectorRead
-
-    // Description: Function pointer to the Sector Write Physical Layer function
-    #define MDD_SectorWrite         USBHostMSDSCSISectorWrite
 
     // Description: Function pointer to the I/O Initialization Physical Layer function
     #define MDD_InitIO();              

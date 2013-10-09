@@ -7,6 +7,7 @@
 
 #include <errno.h>
 
+#include "bt.h"
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "obd.h"
@@ -125,10 +126,12 @@ obd_comm_ecu_svc(void)
 		fl_send_data = TRUE;
 
 		/*
-		 * If in auto-scan mode, ask for value of next PID.
-		 * Otherwise switch to IDLE mode.
+		 * If connection with master has been lost, cancel auto-scan
+		 * mode. Also switch to IDLE state if auto-scan is not enabled.
 		 */
-		if (!obd_autoscan_run) {
+		if (!obd_autoscan_run || !bt_is_paired()) {
+			obd_autoscan_run = FALSE;
+
 			obd_ecu_st = OBD_ECU_ST_IDLE;
 			break;
 		}
