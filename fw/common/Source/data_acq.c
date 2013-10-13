@@ -64,7 +64,6 @@ static unsigned int adc_data[ADC_NUM_CHANNELS];	/* measured ADC values */
 static int daq_adc_st;				/* ADC state machine */
 static int daq_adc_ch;				/* measured channel */
 static BOOL daq_adc_sample_acquired;		/* new sample available */
-static int daq_adc_sample_rate;			/* sample rate in ticks */
 
 /* oscilloscope module */
 static daq_main_t	daq_main;	/* main */
@@ -193,7 +192,7 @@ daq_adc_svc(void)
 
 		/* Timer expired, arm it again and initiate conversion phase */
 		if (daq_sr_timer == 0) {
-			daq_sr_timer = daq_adc_sample_rate;
+			daq_sr_timer = daq_time_base.srate / RTL_SERVICE_PERIOD;
 			AD1CON1CLR = ADC_SAMP_ON;
 
 			/* move to conversion phase */
@@ -520,9 +519,10 @@ daq_pp_bottom_svc()
 	 *
 	 *  'auto'   - copy all acquired samples.
 	 *  'normal' - copy only pre-trigger and post-trigger samples around
-	 *             trigger.
+	 *             trigger. Treat zero number of pre-trigger samples
+         *             in special way. In that case, copy all acquired samples.
 	 */
-	if (daq_trigger.mode == DAQ_TRIG_AUTO) {
+	if ((daq_trigger.mode == DAQ_TRIG_AUTO) || (daq_time_base.pre == 0)) {
 		int i, j;
 
 		num = daq_buffer.sn;
@@ -1271,7 +1271,6 @@ daq_init(void)
 	AD1CON1SET = ADC_SAMP_ON;
 	daq_adc_st = ADC_ST_SAMPLE;
 
-	daq_adc_sample_rate = daq_time_base.srate / RTL_SERVICE_PERIOD;
 	daq_adc_sample_acquired = FALSE;
 
 	/* Register and enabled service. */
