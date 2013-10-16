@@ -365,8 +365,11 @@ daq_scope_svc(void)
 		 * Buffer is cyclic, so when it gets full, start dropping the
 		 * oldest samples.
 		 */
-		if (++daq_buffer.sn < DAQ_ACQ_BUF_SIZE) {
+		daq_buffer.sn++;
+		if (daq_buffer.sn < DAQ_ACQ_BUF_SIZE) {
 			daq_buffer.tail++;
+		} else if (daq_buffer.sn == DAQ_ACQ_BUF_SIZE) {
+			daq_buffer.tail = 0;
 		} else {
 			daq_buffer.sn = DAQ_ACQ_BUF_SIZE;
 
