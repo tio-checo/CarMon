@@ -22,6 +22,10 @@ def main():
     parser.add_argument('-q', dest='query', action='store_true', default=False,
                         help='display information about supplied file')
 
+    parser.add_argument('-s', dest='show_start_voltage', action='store_true',
+                        default=False,
+                        help='display starting voltage')
+
     parser.add_argument('-t', dest='chart_type', default='XY',
                         choices=['XY', 'hist'],
                         help='type of chart')
@@ -34,10 +38,29 @@ def main():
         # Try to open and read provided file.
         with open(args.filename, 'r') as f_data:
             #
-            # First line contains description which kind of data provided
-            # file contains.
+            # The first three lines in the file may contain battery voltage
+            # captured during starting phase. The format of data is following:
+            #
+            #  # Starting phase battery voltage
+            #   7.9 7.9 .... 14.1 14.2
+            #  # Starting phase battery voltage
             #
             line = f_data.readline()
+            starting_voltage = []
+
+            if (line.startswith('# Starting phase battery voltage')):
+                # Battery starting voltage captured, process captured data.
+                line = f_data.readline()
+
+                starting_voltage = line.strip().split()
+
+                # Skip footer
+                line = f_data.readline()
+
+                # Read subsequent line for further processing.
+                line = f_data.readline()
+
+            # Process line with data labels.
             data_desc = line.strip().split()
 
             print data_desc
@@ -45,6 +68,11 @@ def main():
             # Determine number of parameters.
             num_pars = len (data_desc)
             print 'num_pars:', num_pars
+
+            if (len (starting_voltage) != 0):
+                print 'Starting voltage captured: Yes'
+            else:
+                print 'Starting voltage captured: No'
 
             #
             # Read captured data in two dimensional list. Each row
@@ -76,6 +104,8 @@ def main():
 
         print str(err)
 
+        return
+
 #    print '# of rows:', len(obd_data)
 #    print '# of entires in row [0]:', len(obd_data[0])
 #    print '# of entires in row [1]:', len(obd_data[1])
@@ -83,11 +113,33 @@ def main():
 #    print 'Start of row 2:', obd_data[1][0:100]
 #    print 'row 2:', obd_data[1]
 
-    # Just display information about data in supplied file and exit.
+    # Display information about data in given file and exit.
     if args.query:
         print 'Data rows:'
         for i in range(len(data_desc)):
             print ' Row %d: %s' % (i, data_desc[i])
+
+        if (len(starting_voltage) != 0):
+            print 'Starting voltage captured: Yes'
+        else:
+            print 'Starting voltage captured: No'
+
+        return
+
+    # Display starting voltage and exit.
+    if (args.show_start_voltage):
+        #
+        # Generate X axis - time in seconds. Sample rate is 20ms.
+        #
+        x_time = []
+        for i in range(len (starting_voltage)):
+            x_time.append(i * 0.020)
+
+        plt.plot(x_time, starting_voltage)
+        plt.grid(True)
+        plt.xlabel('Time[s]')
+        plt.ylabel('Vbat[V]')
+        plt.show()
 
         return
 

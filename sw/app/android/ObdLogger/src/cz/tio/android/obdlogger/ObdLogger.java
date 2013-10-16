@@ -533,6 +533,46 @@ class Dashboard {
 }
 
 /**
+ * Defines interface implemented by communication services (Obd, Kwp2000, Pic).
+ */
+interface ICommSvc {
+    /**
+     * Establishes communication channel.
+     * Returns true if communication has been established, otherwise
+     * returns false.
+     */
+    public boolean open();
+
+    /**
+     * Closes communication channel.
+     * Returns true if communication channel has been sucessfully closed,
+     * otherwise returns false.
+     */
+    public boolean close();
+
+    /**
+     * Sends data.
+     * Return false if attempt to send data failed, otherwise return
+     * true.
+     */
+    public boolean sendPacket(String data);
+
+    /**
+     * Returns packet received from any module.
+     * Returns null if timeout expired when waiting for data,
+     * otherwise returns received data.
+     */
+    public String getPacket();
+
+    /**
+     * Returns packet starting with specified string.
+     * Returns null if timeout expired when waiting for data,
+     * otherwise returns received data.
+     */
+    public String getPacket(String startString);
+}
+
+/**
  * Implements FIFO which transports characters from PIC module (producer)
  * to communication thread (consumer). If FIFO is empty, consumer does
  * not block on waiting for character indefinitely - there is 1 second
@@ -622,13 +662,23 @@ class PicReaderThread extends Thread {
             try {
                 ch = mInStream.read();
 
+                /*
+                 * Thread has been interrupted which indicates that upper layer
+                 * wants us to gracefully terminate the thread.
+                 */
+                if (interrupted()) {
+                    Log.d(ObdLogger.TAG, "Reader thread interrupted.");
+
+                    ch = -1;
+                }
+
                 /* Store received character and notify waiting thread */
                 mRecvBuf.put(ch);
 
 //                Log.d(ObdLogger.TAG, String.format("Pic -> %c", ch));
             } catch (IOException e) {
                 Log.e(ObdLogger.TAG, "Error when waiting for " +
-                        "character from PIC module.", e);
+                        "character from PIC module.");
 
                 /* Connection lost, terminate the thread. */
                 ch = -1;
@@ -641,7 +691,7 @@ class PicReaderThread extends Thread {
 /**
  * Provides methods for communicating with PIC module.
  */
-class PicCom {
+class PicCom implements ICommSvc {
     /* ECU communication modes */
     static final String ECU_COMM_MODE_KWP2K_BASIC = "01";
     static final String ECU_COMM_MODE_KWP2K_ENHANCED = "02";
@@ -655,6 +705,9 @@ class PicCom {
 
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
+
+    /* Packet buffer implemented as list of String objects */
+    private ArrayList<String> mPacketBuffer;
 
     /* enables debug mode */
     private boolean mDebug = false;
@@ -677,33 +730,112 @@ class PicCom {
     private PicRecvChar mRecvChar;
 
     /**
-     * Constructor
+     * Searches in packet buffer for packet starting with given string.
+     * If packet matching given criteria is found, it's removed from buffer
+     * and returned to caller, otherwise null is returned.
      */
-    public PicCom(InputStream In, OutputStream Out) {
-        if (mDebug) {
-            mComTime = ObdLogger.getTime();
+    private String findPacket(String s) {
+        int i;
+
+        /* Buffer is empty, return */
+        if (mPacketBuffer.isEmpty())
+            return null;
+
+        for (i = 0; i < mPacketBuffer.size(); i++) {
+            /* Packet found, remove it from buffer and return it. */
+            if (mPacketBuffer.get(i).startsWith(s))
+                return mPacketBuffer.remove(i);
         }
 
-        /* Initialize input and output streams */
-        mPicIn = In;
-        mPicOut = Out;
+        /* Packet not found in a buffer. */
+        return null;
+    }
+
+    /**
+     * Appends packet to the end of the buffer.
+     */
+    private boolean bufferPacket(String p) {
+            Log.w(ObdLogger.TAG, String.format("[%.3f] Buffering packet <%s>.",
+                    ObdLogger.getRunTime(), p));
+
+            return mPacketBuffer.add(p);
+    }
+
+    /**
+     * Waits either for ACK, NAK or both from specified module.
+     * @return  0  - ACK has been received.
+     *         err - error code received in NAK response
+     *         -1  - timeout expired
+     */
+    private int waitForAckNak(String modId, boolean ack, boolean nak) {
+        String ackResp = modId + "A";
+        String nakResp = modId + "N";
+        String p;
 
         /*
-         * Crate object which will be used for character received from
-         * PIC module between main and "reader" thread.
+         * First inspect packet buffer, as the response may have already
+         * been received. Search for ACK first, since that is what
+         * we expect to receive most of the time.
          */
-        mRecvChar = new PicRecvChar();
+        if (ack) {
+            p = findPacket(ackResp);
+            /* ACK received */
+            if (p != null)
+                return 0;
+        }
+
+        if (nak) {
+            p = findPacket(nakResp);
+            /* NAK received */
+            if (p != null)
+                return Integer.parseInt(p.substring(2), 16);
+        }
 
         /*
-         * Create separate "reader" thread. It is needed,
-         * since InputStream.read() does not support timeouts and blocks
-         * if there are no data available. That would in turn block
-         * main communication thread and lead to deadlock.
+         * Neither ACK nor NAK found in the buffer, wait for packet from PIC
+         * until timeout expires.
          */
-        mReaderThread = new PicReaderThread(mRecvChar, In);
+        while (true) {
+            p = recv();
 
-        /* Start reader thread */
-        mReaderThread.start();
+            /* Timeout occurred */
+            if (p == null) {
+                Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                        "Timeout when waiting for packet from" +
+                        " PIC module", ObdLogger.getRunTime()));
+
+                return -1;
+            }
+
+            if (ack) {
+                /* ACK received. */
+                if (p.equals(ackResp)) {
+                    return 0;
+                }
+            }
+
+            if (nak) {
+                /* NAK received. */
+                if (p.startsWith(nakResp)) {
+                    return Integer.parseInt(p.substring(2), 16);
+                }
+            }
+
+            /*
+             * Neither NAK nor ACK packet, so save it to the buffer.
+             */
+            bufferPacket(p);
+        }
+    }
+
+    /**
+     * Waits for ACK or NAK from specified module.
+     * @return  0  - ACK has been received.
+     *         err - error code received in NAK response
+     *         -1  - timeout expired
+     */
+    private int waitForAckNak(String modId) {
+        return waitForAckNak(modId, true, true);
     }
 
     /**
@@ -715,99 +847,11 @@ class PicCom {
     }
 
     /**
-     * Establishes communication with PIC module.
-     * Returns true if communication has been established, otherwise
-     *  returns false.
-     */
-    public boolean comInit() {
-        /* If communication channel is already established, return. */
-        if (mComPicEstablished) {
-            return true;
-        }
-
-        /* Initiate communication by reading value from A/D converter. */
-//        int adv = getAdValue("08");
-        /* Initiate communication. */
-//        int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_DEBUG);
-        int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_ENHANCED);
-
-        if (res == -1) {
-            String logStr = String.format("[%.3f] Timeout when trying " +
-                    "to initiate communication with PIC module",
-                    ObdLogger.getRunTime());
-
-            Log.w(ObdLogger.TAG, logStr);
-            mLog.w(logStr);
-
-            return false;
-        } else {
-            /* Valid response received, communication established. */
-            mComPicEstablished = true;
-
-            String logStr = "Communication with PIC module established";
-            Log.i(ObdLogger.TAG, logStr);
-            mLog.i(logStr);
-
-            return true;
-        }
-    }
-
-    /**
-     * Finishes communication.
-     */
-    public void commFinish() {
-        /* Try to join reader thread. */
-        try {
-            mReaderThread.join(5000);
-        } catch (InterruptedException e) {
-            /* Could not join communication thread */
-            Log.e(ObdLogger.TAG, "Interrupted while sleeping.", e);
-        }
-
-        if (mReaderThread.isAlive()) {
-            /* Could not join communication thread */
-            Log.e(ObdLogger.TAG, "Failed to join PIC reader thread.");
-        } else {
-            Log.i(ObdLogger.TAG, "PIC reader thread joined.");
-        }
-    }
-
-    /**
-     * Assembles and sends packet to PIC module.
-     * Return false if attempt to send the packet failed, otherwise return
-     * true.
-     */
-    public boolean sendPacket(String cmd, String data) {
-        /* Encapsulate provided data payload with SOF and EOF characters. */
-        String picPacket = "<" + cmd + data + ">";
-
-        /* Send out resulting packet to PIC module. */
-        try {
-            mPicOut.write(picPacket.getBytes());
-        } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "sendPacket() - writing to OutputStream " +
-                    "failed.", e);
-
-            return false;
-        }
-
-        /* If desired, print the packet for debugging purposes. */
-        if (mDebug) {
-            Log.d(ObdLogger.TAG, String.format("[%.3f] <- %s",
-                    (ObdLogger.getTime() - mComTime), picPacket));
-
-            mComTime = ObdLogger.getTime();
-        }
-
-        return true;
-    }
-
-    /**
      * Receives packet from PIC module.
      * Returns null if timeout expired when waiting for packet, otherwise
      * returns received packet.
      */
-    public String recvPacket() {
+    private String recv() {
         String p = new String("");
 
         /* State machine will wait for beginning of the packet. */
@@ -890,83 +934,219 @@ class PicCom {
     }
 
     /**
-     * Waits for ACK response. Returns -1 in case of failure.
+     * Constructor
      */
-    public int waitForAck(String modId) {
-        String ack = modId + "A";
-
-        /* Wait for packet from PIC module. */
-        String p = recvPacket();
-
-        /* Timeout occurred */
-        if (p == null) {
-            Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                    "Timeout when waiting for packet from" +
-                    " PIC module", ObdLogger.getRunTime()));
-
-            return -1;
+    public PicCom(InputStream In, OutputStream Out) {
+        if (mDebug) {
+            mComTime = ObdLogger.getTime();
         }
 
-        /* Valid packet received. */
-        if (p.equals(ack)) {
-            return 0;
-        }
+        /* Initialize input and output streams */
+        mPicIn = In;
+        mPicOut = Out;
 
         /*
-         * Invalid response from PIC module received. Log this
-         * and process next packet.
+         * Create object which will be used for character received from
+         * PIC module between main and "reader" thread.
          */
-        Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting \"" +
-                ack + "\", received \"" + p + "\"");
+        mRecvChar = new PicRecvChar();
 
-        return -1;
+        /* Instantiate packet buffer. */
+        mPacketBuffer = new ArrayList<String>();
+
+        /*
+         * Create separate "reader" thread. It is needed,
+         * since InputStream.read() does not support timeouts and blocks
+         * if there are no data available. That would in turn block
+         * main communication thread and lead to deadlock.
+         */
+        mReaderThread = new PicReaderThread(mRecvChar, In);
+
+        /* Start reader thread */
+        mReaderThread.start();
     }
 
     /**
-     * Acquires value measured on given ADC channel. Returns -1
-     * in case of failure.
+     * Establishes communication with PIC module.
+     * Returns true if communication has been established, otherwise
+     * returns false.
+     */
+    public boolean open() {
+        /* If communication channel is already established, return. */
+        if (mComPicEstablished) {
+            return true;
+        }
+
+        /* Initiate communication. */
+//        int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_DEBUG);
+        int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_ENHANCED);
+
+        if (res == -1) {
+            mLog.w("Timeout when trying to initiate communication " +
+                    "with PIC module.");
+
+            return false;
+        } else {
+            /* Valid response received, communication established. */
+            mLog.i("Communication with PIC module established.");
+
+            mComPicEstablished = true;
+
+            return true;
+        }
+    }
+
+    /**
+     * Finishes communication.
+     */
+    public boolean close() {
+        /* Signal reader thread that it should finish its job. */
+        mReaderThread.interrupt();
+
+        /*
+         * In order to make the thread interruptible, it needs to return
+         * from blocking I/O. To accomplish that, let it receive at least
+         * one character from PIC module.
+         */
+        sendPacket("QS");
+
+        try {
+            mReaderThread.join(5000);
+        } catch (InterruptedException e) {
+            /* Could not join communication thread */
+            Log.e(ObdLogger.TAG, "Interrupted while sleeping.", e);
+        }
+
+        if (mReaderThread.isAlive()) {
+            /* Could not join communication thread */
+            Log.e(ObdLogger.TAG, "Failed to join PIC reader thread.");
+        } else {
+            Log.i(ObdLogger.TAG, "PIC reader thread joined.");
+        }
+
+        mComPicEstablished = false;
+
+        return true;
+    }
+
+    /**
+     * Wipes out packet buffer.
+     */
+    public void cleanBuffer() {
+        mPacketBuffer.clear();
+    }
+
+    /**
+     * Assembles and sends packet to PIC module.
+     * Return false if attempt to send the packet failed, otherwise return
+     * true.
+     */
+    public boolean sendPacket(String data) {
+        /* Encapsulate provided data payload with SOF and EOF characters. */
+        String picPacket = "<" + data + ">";
+
+        /* Send out resulting packet to PIC module. */
+        try {
+            mPicOut.write(picPacket.getBytes());
+        } catch (IOException e) {
+            Log.e(ObdLogger.TAG, "sendPacket() - writing to OutputStream " +
+                    "failed.", e);
+
+            return false;
+        }
+
+        /* If desired, print the packet for debugging purposes. */
+        if (mDebug) {
+            Log.d(ObdLogger.TAG, String.format("[%.3f] <- %s",
+                    (ObdLogger.getTime() - mComTime), picPacket));
+
+            mComTime = ObdLogger.getTime();
+        }
+
+        return true;
+    }
+
+    /**
+     * Returns packet received from any module. If packet buffer contains
+     * packets, returns the first packet from the buffer, otherwise wait
+     * for a packet from PIC either until packet is received or timeout
+     * expires. Returns null if timeout expired.
+     */
+    public String getPacket() {
+        /* Buffer is empty, wait for packet from PIC module. */
+        if (mPacketBuffer.isEmpty()) {
+            return recv();
+        }
+
+        /* Return the first packet from buffer. */
+        return mPacketBuffer.remove(0);
+    }
+
+    /**
+     * Returns packet starting with specified straing. If packet buffer contains
+     * matching packet, returns the first packet found, otherwise wait for such
+     * packet from PIC until timeout expires.
+     * Returns null if timeout expired when waiting for a packet, otherwise
+     * returns packet - either from buffer or just received one.
+     */
+    public String getPacket(String startString) {
+        String p = findPacket(startString);
+
+        /* Packet found in buffer, return it. */
+        if (p != null)
+            return p;
+
+        /*
+         * Packet from specified module not found in buffer, receive packet
+         * from PIC until timeout expires.
+         */
+        while (true) {
+            p = recv();
+
+            /* Timer expired, return. */
+            if (p == null)
+                return null;
+
+            /* Desired packet received, return it. */
+            if (p.startsWith(startString))
+                return p;
+
+            /*
+             * We are not interested in received packet, put it to the buffer.
+             */
+            bufferPacket(p);
+        }
+    }
+
+    /**
+     * Acquires value measured on given ADC channel.
+     * Returns -1 in case of failure.
      */
     public int getAdValue(String channel) {
-        if (!sendPacket("A", channel)) {
+        if (!sendPacket("A" + channel)) {
             return -1;
         }
 
         /*
-         * Process response from PIC module.
-         * Loop until valid packet is received or timeout
-         * occurs (buffer is empty).
+         * Wait for response from PIC module until valid packet is received
+         * or timeout expires.
          */
-        String p;
-        while (true) {
-            p = recvPacket();
+        String p = getPacket("A00");
 
-            /* Timeout occurred */
-            if (p == null) {
-                Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                        "Timeout when waiting for packet from" +
-                        " PIC module", ObdLogger.getRunTime()));
+        /* Timeout expired */
+        if (p == null) {
+            Log.w(ObdLogger.TAG, String.format("[%.3f] " +
+                    "Timeout when waiting for AD packet from" +
+                    " PIC module", ObdLogger.getRunTime()));
 
-                return -1;
-            }
-
-            /* Valid packet received. Escape from the loop. */
-            if (p.startsWith("A00")) {
-                break;
-            }
-
-            /*
-             * Invalid response from PIC module received. Log this
-             * and process next packet.
-             */
-            Log.w(ObdLogger.TAG, "Invalid PIC response, awaiting " +
-                    "\"A00...\", received \"" + p + "\"");
+            return -1;
         }
 
         int[] picData = new int[2];
 
         for (int i = 0; i < picData.length; i++) {
             picData[i] = Integer.parseInt(p.substring(
-                    3 + (i * 2), 3 + (i + 1) * 2), 16);
+                    3 + (i * 2), 5 + (i * 2)), 16);
         }
 
         return (picData[0] * 256 + picData[1]);
@@ -977,12 +1157,12 @@ class PicCom {
      * Returns -1 in case of failure.
      */
     public int configAcqModule(String config) {
-        if (!sendPacket("QC", config)) {
+        if (!sendPacket("QC" + config)) {
             return -1;
         }
 
         /* Wait for ACK */
-        return waitForAck("Q");
+        return waitForAckNak("Q");
     }
 
     /**
@@ -990,12 +1170,12 @@ class PicCom {
      * Returns -1 in case of failure.
      */
     public int configPpModule(String config) {
-        if (!sendPacket("QP", config)) {
+        if (!sendPacket("QP" + config)) {
             return -1;
         }
 
         /* Wait for ACK */
-        return waitForAck("Q");
+        return waitForAckNak("Q");
     }
 
     /**
@@ -1003,13 +1183,12 @@ class PicCom {
      * Returns -1 in case of failure.
      */
     public int runAcq() {
-        if (!sendPacket("QR", "")) {
+        if (!sendPacket("QR")) {
             return -1;
         }
 
         /* Wait for ACK */
-//        return waitForAck("Q");
-        return 0;
+        return waitForAckNak("Q");
     }
 
     /**
@@ -1017,13 +1196,12 @@ class PicCom {
      * Returns -1 in case of failure.
      */
     public int stopAcq() {
-        if (!sendPacket("QS", "")) {
+        if (!sendPacket("QS")) {
             return -1;
         }
 
         /* Wait for ACK */
-//        return waitForAck("Q");
-        return 0;
+        return waitForAckNak("Q");
     }
 
     /**
@@ -1031,13 +1209,12 @@ class PicCom {
      * Returns -1 in case of failure.
      */
     public int configObdAutoScan(String pidList) {
-        if (!sendPacket("EOR", pidList)) {
+        if (!sendPacket("EOR" + pidList)) {
             return -1;
         }
 
-        /* Wait for ACK */
-//        return waitForAck("E");
-        return 0;
+        /* Wait just for ACK */
+        return waitForAckNak("E", true, false);
     }
 
     /**
@@ -1045,12 +1222,12 @@ class PicCom {
      * -1 otherwise.
      */
     public int setEcuCommMode(String mode) {
-        if (!sendPacket("M", mode)) {
+        if (!sendPacket("M" + mode)) {
             return -1;
         }
 
         /* Wait for ACK */
-        return waitForAck("M");
+        return waitForAckNak("M");
     }
 }
 
@@ -1081,7 +1258,7 @@ class Kwp2000 {
             Log.d(ObdLogger.TAG, "<- " + p);
         }
 
-        return mPicCom.sendPacket("S", p);
+        return mPicCom.sendPacket("S" + p);
     }
 
     /**
@@ -1092,7 +1269,7 @@ class Kwp2000 {
         String p;
 
         while (true) {
-            p = mPicCom.recvPacket();
+            p = mPicCom.getPacket();
 
             /* Return null if timeout expired. */
             if (p == null) {
@@ -1128,12 +1305,17 @@ class Obd {
     /* Reference to lower communication layer */
     public Kwp2000 mKwp2000;
 
+    static final String PKT_ACK = "EA";
+    static final String PKT_NAK = "EN";
+    static final String PKT_GET_PID = "EOP";
+    static final String PKT_GET_PID_RESP = "E00P";
+
     /* private attributes */
     private static final int ST_COMM_INIT = 0;
     private static final int ST_GET_PID = 1;
 
-    private static final String PKT_GET_PID = "01";
-    private static final String PKT_GET_PID_RESP = "41";
+    /* Reference to lower communication layer */
+    private PicCom mPicCom;
 
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
@@ -1150,6 +1332,8 @@ class Obd {
     public Obd(Kwp2000 kwp2000) {
         /* Save reference to lower layer communication object. */
         mKwp2000 = kwp2000;
+
+        mPicCom = kwp2000.mPicCom;
     }
 
     /**
@@ -1157,7 +1341,7 @@ class Obd {
      * Returns true if communication has been established, otherwise
      * returns false.
      */
-    public boolean comInit() {
+    public boolean open() {
         /* If communication channel is already established, return. */
         if (mComEcuEstablished) {
             return true;
@@ -1172,24 +1356,47 @@ class Obd {
 
         /* Timeout expired. */
         if (p == null) {
-            String logStr = String.format("[%.3f] Timeout when trying " +
-                    "to initiate communication with ECU",
-                    ObdLogger.getRunTime());
-
-            Log.e(ObdLogger.TAG, logStr);
-            mLog.e(logStr);
+            mLog.e("Timeout when trying to initiate communication with ECU.");
 
             return false;
         }
 
         /* Communication established, set appropriate flag and return. */
+        mLog.i("Communication with ECU established.");
+
         mComEcuEstablished = true;
 
-        String logStr = "Communication with ECU established.";
-        Log.i(ObdLogger.TAG, logStr);
-        mLog.i(logStr);
-
         return true;
+    }
+
+    /**
+     * Finishes communication with ECU.
+     * Returns true in case of success, otherwise returns false.
+     */
+    public boolean close() {
+        /* Assume success. */
+        boolean ret = true;
+        int i;
+
+        mComEcuEstablished = false;
+
+        /* Turn off auto-scan mode. */
+        if (mPicCom.configObdAutoScan("") == -1)
+            ret = false;
+
+        /*
+         * Discard buffered packets, as these all belong to communication
+         * session which is now being closed. Waits for finite number
+         * of packets, so that the method does not hang here in case
+         * auto-scan mode has not been successfully canceled.
+         */
+        for (i = 0; i < 100 && mPicCom.getPacket() != null; i++);
+
+        /* Failed to clean up the buffer. */
+        if (i == 100)
+            ret = false;
+
+        return ret;
     }
 
     /**
@@ -1197,10 +1404,11 @@ class Obd {
      * been received, otherwise returns PID value in form of byte array.
      */
     public int[] getPidValue(String pidId) {
-        String p = null;
+        String sp = PKT_GET_PID + pidId;
+        String rp = null;
 
         /* Ask ECU for PID value. Return if send failed. */
-        if (!mKwp2000.sendPacket(PKT_GET_PID + pidId)) {
+        if (!mPicCom.sendPacket(sp)) {
             return null;
         }
 
@@ -1210,43 +1418,46 @@ class Obd {
          */
         while (true) {
             /* Wait for response. */
-            p = mKwp2000.recvPacket();
+            rp = mPicCom.getPacket("E");
 
             /*
              * Timeout expired. Communication needs to be established again.
              */
-            if (p == null) {
-                String logStr = String.format("[%.3f] Timeout when " +
-                        "waiting for ECU response", ObdLogger.getRunTime());
-
-                Log.w(ObdLogger.TAG, logStr);
-                mLog.w(logStr);
+            if (rp == null) {
+                mLog.w("Timeout when waiting for ECU response.");
 
                 mComEcuEstablished = false;
 
                 return null;
             }
 
+            /*
+             * NAK received, log it and wait for another packet, since
+             * it may not be our NAK.
+             */
+            if (rp.startsWith(PKT_NAK)) {
+                mLog.w(String.format(
+                        "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
+
+                continue;
+            }
+
             /* Valid packet received. Escape from the loop. */
-            if (p.startsWith("Mr" + PKT_GET_PID_RESP + pidId)) {
+            if (rp.startsWith(PKT_GET_PID_RESP + pidId)) {
                 break;
             }
 
             /* Invalid packet received. Log this and wait for another one. */
-            String logStr = String.format("[%.3f] Invalid ECU " +
-                    "response, awaiting %s, got %s.",
-                    ObdLogger.getRunTime(), "Mr" + PKT_GET_PID_RESP + pidId,
-                    p);
-
-            Log.w(ObdLogger.TAG, logStr);
-            mLog.w(logStr);
+            mLog.w(String.format(
+                    "Invalid ECU response, awaiting <%s>, got <%s>.",
+                    PKT_GET_PID_RESP + pidId, rp));
         }
 
-        int[] pidData = new int[(p.length() - 6) / 2];
+        int[] pidData = new int[(rp.length() - 6) / 2];
 
         for (int i = 0; i < pidData.length; i++) {
-            pidData[i] = Integer.parseInt(p.substring(
-                    6 + (i * 2), 6 + (i + 1) * 2), 16);
+            pidData[i] = Integer.parseInt(rp.substring(
+                    6 + (i * 2), 8 + (i * 2)), 16);
         }
 
         return pidData;
@@ -1515,7 +1726,8 @@ class LogMaster {
             try {
                 mFileProbe.createNewFile();
             } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create file " + mFilenameProbe, e);
+                Log.e(ObdLogger.TAG, "Failed to create file " +
+                        mFilenameProbe, e);
 
                 return -1;
             }
@@ -1525,7 +1737,8 @@ class LogMaster {
             try {
                 mFileSts.createNewFile();
             } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create file " + mFilenameSts, e);
+                Log.e(ObdLogger.TAG, "Failed to create file " +
+                        mFilenameSts, e);
 
                 return -1;
             }
@@ -1576,6 +1789,46 @@ class LogMaster {
         }
 
         return mInstance;
+    }
+
+    /**
+     * Logs data captured when measuring starting voltage.
+     *
+     * @param  p captured data
+     * @return   True if data was successfully logged, false otherwise.
+     */
+    public boolean logStartingVoltage(String p) {
+        /* Capture only if log file was successfully initialized. */
+        if (!mLogFilesReady) {
+            return false;
+        }
+
+        /* Write acquired data to the log file. */
+        try {
+            /* Header */
+            mFileWriterProbe.write("# Starting phase battery voltage\n");
+
+            /*
+             * Data - packet is in form of
+             *  Q00aaaabbbbccccdddd...zzzz
+             *
+             * Replace decimal comma with decimal point.
+             */
+            for (int i = 0; i < (p.length() - 3) / 4; i++) {
+                mFileWriterProbe.write(String.format(" %.1f",
+                        0.01837 * Integer.parseInt(p.substring(3 + (4 * i),
+                        7 + (4 * i)), 16)).replace(',', '.'));
+            }
+
+            /* Footer */
+            mFileWriterProbe.write("\n# Starting phase battery voltage\n");
+        } catch (IOException e) {
+            Log.e(ObdLogger.TAG, "Failed to write into log file.", e);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -1647,6 +1900,16 @@ class LogMaster {
     }
 
     /**
+     * Prepends message with relative timestamp.
+     *
+     * @param  msg Message to be logged.
+     * @return     Message with timestamp prepended.
+     */
+    private String prependRelTimestamp(String msg) {
+        return String.format("[%.3f] %s", ObdLogger.getRunTime(), msg);
+    }
+
+    /**
      * Implements common logging code.
      */
     private void common(String level, String msg) {
@@ -1663,6 +1926,8 @@ class LogMaster {
      */
     synchronized public void e(String msg) {
         common("ERROR", msg);
+
+        Log.e(ObdLogger.TAG, prependRelTimestamp(msg));
     }
 
     /**
@@ -1670,6 +1935,8 @@ class LogMaster {
      */
     synchronized public void w(String msg) {
         common("WARNING", msg);
+
+        Log.w(ObdLogger.TAG, prependRelTimestamp(msg));
     }
 
     /**
@@ -1677,6 +1944,8 @@ class LogMaster {
      */
     synchronized public void i(String msg) {
         common("INFO", msg);
+
+        Log.i(ObdLogger.TAG, prependRelTimestamp(msg));
     }
 
     /**
@@ -1684,10 +1953,12 @@ class LogMaster {
      */
     synchronized public void d(String msg) {
         common("DEBUG", msg);
+
+        Log.d(ObdLogger.TAG, prependRelTimestamp(msg));
     }
     
     /**
-     * Finishes open files.
+     * Closes logging files.
      */
     public static void finish() {
         try {
@@ -1711,6 +1982,7 @@ class LogMaster {
 
         Log.d(ObdLogger.TAG, "Log files closed.");
         mLogFilesInitialized = false;
+        mLogHeaderWritten = false;
     }
 }
 
@@ -1960,7 +2232,103 @@ class CommunicationService {
         });
     }
 
-   /**
+    /**
+     * Configure data acquisition module either for capturing battery voltage
+     * during engine starting phase or for measuring charging voltage when
+     * engine is running.
+     *
+     * @param  startingPhase true if configure for capturing voltage
+     *                       during starting phase
+     * @return               True if module was successfully configured,
+     *                       false otherwise.
+     */
+    private boolean confAcqModule(boolean startingPhase) {
+        PicCom pc = mObd.mKwp2000.mPicCom;
+
+        /*
+         * Make sure acquisition module is idle as well as turn off
+         * post-processing module.
+         */
+        if (pc.stopAcq() == -1) {
+            mLog.w("Failed to stop data acquisition.");
+
+            return false;
+        }
+
+        if (pc.configPpModule("00") == -1) {
+            mLog.w("Failed to deactivate post-processing module.");
+
+            return false;
+        }
+
+        /*
+         * Configure acquisition module for capturing battery voltage
+         * during starting phase.
+         */
+        if (startingPhase) {
+            /*
+             * Configure data acquisition module
+             *  - channel            08
+             *  - acquisition mode   Single
+             *  - trigger mode       Normal
+             *  - trigger event      Rising edge
+             *  - trigger value      735 (13.5 V)
+             *  - sample rate        20 ms
+             *  - refresh rate       0 ms (not used)
+             *  - pre-trigger size   0 (all acquired data is returned)
+             *  - post-trigger size  100 samples (2 seconds)
+             */
+            if (pc.configAcqModule("0801010102DF0141000000000064") == -1) {
+                mLog.w("Failed to configure data acquisition module 1.");
+
+                return false;
+            }
+        } else {
+            /*
+             * Configure data acquisition module
+             *  - channel            08
+             *  - acquisition mode   Continuous
+             *  - trigger mode       Auto
+             *  - trigger event      Rising edge (not used)
+             *  - trigger parameter  Not used
+             *  - sample rate        400 us
+             *  - refresh rate       500 ms
+             *  - pre-trigger size   128 samples
+             *  - post-trigger size  128 samples
+             */
+            if (pc.configAcqModule("08020201000019001F4100800080") == -1) {
+                mLog.w("Failed to configure data acquisition module 2.");
+
+                return false;
+            }
+
+            /*
+             * Activate signal identification post-processing module.
+             * Calculates following characteristics of acquired signal:
+             *  - mean value
+             *  - RMS value of AC part of signal
+             *  - minimum of AC part of signal
+             *  - maximum of AC part of signal
+             *  - five strongest frequencies of signal spectrum
+             */
+            if (pc.configPpModule("02A") == -1) {
+                mLog.w("Failed to activate post-processing module.");
+
+                return false;
+            }
+        }
+
+        /* Start data acquisition */
+        if (pc.runAcq() == -1) {
+            mLog.w("Failed to start data acquisition.");
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Implements communication thread running in background.
      */
     public Runnable loop = new Runnable() {
@@ -1968,15 +2336,15 @@ class CommunicationService {
             /* Currently processed PID */
             String currPid = "";
             PicCom pc = mObd.mKwp2000.mPicCom;
+            boolean captureStartVoltage = false;
 
             while (!mQuit) {
                 /* Establish communication with PIC module */
                 if (mState == ST_COMM_INIT_PIC) {
-                    /* Wait until communication with PIC module is established. */
-                    if (!pc.comInit()) {
+                    if (!pc.open()) {
                         /* Sleep for a while and retry. */
                         try {
-                            Thread.sleep(2000);
+                            Thread.sleep(1000);
                         } catch (InterruptedException e) {
                             Log.w(ObdLogger.TAG,
                                     "Thread CommunicationService " +
@@ -1985,33 +2353,6 @@ class CommunicationService {
 
                         continue;
                     }
-
-                    /* Make sure PIC module is idle */
-                    if (pc.stopAcq() == -1)
-                        continue;
-
-                    if (pc.configObdAutoScan("") == -1)
-                        continue;
-
-                    /*
-                     * Configure data acquisition module
-                     *  - channel            08
-                     *  - acquisition mode   Continuous
-                     *  - trigger mode       Auto
-                     *  - trigger event      Rising edge (not used)
-                     *  - trigger parameter  Not used
-                     *  - sample rate        400 us
-                     *  - refresh rate       500 ms
-                     *  - pre-trigger size   128 samples
-                     *  - post-trigger size  128 samples
-                     */
-                    if (pc.configAcqModule("08020201000019001F4100800080")
-                            == -1)
-                        continue;
-
-                    /* Activate signal identification post-processing module */
-                    if (pc.configPpModule("02A") == -1)
-                        continue;
 
                     /* Update status indicator */
                     updateStatusIndicator(mStsPic, true);
@@ -2020,11 +2361,14 @@ class CommunicationService {
                 } else if (mState == ST_COMM_INIT_ECU) {
                 /* Establish communication with ECU */
 
-                    /* Wait until communication with ECU is established. */
-                    if (!mObd.comInit()) {
-                        /* Sleep for a while and retry. */
+                    /*
+                     * Wait until communication is established. Any packets
+                     * previously received from PIC module are discarded.
+                     */
+                    if (!mObd.open()) {
+                        /* Sleep for a second and retry. */
                         try {
-                            Thread.sleep(5000);
+                            Thread.sleep(1000);
                         } catch (InterruptedException e) {
                             Log.w(ObdLogger.TAG,
                                     "Thread CommunicationService " +
@@ -2034,14 +2378,6 @@ class CommunicationService {
                         continue;
                     }
 
-                    /* Start data acquisition */
-                    if (pc.runAcq() == -1)
-                        continue;
-
-                    /* Configure and start OBD auto-scan mode */
-                    if (pc.configObdAutoScan(mPidAutoScanList) == -1)
-                        continue;
-
                     /* Let user know via indicator on status bar. */
                     updateStatusIndicator(mStsEcu, true);
 
@@ -2049,20 +2385,85 @@ class CommunicationService {
 
                     currPid = mPidSpeedGroups.getNextPidToProcess();
 
+                    /*
+                     * If engine is idle, capture battery voltage during
+                     * starting phase. Test by measuring battery voltage.
+                     * If engine is running, charging is active and battery
+                     * voltage is higher comparing with idle phase.
+                     */
+                    int[] v = new int[1];
+                    v[0] = pc.getAdValue("08");
+                    double batt = v[0] * 0.01837;
+
+                    /* Failed to obtain battery voltage, skip this phase. */
+                    if (v[0] == -1) {
+                        mLog.w("Failed to obtain battery voltage.");
+
+                        captureStartVoltage = false;
+                    } else if (batt > 13.0) {
+                        /* Engine running */
+                        captureStartVoltage = false;
+
+                        /*
+                         * Configure and start OBD auto-scan mode.
+                         * Re-try in case of failure.
+                         */
+                        if (pc.configObdAutoScan(mPidAutoScanList) == -1) {
+                            mLog.w("Failed to configure OBD auto-scan.");
+
+                            continue;
+                        }
+                    } else {
+                        /* Engine idle, measure starting voltage. */
+                        captureStartVoltage = true;
+                    }
+
+                    if (!confAcqModule(captureStartVoltage)) {
+                        /* Failed to configure data acq module, re-try. */
+                        continue;
+                    }
+
+                    /* Update battery voltage on dashboard. */
+                    Probe battProbe = mProbePool.get("Vst");
+
+                    /* Update appropriate probe */
+                    if (battProbe.update(v)) {
+                        /* Update indicator with new value */
+                        mDashboard.updateIndicator(battProbe);
+                    }
+
                     mState = ST_ACQUIRE_PROBE_VALUE;
                 } else if (mState == ST_ACQUIRE_PROBE_VALUE) {
+                    int tout;
+                    String p;
+
+                    /*
+                     * If capturing battery voltage during engine start,
+                     * wait longer, since it may take a while.
+                     */
+                    if (captureStartVoltage) {
+                        tout = 60;
+                    } else {
+                        tout = 1;
+                    }
+      
                     /* Wait for packet from PIC module. */
-                    String p = pc.recvPacket();
+                    do {
+                        p = pc.getPacket();
+                    } while (p == null && --tout > 0 && !mQuit);
+
+                    /* Application finished. */
+                    if (mQuit) {
+                        continue;
+                    }
 
                     /* Timeout occurred */
                     if (p == null) {
-                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                                "Timeout when waiting for packet from" +
-                                " PIC module", ObdLogger.getRunTime()));
+                        mLog.w("Timeout when waiting for packet from PIC.");
 
                         /*
-                         * Communication with ECU is broken, try to establish
-                         * it again.
+                         * Communication with PIC module is broken,
+                         * try to establish it again.
                          */
                         /* Let user know via indicator on status bar. */
                         updateStatusIndicator(mStsEcu, false);
@@ -2087,11 +2488,71 @@ class CommunicationService {
                         continue;
                     }
 
-                    /* Decode which PIC module provided data */
-
                     int[] v;
+
+                    /*
+                     * NAK response received from ECU indicates broken
+                     * connection.
+                     */
+                    if (p.startsWith(Obd.PKT_NAK)) {
+                        mLog.w(String.format(
+                                "Communication with ECU lost, got <%s> NAK " +
+                                "response.", p));
+
+                        /* First inform user via indicator on status bar. */
+                        updateStatusIndicator(mStsEcu, false);
+
+                        /* Stop data acquisition. */
+                        pc.stopAcq();
+
+                        /* Close ECU communication channel. */
+                        mObd.close();
+
+                        /* Try to re-establish communication with ECU. */
+                        mState = ST_COMM_INIT_ECU;
+                    } else if (p.startsWith("Q00")) {
                     /* Data acquisition module */
-                    if (p.startsWith("Q00")) {
+
+                        /*
+                         * Phase of measuring starting voltage done, log
+                         * acquired data to file and switch to periodic
+                         * acquisition of average battery voltage.
+                         */
+                        if (captureStartVoltage) {
+                            mLog.i("Measuring of starting voltage done.");
+
+                            /* Log acquired data to file. */
+                            mLog.logStartingVoltage(p);
+
+                            captureStartVoltage = false;
+
+                            /* Configure and start OBD auto-scan mode */
+                            if (pc.configObdAutoScan(mPidAutoScanList) == -1) {
+                                /* Failed to configure auto-scan mode, retry. */
+                                mState = ST_COMM_INIT_ECU;
+                                continue;
+                            }
+
+                            /* Reconfigure acquisition module. */
+                            confAcqModule(false);
+
+                            /* Packet processed, wait for another one. */
+                            continue;
+                        }
+
+                        /*
+                         * Sanity check if valid data packet has been received.
+                         */
+                        if (p.length() != 59) {
+                                mLog.w("Invalid data acquisition packet " +
+                                        "received.");
+
+                                /* Discard the packet. */
+                                continue;
+                        }
+
+                        /* Valid data packet received, process it. */
+
                         String[] updatedPids = {"Vst", "Vrms", "Vmin", "Vmax",
                                 "F1", "M1", "F2", "M2", "F3", "M3", "F4", "M4",
                                 "F5", "M5"};
@@ -2117,7 +2578,7 @@ class CommunicationService {
                                 mDashboard.updateIndicator(currProbe);
                             }
                         }
-                    } else if (p.startsWith("E00P")) {
+                    } else if (p.startsWith(Obd.PKT_GET_PID_RESP)) {
                         currPid = p.substring(4, 6);
                         Probe currProbe = mProbePool.get(currPid);
 
@@ -2126,8 +2587,8 @@ class CommunicationService {
                         v = new int[ln];
 
                         for (int i = 0; i < ln; i++) {
-                            v[i] = Integer.parseInt(p.substring(
-                                    6 + (i * 2), 6 + (i + 1) * 2), 16);
+                            v[i] = Integer.parseInt(p.substring(6 + (i * 2),
+                                    8 + (i * 2)), 16);
                         }
 
                         /* Update appropriate probe */
@@ -2137,10 +2598,10 @@ class CommunicationService {
                         }
 
                         /*
-                         * Recalculate and update TurboIndicator
-                         * if applicable.
+                         * Recalculate and update TurboIndicator if applicable.
                          */
-                        TurboProbe turboPar = (TurboProbe) mProbePool.get("Turbo");
+                        TurboProbe turboPar =
+                                (TurboProbe) mProbePool.get("Turbo");
 
                         if (turboPar.update(currPid, mProbePool)) {
                             mDashboard.updateIndicator(turboPar);
@@ -2155,18 +2616,27 @@ class CommunicationService {
                             mLog.captureProbes(mPidLogList, mProbePool);
                         }
                     } else {
-                        Log.w(ObdLogger.TAG, String.format("[%.3f] " +
-                                "Discarding packet : %s",
-                                ObdLogger.getRunTime(), p));
+                        mLog.w(String.format("Discarding packet <%s>.", p));
 
                         continue;
                     }
                 }
             } /* while */
 
+            /*
+             * Upper layer signaled that communication service should finish
+             * its job. Clean up things.
+             */
+
             /* Stop acquisition */
             pc.stopAcq();
-            pc.configObdAutoScan("");
+
+            /* Close ECU communication channel. */
+            if (!mObd.close())
+                mLog.w("Failed to close ECU communication channel.");
+
+            /* Close lower layer communication service. */
+            pc.close();
         }
     };
 }
@@ -2222,7 +2692,7 @@ public class ObdLogger extends Activity {
 
         /* There are no paired devices, exit */
         if (pairedDevices.size() == 0) {
-            Toast.makeText(this, "No Bluetooth paired devices found",
+            Toast.makeText(this, "No OBD Bluetooth paired devices found.",
                     Toast.LENGTH_LONG).show();
 
             finish();
@@ -2239,7 +2709,8 @@ public class ObdLogger extends Activity {
             if (sppDevice.getName().equals("OBD converter")) {
                 try {
                     mBtSocket = sppDevice.createRfcommSocketToServiceRecord(
-                            UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
+                            UUID.fromString(
+                            "00001101-0000-1000-8000-00805F9B34FB"));
                 } catch (IOException e) {
                     Toast.makeText(this, "Failed to establish connection " +
                             "to PIC module.", Toast.LENGTH_LONG).show();
@@ -2296,7 +2767,7 @@ public class ObdLogger extends Activity {
             mBluetoothIn = mBtSocket.getInputStream();
             mBluetoothOut = mBtSocket.getOutputStream();
         } catch (IOException e) {
-            Toast.makeText(this, "Unable to crate communication streams",
+            Toast.makeText(this, "Unable to create communication streams",
                     Toast.LENGTH_LONG).show();
 
             finish();
@@ -2338,9 +2809,9 @@ public class ObdLogger extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        mLog.d("Application started.");
-
         mTimeStart = getTime();
+
+        mLog.d("Application started.");
 
         /*
          * Initialize Bluetooth connection.
