@@ -129,11 +129,11 @@ def main():
     # Display starting voltage and exit.
     if (args.show_start_voltage):
         #
-        # Generate X axis - time in seconds. Sample rate is 20ms.
+        # Generate X axis - time in seconds. Sample rate is 10ms.
         #
         x_time = []
         for i in range(len (starting_voltage)):
-            x_time.append(i * 0.020)
+            x_time.append(i * 0.010)
 
         plt.plot(x_time, starting_voltage)
         plt.grid(True)

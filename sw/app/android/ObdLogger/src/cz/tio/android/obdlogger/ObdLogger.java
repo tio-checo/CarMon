@@ -2273,12 +2273,12 @@ class CommunicationService {
              *  - trigger mode       Normal
              *  - trigger event      Rising edge
              *  - trigger value      735 (13.5 V)
-             *  - sample rate        20 ms
+             *  - sample rate        10 ms
              *  - refresh rate       0 ms (not used)
              *  - pre-trigger size   0 (all acquired data is returned)
-             *  - post-trigger size  100 samples (2 seconds)
+             *  - post-trigger size  150 samples (1.5 second)
              */
-            if (pc.configAcqModule("0801010102DF0141000000000064") == -1) {
+            if (pc.configAcqModule("0801010102DF00A1000000000096") == -1) {
                 mLog.w("Failed to configure data acquisition module 1.");
 
                 return false;
