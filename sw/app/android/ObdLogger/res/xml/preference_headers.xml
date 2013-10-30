@@ -1,0 +1,9 @@
+<preference-headers
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <header android:fragment="cz.tio.android.obdlogger.CommSettingsPreferenceFragment"
+        android:title="Communication"
+        android:summary="Communication settings">
+        <extra android:name="resource" android:value="comm_settings" />
+    </header>
+</preference-headers>
+

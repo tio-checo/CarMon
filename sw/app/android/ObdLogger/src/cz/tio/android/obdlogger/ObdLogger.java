@@ -1,4 +1,4 @@
-package cz.tio.android.obdlogger;
+    package cz.tio.android.obdlogger;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -6,9 +6,13 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Environment;
+import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,6 +27,8 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
+
+import cz.tio.android.obdlogger.EditPreferences;
 
 /**
  * Abstract model of measurement probe as a source of measured
@@ -978,7 +984,6 @@ class PicCom implements ICommSvc {
         }
 
         /* Initiate communication. */
-//        int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_DEBUG);
         int res = setEcuCommMode(ECU_COMM_MODE_KWP2K_ENHANCED);
 
         if (res == -1) {
@@ -1992,14 +1997,19 @@ class LogMaster {
 class CommunicationService {
     /* Initiates communication with PIC module. */
     private static final int ST_COMM_INIT_PIC = 0;
+    /* Set ECU communication mode. */
+    private static final int ST_COMM_INIT_ECU_MODE = 1;
     /* Initiates communication with ECU. */
-    private static final int ST_COMM_INIT_ECU = 1;
+    private static final int ST_COMM_INIT_ECU = 2;
     /* Acquire probe value. */
-    private static final int ST_ACQUIRE_PROBE_VALUE = 2;
+    private static final int ST_ACQUIRE_PROBE_VALUE = 3;
 
     private boolean mDebug = false;
     private boolean mQuit = false;
     private int mState;
+
+    /* Runs in debug mode talking to ECU simulator. */
+    private boolean mEcuSim = false;
 
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
@@ -2045,6 +2055,15 @@ class CommunicationService {
 
         /* Save reference to OBD communication object */
         mObd = obd;
+
+        /*
+         * Determine if we should run in debug mode talking to to ECU simulator.
+         * Default to normal mode when talking to real ECU.
+         */
+        SharedPreferences prefs = PreferenceManager
+                .getDefaultSharedPreferences(activity);
+
+        mEcuSim = prefs.getBoolean("pref_debug_mode", false);
 
         /* Create pool of available probes - TODO read data from external file */
         mProbePool = new HashMap<String, Probe>();
@@ -2357,7 +2376,27 @@ class CommunicationService {
                     /* Update status indicator */
                     updateStatusIndicator(mStsPic, true);
 
-                    mState = ST_COMM_INIT_ECU;
+                    mState = ST_COMM_INIT_ECU_MODE;
+                } else if (mState == ST_COMM_INIT_ECU_MODE) {
+                    String mode;
+
+                    /* Set ECU communication mode. */
+                    if (mEcuSim) {
+                        mode = PicCom.ECU_COMM_MODE_KWP2K_DEBUG;
+                    } else {
+                        mode = PicCom.ECU_COMM_MODE_KWP2K_ENHANCED;
+                    }
+
+                    int res = pc.setEcuCommMode(mode);
+
+                    /* Command failed, try to re-connect to PIC module. */
+                    if (res == -1) {
+                        mLog.w("Failed to configure communication ECU mode.");
+
+                        mState = ST_COMM_INIT_PIC;
+                    } else {
+                        mState = ST_COMM_INIT_ECU;
+                    }
                 } else if (mState == ST_COMM_INIT_ECU) {
                 /* Establish communication with ECU */
 
@@ -2373,6 +2412,31 @@ class CommunicationService {
                             Log.w(ObdLogger.TAG,
                                     "Thread CommunicationService " +
                                     "interrupted.", e);
+                        }
+
+                        /*
+                         * One of the reasons the communication with ECU
+                         * can't be established is that the logger currently
+                         * operates in different communication mode
+                         * (real versus simulation).
+                         * If user just changed the mode to address that
+                         * problem, change the mode first to reflect current
+                         * user's choice, then try to re-establish communication
+                         * with ECU.
+                         * That delivers slightly better user experience,
+                         * since there is no need to restart application after
+                         * correct communication mode was selected.
+                         */
+
+                        SharedPreferences prefs = PreferenceManager
+                                .getDefaultSharedPreferences(mActivity);
+
+                        boolean m = prefs.getBoolean("pref_debug_mode", false);
+
+                        if (m != mEcuSim) {
+                            mEcuSim = m;
+
+                            mState = ST_COMM_INIT_ECU_MODE;
                         }
 
                         continue;
@@ -2644,6 +2708,7 @@ class CommunicationService {
 public class ObdLogger extends Activity {
     static final String TAG = "ObdLogger";
     static final int REQUEST_ENABLE_BT = 1;
+    static final int SET_DEBUG_MODE_ID = 1;
 
     /* Reference to application context */
 //    private Context mContext;
@@ -2840,6 +2905,26 @@ public class ObdLogger extends Activity {
         }
     }
 
+    /** Called when Menu button is pressed. */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(Menu.NONE, SET_DEBUG_MODE_ID, Menu.NONE, "Settings");
+
+        return(super.onCreateOptionsMenu(menu));
+    }
+
+    /** Called when item from Menu is selected. */
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case SET_DEBUG_MODE_ID:
+                startActivity(new Intent(this, EditPreferences.class));
+                return(true);
+        }
+
+        return(super.onOptionsItemSelected(item));
+    }
+
     /** Called when the activity is started. */
     @Override
     public void onStart() {
@@ -2847,6 +2932,33 @@ public class ObdLogger extends Activity {
 
         Log.d(TAG, "-> onStart()");
         Log.d(TAG, "<- onStart()");
+    }
+
+    /** Called when the activity is paused. */
+    @Override
+    public void onPause() {
+        super.onPause();
+
+        Log.d(TAG, "-> onPause()");
+        Log.d(TAG, "<- onPause()");
+    }
+
+    /** Called when the activity is resumed. */
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        Log.d(TAG, "-> onResume()");
+        Log.d(TAG, "<- onResume()");
+    }
+
+    /** Called when the activity is restarted. */
+    @Override
+    public void onRestart() {
+        super.onRestart();
+
+        Log.d(TAG, "-> onRestart()");
+        Log.d(TAG, "<- onRestart()");
     }
 
     /** Called when the activity is stopped. */
@@ -2934,3 +3046,4 @@ public class ObdLogger extends Activity {
         Log.d(TAG, "<- onActivityResult");
     }
 }
+
