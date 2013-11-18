@@ -2766,10 +2766,6 @@ public class ObdLogger extends Activity {
 
         /* Loop through paired devices */
         for (BluetoothDevice sppDevice : pairedDevices) {
-            /* Display device name and address */
-            Toast.makeText(this, sppDevice.getName() + " - " +
-                    sppDevice.getAddress(), Toast.LENGTH_LONG).show();
-
             /* If it is PIC module, establish a connection */
             if (sppDevice.getName().equals("OBD converter")) {
                 try {
@@ -2777,6 +2773,8 @@ public class ObdLogger extends Activity {
                             UUID.fromString(
                             "00001101-0000-1000-8000-00805F9B34FB"));
                 } catch (IOException e) {
+                    Log.e(TAG, "Failed to establish connection to PIC module," +
+                            " aborting.", e);
                     Toast.makeText(this, "Failed to establish connection " +
                             "to PIC module.", Toast.LENGTH_LONG).show();
 
@@ -2788,6 +2786,8 @@ public class ObdLogger extends Activity {
 
         /* PIC module not found */
         if (mBtSocket == null) {
+            Log.e(TAG, "PIC module not found, aborting.");
+
             Toast.makeText(this, "PIC module not found",
                     Toast.LENGTH_LONG).show();
 
@@ -2806,10 +2806,10 @@ public class ObdLogger extends Activity {
         } catch (IOException connectException) {
             Log.d(TAG, "Failed.");
 
-            Toast.makeText(this, "Unable to connect " +
-                    "to PIC module.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Unable to connect to PIC module.",
+                    Toast.LENGTH_LONG).show();
 
-            mLog.e("Unable to connect to PIC module, aborting.");
+            Log.e(TAG, "Unable to connect to PIC module, aborting.");
 
             /* Unable to connect; close the socket and get out */
             try {
@@ -2832,6 +2832,8 @@ public class ObdLogger extends Activity {
             mBluetoothIn = mBtSocket.getInputStream();
             mBluetoothOut = mBtSocket.getOutputStream();
         } catch (IOException e) {
+            Log.e(TAG, "Unable to create communication streams, aborting.");
+
             Toast.makeText(this, "Unable to create communication streams",
                     Toast.LENGTH_LONG).show();
 
@@ -2871,6 +2873,8 @@ public class ObdLogger extends Activity {
     /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        Log.d(TAG, "-> onCreate()");
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
@@ -2903,6 +2907,8 @@ public class ObdLogger extends Activity {
         }  else {
             connectToPic();
         }
+
+        Log.d(TAG, "<- onCreate()");
     }
 
     /** Called when Menu button is pressed. */
