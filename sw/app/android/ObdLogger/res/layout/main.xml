@@ -5,287 +5,38 @@
     android:layout_height="fill_parent"
     android:orientation="vertical" >
 
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator1Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:text="@string/indicator1Label"
-            android:textSize="36dp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator1Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:text="@string/indicator1Value"
-            android:textSize="36dp"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator2Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator2Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator2Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator2Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator3Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator3Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator3Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator3Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator4Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator4Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator4Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator4Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator5Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator5Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator5Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator5Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator6Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator6Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator6Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator6Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/indicator7Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator7Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator7Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator7Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
+    <Button
+        android:id="@+id/LoggerStartButton"
+        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:gravity="bottom" >
+        android:enabled="true"
+        android:text="@string/LoggerStartButton"
+        android:textSize="30dp"
+        android:onClick="launchObdLogger" />
 
-        <TextView
-            android:id="@+id/indicator8Label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:textSize="36dp"
-            android:text="@string/indicator8Label"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/indicator8Value"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:ems="10"
-            android:gravity="right"
-            android:textSize="36dp"
-            android:text="@string/indicator8Value"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
+    <Button
+        android:id="@+id/DiagStartButton"
+        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:gravity="bottom" >
+        android:enabled="false"
+        android:text="@string/DiagStartButton"
+        android:textSize="30dp" />
 
-        <Button
-            android:id="@+id/gpsState"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:enabled="false"
-            android:text="@string/gpsStateButton"
-            android:textSize="20dp" />
+    <Button
+        android:id="@+id/ScopeStartButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/ScopeStartButton"
+        android:textSize="30dp" />
 
-        <Button
-            android:id="@+id/picState"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:enabled="false"
-            android:text="@string/picStateButton"
-            android:textSize="20dp" />
-
-        <Button
-            android:id="@+id/ecuState"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:enabled="false"
-            android:text="@string/ecuStateButton"
-            android:textSize="20dp" />
-
-    </LinearLayout>
+    <Button
+        android:id="@+id/ViewerStartButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/ViewerStartButton"
+        android:textSize="30dp" />
 
 </LinearLayout>
 
