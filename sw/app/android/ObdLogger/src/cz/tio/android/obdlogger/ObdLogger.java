@@ -1,6 +1,7 @@
 package cz.tio.android.obdlogger;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
@@ -1424,12 +1425,13 @@ class PicComCallback implements IPicComCallback {
 class CommunicationService {
     /* Initiates communication with PIC module. */
     private static final int ST_COMM_INIT_PIC = 0;
+    private static final int ST_COMM_INIT_PIC1 = 1;
     /* Set ECU communication mode. */
-    private static final int ST_COMM_INIT_ECU_MODE = 1;
+    private static final int ST_COMM_INIT_ECU_MODE = 2;
     /* Initiates communication with ECU. */
-    private static final int ST_COMM_INIT_ECU = 2;
+    private static final int ST_COMM_INIT_ECU = 3;
     /* Acquire probe value. */
-    private static final int ST_ACQUIRE_PROBE_VALUE = 3;
+    private static final int ST_ACQUIRE_PROBE_VALUE = 4;
 
     private boolean mDebug = false;
     private boolean mQuit = false;
@@ -1443,6 +1445,9 @@ class CommunicationService {
 
     /* Reference to main Activity */
     private Activity mActivity;
+
+    /* Progress dialog displayed when the device is connecting to PIC. */
+    private ProgressDialog mPicConnectPd;
 
     /* Dashboard */
     private Dashboard mDashboard;
@@ -1490,13 +1495,45 @@ class CommunicationService {
             String currPid = "";
             PicCom pc = mObd.mKwp2000.mPicCom;
             boolean captureStartVoltage = false;
+            int connRetry = 1;
 
             while (!mQuit) {
                 /* Establish communication with PIC module */
                 if (mState == ST_COMM_INIT_PIC) {
+                    /* Pop-up progress dialog. */
+                    mActivity.runOnUiThread(new Runnable() {
+                        public void run() {
+                            mPicConnectPd.show();
+                        }
+                    });
+
+                    mState = ST_COMM_INIT_PIC1;
+                } else if (mState == ST_COMM_INIT_PIC1) {
                     if (!pc.open()) {
-                        mLog.w("Failed to establish communication with PIC, " +
-                                "retrying...");
+                        /* Number of attempts exceeded, give up. */
+                        if (connRetry > 3) {
+                            mLog.w("Failed to establish communication " +
+                                    "with PIC, aborting.");
+
+                            /* Dismiss progress dialog. */
+                            mActivity.runOnUiThread(new Runnable() {
+                                public void run() {
+                                    mPicConnectPd.dismiss();
+                                }
+                            });
+
+                            /* Terminate communication thread. */
+                            mQuit = true;
+
+                            /* Let the parent activity know that we are done. */
+                            mActivity.runOnUiThread(new Runnable() {
+                                public void run() {
+                                    mActivity.finish();
+                                }
+                            });
+
+                            continue;
+                        }
 
                         /* Sleep for a while and retry. */
                         try {
@@ -1507,10 +1544,29 @@ class CommunicationService {
                                     "interrupted.", e);
                         }
 
+                        /* Update progress dialog. */
+                        final String pdText = "Retry #" + connRetry++ + ".";
+                        mActivity.runOnUiThread(new Runnable() {
+                            public void run() {
+                                mPicConnectPd.setMessage(pdText);
+                            }
+                        });
+
+                        mLog.w("Retrying to establish communication " +
+                                "with PIC...");
+
                         continue;
                     }
 
                     /* Valid response received, communication established. */
+
+                    /* Dismiss progress dialog. */
+                    mActivity.runOnUiThread(new Runnable() {
+                        public void run() {
+                            mPicConnectPd.dismiss();
+                        }
+                    });
+
                     mState = ST_COMM_INIT_ECU_MODE;
                 } else if (mState == ST_COMM_INIT_ECU_MODE) {
                     String mode;
@@ -1889,7 +1945,7 @@ class CommunicationService {
              */
 
             /* Stop acquisition - send only if we are connected to the PIC. */
-            if (mState != ST_COMM_INIT_PIC) {
+            if (mState > ST_COMM_INIT_PIC1) {
                 try {
                     pc.stopAcq();
                 } catch (PicTimeoutExpiredException e) {
@@ -1899,14 +1955,15 @@ class CommunicationService {
                     /* Connection with PIC lost. */
                     mLog.w("Failed to stop acquisition module.");
                 }
+
+                /* Close ECU communication channel. */
+                if (!mObd.close())
+                    mLog.w("Failed to close ECU communication channel.");
+
+                /* Close PIC communication channel. */
+                if (!pc.close())
+                    mLog.w("Failed to close PIC communication channel.");
             }
-
-            /* Close ECU communication channel. */
-            if (!mObd.close())
-                mLog.w("Failed to close ECU communication channel.");
-
-            /* Close lower layer communication service. */
-            pc.close();
         }
     };
 
@@ -1935,7 +1992,18 @@ class CommunicationService {
 
         mEcuSim = prefs.getBoolean("pref_debug_mode", false);
 
-        /* Create pool of available probes - TODO read data from external file */
+        /*
+         * Create progress dialog.
+         */
+        mPicConnectPd = new ProgressDialog(activity);
+        mPicConnectPd.setTitle("Connecting to PIC...");
+        mPicConnectPd.setMessage("Please wait.");
+        mPicConnectPd.setCancelable(false);
+        mPicConnectPd.setIndeterminate(true);
+        
+        /*
+         * Create pool of available probes - TODO read data from external file.
+         */
         mProbePool = new HashMap<String, Probe>();
 
         /* OBD parameters measured and supplied by ECU. */
@@ -2249,15 +2317,16 @@ public class ObdLogger extends Activity {
     private Obd mObd;
 
     /**
-     * Establishes connection to PIC module
+     * Launches communication service.
      */
-    private void connectToPic() {
-        /* Instantiates communication service */
+    private void launchComService() {
+        /* Instantiate communication service. */
         mComService = new CommunicationService(this);
 
-        /* Creates background thread handling communication with PIC module. */
+        /* Create background thread handling communication with PIC module. */
         commThread = new Thread(null, mComService.loop, "ComService");
 
+        /* Launch the service. */
         commThread.start();
     }
 
@@ -2313,7 +2382,11 @@ public class ObdLogger extends Activity {
 
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
         }  else {
-            connectToPic();
+            /*
+             * Bluetooth enabled, so pass the baton to communication
+             * service.
+             */
+            launchComService();
         }
 
         Log.d(TAG, "<- O.onCreate()");
@@ -2414,8 +2487,11 @@ public class ObdLogger extends Activity {
         case REQUEST_ENABLE_BT:
             /* Request to enable Bluetooth returned */
             if (resultCode == Activity.RESULT_OK) {
-                /* Bluetooth is now enabled, connect to PIC module */
-                connectToPic();
+                /*
+                 * Bluetooth enabled, so pass the baton to communication
+                 * service.
+                 */
+                launchComService();
             } else {
                 /* User did not enable Bluetooth or an error occurred */
                 Log.d(TAG, "BT not enabled");
