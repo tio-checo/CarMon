@@ -30,15 +30,15 @@
     <string name="indicator8Value"></string>
 -->
 
-    <string name="ecuStateButton">ECU</string>
-    <string name="gpsStateButton">GPS</string>
-    <string name="picStateButton">PIC</string>
+    <string name="ecuStateButtonText">ECU</string>
+    <string name="gpsStateButtonText">GPS</string>
+    <string name="picStateButtonText">PIC</string>
 
     <!--
         Main screen start buttons. Used to launch applications.
     -->
-    <string name="LoggerStartButton">OBD Logger</string>
-    <string name="DiagStartButton">OBD Diag</string>
-    <string name="ScopeStartButton">Scope</string>
-    <string name="ViewerStartButton">Browse data</string>
+    <string name="loggerStartButtonText">OBD Logger</string>
+    <string name="diagStartButtonText">OBD Diag</string>
+    <string name="scopeStartButtonText">Scope</string>
+    <string name="viewerStartButtonText">Browse data</string>
 </resources>

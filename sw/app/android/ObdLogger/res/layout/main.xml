@@ -6,36 +6,36 @@
     android:orientation="vertical" >
 
     <Button
-        android:id="@+id/LoggerStartButton"
+        android:id="@+id/loggerStartButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:enabled="true"
-        android:text="@string/LoggerStartButton"
+        android:text="@string/loggerStartButtonText"
         android:textSize="30dp"
         android:onClick="launchObdLogger" />
 
     <Button
-        android:id="@+id/DiagStartButton"
+        android:id="@+id/diagStartButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:enabled="false"
-        android:text="@string/DiagStartButton"
+        android:text="@string/diagStartButtonText"
         android:textSize="30dp" />
 
     <Button
-        android:id="@+id/ScopeStartButton"
+        android:id="@+id/scopeStartButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:enabled="false"
-        android:text="@string/ScopeStartButton"
+        android:text="@string/scopeStartButtonText"
         android:textSize="30dp" />
 
     <Button
-        android:id="@+id/ViewerStartButton"
+        android:id="@+id/viewerStartButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:enabled="false"
-        android:text="@string/ViewerStartButton"
+        android:text="@string/viewerStartButtonText"
         android:textSize="30dp" />
 
 </LinearLayout>

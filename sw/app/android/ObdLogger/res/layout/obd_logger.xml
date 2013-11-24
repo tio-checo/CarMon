@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:keepScreenOn = "true"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
@@ -266,7 +267,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:enabled="false"
-            android:text="@string/gpsStateButton"
+            android:text="@string/gpsStateButtonText"
             android:textSize="20dp" />
 
         <Button
@@ -274,7 +275,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:enabled="false"
-            android:text="@string/picStateButton"
+            android:text="@string/picStateButtonText"
             android:textSize="20dp" />
 
         <Button
@@ -282,7 +283,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:enabled="false"
-            android:text="@string/ecuStateButton"
+            android:text="@string/ecuStateButtonText"
             android:textSize="20dp" />
 
     </LinearLayout>

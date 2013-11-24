@@ -1992,9 +1992,7 @@ class CommunicationService {
 
         mEcuSim = prefs.getBoolean("pref_debug_mode", false);
 
-        /*
-         * Create progress dialog.
-         */
+        /* Create progress dialog displayed when connecting to PIC. */
         mPicConnectPd = new ProgressDialog(activity);
         mPicConnectPd.setTitle("Connecting to PIC...");
         mPicConnectPd.setMessage("Please wait.");
