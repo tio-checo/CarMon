@@ -2,6 +2,7 @@ package cz.tio.android.obdlogger;
 
 import android.util.Log;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 import cz.tio.android.obdlogger.IPicComPhys;
 

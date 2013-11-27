@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!DOCTYPE ProbeList [
+
+<!ELEMENT ProbeList (ObdProbes, PicProbes) >
+<!ELEMENT ObdProbes (Pid)+ >
+<!ELEMENT PicProbes (Pid)+ >
+<!ELEMENT Pid (Id, Description, Label, Units, RawToPhysAdd, RawToPhysMul,
+    PhysToPbAdd, PhysToPbMul, PhysToString) >
+<!ELEMENT Id (#PCDATA) >
+<!ELEMENT Description (#PCDATA) >
+<!ELEMENT Label (#PCDATA) >
+<!ELEMENT Units (#PCDATA) >
+<!ELEMENT RawToPhysAdd (#PCDATA) >
+<!ELEMENT RawToPhysMul (#PCDATA) >
+<!ELEMENT PhysToPbAdd (#PCDATA) >
+<!ELEMENT PhysToPbMul (#PCDATA) >
+<!ELEMENT PhysToString (#PCDATA) >
+
+]>
+
+<ProbeList>
+<ObdProbes>
+    <!-- 04 - Calculated engine load -->
+    <Pid>
+        <Id>04</Id>
+        <Description>Calculated Engine Load</Description>
+        <Label>LOAD</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100 / 255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>0.01</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 05 - Engine coolant temperature -->
+    <Pid>
+        <Id>05</Id>
+        <Description>Engine coolant temperature</Description>
+        <Label>WATER</Label>
+        <Units>stC</Units>
+        <RawToPhysAdd>-40.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>40.0</PhysToPbAdd>
+        <!-- 1 / (110 + 40) -->
+        <PhysToPbMul>0.006666667</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 0A - Fuel Pressure -->
+    <Pid>
+        <Id>0A</Id>
+        <Description>Fuel pressure</Description>
+        <Label>FUELp</Label>
+        <Units>kPa</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>3.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 0B - Intake manifold absolute pressure -->
+    <Pid>
+        <Id>0B</Id>
+        <Description>Intake manifold absolute pressure</Description>
+        <Label>AIRp</Label>
+        <Units>kPa</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 0C - Engine RPM -->
+    <Pid>
+        <Id>0C</Id>
+        <Description>Engine RPM</Description>
+        <Label>RPM</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.25</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/5000 -->
+        <PhysToPbMul>0.0002</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 0D - Vehicle speed -->
+    <Pid>
+        <Id>0D</Id>
+        <Description>Vehicle speed</Description>
+        <Label>SPEED</Label>
+        <Units>km/h</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/195 -->
+        <PhysToPbMul>0.005128205</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 0E - Timing advance -->
+    <Pid>
+        <Id>0E</Id>
+        <Description>Timing advance</Description>
+        <Label>TIMEa</Label>
+        <Units>st</Units>
+        <RawToPhysAdd>-128.0</RawToPhysAdd>
+        <RawToPhysMul>0.5</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
+
+    <!-- 0F - Intake air temperature -->
+    <Pid>
+        <Id>0F</Id>
+        <Description>Intake air temperature</Description>
+        <Label>AIRt</Label>
+        <Units>stC</Units>
+        <RawToPhysAdd>-40.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>40.0</PhysToPbAdd>
+        <!-- 1/(40+50) -->
+        <PhysToPbMul>0.011111111</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 10 - MAF air flow rate -->
+    <Pid>
+        <Id>10</Id>
+        <Description>MAF air flow rate</Description>
+        <Label>MAF</Label>
+        <Units>g/s</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.01</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/150 -->
+        <PhysToPbMul>0.006666667</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 11 - Throttle position -->
+    <Pid>
+        <Id>11</Id>
+        <Description>Throttle position</Description>
+        <Label>THROT</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/100 -->
+        <PhysToPbMul>0.01</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 1C - OBD standards this vehicle conforms to -->
+    <Pid>
+        <Id>1C</Id>
+        <Description>OBD standards this vehicle conforms to</Description>
+        <Label>OBDstd</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 1F - Runtime since engine start -->
+    <Pid>
+        <Id>1F</Id>
+        <Description>Runtime since engine start</Description>
+        <Label>TIME</Label>
+        <Units>sec</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 21 - Distance traveled with MIL on -->
+    <Pid>
+        <Id>21</Id>
+        <Description>Distance traveled with MIL on</Description>
+        <Label>MILon</Label>
+        <Units>km</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 22 - Fuel rail pressure (relative to manifold vacuum) -->
+    <Pid>
+        <Id>22</Id>
+        <Description>Fuel rail pressure</Description>
+        <Label>RAIL</Label>
+        <Units>kPa</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.079</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
+
+    <!-- 23 - Fuel rail pressure -->
+    <Pid>
+        <Id>23</Id>
+        <Description>Fuel rail pressure</Description>
+        <Label>RAIL</Label>
+        <Units>MPa</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.01</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/120 -->
+        <PhysToPbMul>0.008333333</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 2C - Commanded EGR -->
+    <Pid>
+        <Id>2C</Id>
+        <Description>Commanded EGR</Description>
+        <Label>EGR</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/100 -->
+        <PhysToPbMul>0.01</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 2D - EGR error -->
+    <Pid>
+        <Id>2D</Id>
+        <Description>EGR error</Description>
+        <Label>EGRe</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>-128.0</RawToPhysAdd>
+        <!-- 100/128 -->
+        <RawToPhysMul>0.78125</RawToPhysMul>
+        <PhysToPbAdd>100.0</PhysToPbAdd>
+        <!-- 1/100 -->
+        <PhysToPbMul>0.01</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 2F - Fuel level input -->
+    <Pid>
+        <Id>2F</Id>
+        <Description>Fuel level input</Description>
+        <Label>FUEL</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 30 - # of warm-ups since codes cleared -->
+    <Pid>
+        <Id>30</Id>
+        <Description># of warm-ups since codes cleared</Description>
+        <Label>#UPs</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 31 - Distance traveled since codes cleared -->
+    <Pid>
+        <Id>31</Id>
+        <Description>Distance traveled since codes cleared</Description>
+        <Label>km</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 33 - Barometric pressure -->
+    <Pid>
+        <Id>33</Id>
+        <Description>Barometric pressure</Description>
+        <Label>BAR</Label>
+        <Units>kPa</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1/255 -->
+        <PhysToPbMul>0.003921569</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 42 - Control module voltage -->
+    <Pid>
+        <Id>42</Id>
+        <Description>Control module voltage</Description>
+        <Label>VOLT</Label>
+        <Units>V</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.001</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
+</ObdProbes>
+<PicProbes>
+    <!-- Vst - Battery voltage -->
+    <Pid>
+        <Id>Vst</Id>
+        <Description>Battery voltage</Description>
+        <Label>Vst</Label>
+        <Units>V</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.01837</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (0.01837 * 1024 -->
+        <PhysToPbMul>0.053160724</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
+
+    <!-- Vrms - RMS battery voltage -->
+    <Pid>
+        <Id>Vrms</Id>
+        <Description>RMS battery voltage</Description>
+        <Label>Vrms</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- Vmin - Min battery voltage -->
+    <Pid>
+        <Id>Vmin</Id>
+        <Description>Min battery voltage</Description>
+        <Label>Vmin</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- Vmax - Max battery voltage -->
+    <Pid>
+        <Id>Vmax</Id>
+        <Description>Max battery voltage</Description>
+        <Label>Vmax</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F1 - Frequency 1 -->
+    <Pid>
+        <Id>F1</Id>
+        <Description>Frequency 1</Description>
+        <Label>F1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M1 - Amplitude 1 -->
+    <Pid>
+        <Id>M1</Id>
+        <Description>Amplitude 1</Description>
+        <Label>M1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F2 - Frequency 2 -->
+    <Pid>
+        <Id>F2</Id>
+        <Description>Frequency 2</Description>
+        <Label>F2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M2 - Amplitude 2 -->
+    <Pid>
+        <Id>M2</Id>
+        <Description>Amplitude 2</Description>
+        <Label>M2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F3 - Frequency 3 -->
+    <Pid>
+        <Id>F3</Id>
+        <Description>Frequency 3</Description>
+        <Label>F3</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M3 - Amplitude 3 -->
+    <Pid>
+        <Id>M3</Id>
+        <Description>Amplitude 3</Description>
+        <Label>M3</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F4 - Frequency 4 -->
+    <Pid>
+        <Id>F4</Id>
+        <Description>Frequency 4</Description>
+        <Label>F4</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M4 - Amplitude 4 -->
+    <Pid>
+        <Id>M4</Id>
+        <Description>Amplitude 4</Description>
+        <Label>M4</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F5 - Frequency 5 -->
+    <Pid>
+        <Id>F5</Id>
+        <Description>Frequency 5</Description>
+        <Label>F5</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M5 - Amplitude 5 -->
+    <Pid>
+        <Id>M5</Id>
+        <Description>Amplitude 5</Description>
+        <Label>M5</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+</PicProbes>
+</ProbeList>
