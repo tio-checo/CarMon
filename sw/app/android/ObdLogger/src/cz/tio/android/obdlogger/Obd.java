@@ -7,6 +7,7 @@ import cz.tio.android.obdlogger.LogMaster;
 import cz.tio.android.obdlogger.PicCom;
 import cz.tio.android.obdlogger.PicConnectionLostException;
 import cz.tio.android.obdlogger.PicTimeoutExpiredException;
+import cz.tio.android.obdlogger.ObdProbe;
 import cz.tio.android.obdlogger.Probe;
 
 import java.io.IOException;

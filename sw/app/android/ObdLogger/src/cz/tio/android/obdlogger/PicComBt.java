@@ -9,6 +9,11 @@ import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.Exception;
+import java.lang.IllegalAccessException;
+import java.lang.NoSuchMethodException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
@@ -228,10 +233,18 @@ public class PicComBt implements IPicComPhys {
                 /* PIC module found, create socket. */
                 if (sppDevice.getName().equals(mModName)) {
                     try {
-                        mBtSocket = sppDevice.createRfcommSocketToServiceRecord(
-                                UUID.fromString(
-                                "00001101-0000-1000-8000-00805F9B34FB"));
-                    } catch (IOException e) {
+                        Method m = sppDevice.getClass().getMethod(
+                                "createRfcommSocket", new Class[] {int.class});
+                        mBtSocket = (BluetoothSocket) m.invoke(sppDevice, 1);
+                    } catch (NoSuchMethodException e) {
+                        Log.e(TAG, "Failed to connect to PIC module.", e);
+
+                        return false;
+                    } catch (IllegalAccessException e) {
+                        Log.e(TAG, "Failed to connect to PIC module.", e);
+
+                        return false;
+                    } catch (InvocationTargetException e){
                         Log.e(TAG, "Failed to connect to PIC module.", e);
 
                         return false;
