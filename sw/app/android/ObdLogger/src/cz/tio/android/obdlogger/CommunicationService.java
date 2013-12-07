@@ -7,6 +7,7 @@ import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import cz.tio.android.obdlogger.IPicComCallback;
 import cz.tio.android.obdlogger.LogMaster;
@@ -103,31 +104,40 @@ class CommunicationService {
 
                     mState = ST_COMM_INIT_PIC1;
                 } else if (mState == ST_COMM_INIT_PIC1) {
-                    if (!pc.open()) {
+                    boolean retry = true;
+                    final int ret;
+
+                    /* Try to open communication channel to PIC module. */
+                    ret = pc.open();
+
+                    if (ret == 0) {
+                        /* Communication established. */
+
+                        /* Dismiss progress dialog. */
+                        mActivity.runOnUiThread(new Runnable() {
+                            public void run() {
+                                mPicConnectPd.dismiss();
+                            }
+                        });
+
+                        mState = ST_COMM_INIT_ECU_MODE;
+                        continue;
+                    } else if (ret == -2) {
+                    /* Non-recoverable error */
+                        retry = false;
+                    } else {
+                    /* Recoverable error */
+
                         /* Number of attempts exceeded, give up. */
                         if (connRetry > 3) {
-                            mLog.w("Failed to establish communication " +
-                                    "with PIC, aborting.");
-
-                            /* Dismiss progress dialog. */
-                            mActivity.runOnUiThread(new Runnable() {
-                                public void run() {
-                                    mPicConnectPd.dismiss();
-                                }
-                            });
-
-                            /* Terminate communication thread. */
-                            mQuit = true;
-
-                            /* Let the parent activity know that we are done. */
-                            mActivity.runOnUiThread(new Runnable() {
-                                public void run() {
-                                    mActivity.finish();
-                                }
-                            });
-
-                            continue;
+                            retry = false;
                         }
+                    }
+
+                    /* Re-try. */
+                    if (retry) {
+                        mLog.w("Retrying to establish communication " +
+                                "with PIC...");
 
                         /* Sleep for a while and retry. */
                         try {
@@ -146,13 +156,12 @@ class CommunicationService {
                             }
                         });
 
-                        mLog.w("Retrying to establish communication " +
-                                "with PIC...");
-
                         continue;
                     }
 
-                    /* Valid response received, communication established. */
+                    /* Connection to PIC failed, abort. */
+                    mLog.w("Failed to establish communication " +
+                                "with PIC, aborting.");
 
                     /* Dismiss progress dialog. */
                     mActivity.runOnUiThread(new Runnable() {
@@ -161,7 +170,25 @@ class CommunicationService {
                         }
                     });
 
-                    mState = ST_COMM_INIT_ECU_MODE;
+                    /* Let user know that the connection failed. */
+                    mActivity.runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(mActivity, ret == -2 ?
+                                    "PIC module not paired.":
+                                    "Connection to PIC failed.",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+
+                    /* Terminate communication thread. */
+                    mQuit = true;
+
+                    /* Let the parent activity know that we are done. */
+                    mActivity.runOnUiThread(new Runnable() {
+                        public void run() {
+                            mActivity.finish();
+                        }
+                    });
                 } else if (mState == ST_COMM_INIT_ECU_MODE) {
                     String mode;
                     int res = -1;
@@ -555,7 +582,7 @@ class CommunicationService {
                     mLog.w("Failed to close ECU communication channel.");
 
                 /* Close PIC communication channel. */
-                if (!pc.close())
+                if (pc.close() != 0)
                     mLog.w("Failed to close PIC communication channel.");
             }
         }

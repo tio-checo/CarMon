@@ -186,78 +186,85 @@ public class PicComBt implements IPicComPhys {
     private boolean mConnectionEstablished;
 
     /**
-     * Establishes communication channel with PIC module via Bluetooth.
+     * Connects to Bluetooth PIC module. Two failure modes are
+     * recognized - recoverable and non-recoverable. It makes sense to re-try
+     * open() call in case of recoverable error, as the error may have
+     * been intermittent and subsequent call may succeed. PIC module coming
+     * up (after power on) is an example of recoverable error, since it is
+     * likely the open succeeds once PIC module is up and starts accepting
+     * connections.
+     * On the other hand, non-recoverable failure indicates, that the error
+     * is permanent and must be addressed first before open() is called again.
+     * Disabled Bluetooth is an example of non-recoverable error.
      *
-     * @return  <code>true</code> if communication has been established;
-     *          <code>false</code> otherwise.
+     * @return  0 if communication established;
+     *          -1 in case of recoverable error;
+     *          -2 in case of non-recoverable error.
      */
-    public boolean open() {
+    public int open() {
        	BluetoothAdapter mBluetoothAdapter;
 
         /* Connection already established, return. */
         if (mConnectionEstablished)
-            return true;
+            return 0;
 
-        /* We already got a socket, use it when re-connecting. */
-        if (mBtSocket == null) {
-            mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
-            /* Bluetooth not available. */
-            if (mBluetoothAdapter == null) {
-                return false;
+        /* Bluetooth not available. */
+        if (mBluetoothAdapter == null) {
+            return -2;
+        }
+
+        /* Cancel in-progress discovery */
+        if (mBluetoothAdapter.isDiscovering()) {
+            Log.d(TAG, "Canceling Bluetooth discovery process...");
+
+            if (mBluetoothAdapter.cancelDiscovery()) {
+                Log.d(TAG, "DONE.");
+            } else {
+                Log.d(TAG, "FAILED.");
             }
+        }
 
-            /* Cancel in-progress discovery */
-            if (mBluetoothAdapter.isDiscovering()) {
-                Log.d(TAG, "Canceling Bluetooth discovery process...");
+        /* Search for PIC module connected via Bluetooth */
+        Set <BluetoothDevice> pDevs = mBluetoothAdapter.getBondedDevices();
 
-                if (mBluetoothAdapter.cancelDiscovery()) {
-                    Log.d(TAG, "DONE.");
-                } else {
-                    Log.d(TAG, "FAILED.");
-                }
-            }
+        /* There are no paired devices, exit */
+        if (pDevs.size() == 0) {
+            Log.e(TAG, "No OBD Bluetooth paired devices found.");
 
-            /* Search for PIC module connected via Bluetooth */
-            Set <BluetoothDevice> pDevs = mBluetoothAdapter.getBondedDevices();
+            return -2;
+        }
 
-            /* There are no paired devices, exit */
-            if (pDevs.size() == 0) {
-                Log.e(TAG, "No OBD Bluetooth paired devices found.");
+        /* Loop through paired devices */
+        for (BluetoothDevice sppDevice : pDevs) {
+            /* PIC module found, create socket. */
+            if (sppDevice.getName().equals(mModName)) {
+                try {
+                    Method m = sppDevice.getClass().getMethod(
+                            "createRfcommSocket", new Class[] {int.class});
+                    mBtSocket = (BluetoothSocket) m.invoke(sppDevice, 1);
+                } catch (NoSuchMethodException e) {
+                    Log.e(TAG, "Failed to connect to PIC module.", e);
 
-                return false;
-            }
+                    return -2;
+                } catch (IllegalAccessException e) {
+                    Log.e(TAG, "Failed to connect to PIC module.", e);
 
-            /* Loop through paired devices */
-            for (BluetoothDevice sppDevice : pDevs) {
-                /* PIC module found, create socket. */
-                if (sppDevice.getName().equals(mModName)) {
-                    try {
-                        Method m = sppDevice.getClass().getMethod(
-                                "createRfcommSocket", new Class[] {int.class});
-                        mBtSocket = (BluetoothSocket) m.invoke(sppDevice, 1);
-                    } catch (NoSuchMethodException e) {
-                        Log.e(TAG, "Failed to connect to PIC module.", e);
+                    return -2;
+                } catch (InvocationTargetException e){
+                    Log.e(TAG, "Failed to connect to PIC module.", e);
 
-                        return false;
-                    } catch (IllegalAccessException e) {
-                        Log.e(TAG, "Failed to connect to PIC module.", e);
-
-                        return false;
-                    } catch (InvocationTargetException e){
-                        Log.e(TAG, "Failed to connect to PIC module.", e);
-
-                        return false;
-                    }
+                    return -2;
                 }
             }
         }
 
-        /* PIC module not found. */
+        /* PIC module not paired. */
         if (mBtSocket == null) {
-            Log.e(TAG, "PIC module not found.");
+            Log.e(TAG, "PIC module not paired.");
 
-            return false;
+            return -2;
         }
 
         /*
@@ -279,14 +286,14 @@ public class PicComBt implements IPicComPhys {
                 mBtSocket.close();
             } catch (IOException ee) {
                 Log.d(TAG, "FAILED.", ee);
-                return false;
+                return -1;
             } finally {
                 mBtSocket = null;
             }
 
             Log.d(TAG, "CLOSED.");
 
-            return false;
+            return -1;
         }
 
         /* Connection successfully established. */
@@ -305,14 +312,14 @@ public class PicComBt implements IPicComPhys {
                 mBtSocket.close();
             } catch (IOException ee) {
                 Log.d(TAG, "FAILED.", ee);
-                return false;
+                return -1;
             } finally {
                 mBtSocket = null;
             }
 
             Log.d(TAG, "CLOSED.");
 
-            return false;
+            return -1;
         }
 
         /*
@@ -336,16 +343,16 @@ public class PicComBt implements IPicComPhys {
 
         mConnectionEstablished = true;
 
-        return true;
+        return 0;
     }
 
     /**
      * Closes communication channel.
      *
-     * @return  <code>true</code> if communication channel successfully closed;
-     *          <code>false</code> otherwise.
+     * @return  0 if communication channel successfully closed;
+     *          -1 otherwise.
      */
-    public boolean close() {
+    public int close() {
         if (mConnectionEstablished) {
             mConnectionEstablished = false;
 
@@ -385,13 +392,13 @@ public class PicComBt implements IPicComPhys {
             } catch (IOException e) {
                 Log.d(TAG, "FAILED.", e);
 
-                return false;
+                return -1;
             } finally {
                 mBtSocket = null;
             }
         }
 
-        return true;
+        return 0;
     }
 
     /**

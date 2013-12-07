@@ -6,20 +6,30 @@ package cz.tio.android.obdlogger;
  */
 public interface IPicComPhys {
     /**
-     * Establishes communication channel.
+     * Opens communication channel to PIC module. Two failure modes are
+     * recognized - recoverable and non-recoverable. It makes sense to re-try
+     * open() call in case of recoverable error, as the error may have
+     * been intermittent and subsequent call may succeed. PIC module coming
+     * up (after power on) is an example of recoverable error, since it is
+     * likely the open succeeds once PIC module is up and starts accepting
+     * connections.
+     * On the other hand, non-recoverable failure indicates, that the error
+     * is permanent and must be addressed first before open() is called again.
+     * Disabled Bluetooth is an example of non-recoverable error.
      *
-     * @*return     <code>true</code> if communication has been established;
-     *              <code>false</code> otherwise.
+     * @return  0 if communication established;
+     *          -1 in case of recoverable error;
+     *          -2 in case of non-recoverable error.
      */
-    public boolean open();
+    public int open();
 
     /**
      * Closes communication channel.
      *
-     * @return  <code>true</code> if communication channel successfully closed;
-     *          <code>false</code> otherwise.
+     * @return  0 if communication channel successfully closed;
+     *          -1 otherwise.
      */
-    public boolean close();
+    public int close();
 
     /**
      * Returns one character received from PIC module.
