@@ -85,7 +85,8 @@ class ECUSim(object):
                   'A06':'<a0200>'}
 
     resp_dict = {'C133F18166': ['83F110C1E98FBD'],
-                 'C233F10100E7': ['86F110410001010101D1'],
+                 # supported PIDs 01-20
+                 'C233F10100E7': ['86F1104100983B80132E'],
                  'C233F10104EB': ['83F11041048000'],
                  'C233F10105EC': ['83F11041057800'],
                  'C233F1010BF2': ['83F110410B80D1'],
@@ -94,10 +95,14 @@ class ECUSim(object):
                  'C233F1010FF6': ['83F110410F6400'],
                  'C233F10110F7': ['84F1104110020000'],
                  'C233F10111F8': ['83F11041117000'],
+                 # supported PIDs 21-40
+                 'C233F1012007': ['86F1104120A019A00142'],
                  'C233F101230A': ['84F1104123020000'],
                  'C233F1012C13': ['83F110412C8000'],
                  'C233F1012D14': ['83F110412D9000'],
                  'C233F101331A': ['83F11041336400'],
+                 # supported PIDs 41-60
+                 'C233F1014027': ['86F110414040DE000026'],
                  # read stored DTCs
                  'C133F103E8': ['87F11043000000000000CB'],
                  # read pending DTCs
@@ -326,7 +331,8 @@ def main():
     ecu_sim = ECUSim()
 
 #    ecu_sim.comm_open('/dev/ttya', 9600)
-    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a', 9600)
+#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a', 9600)
+    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
 
     while True:
         # Wait for packet from tester.
