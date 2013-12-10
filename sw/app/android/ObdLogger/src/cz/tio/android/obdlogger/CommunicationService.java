@@ -3,6 +3,9 @@ package cz.tio.android.obdlogger;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Button;
@@ -13,17 +16,112 @@ import cz.tio.android.obdlogger.IPicComCallback;
 import cz.tio.android.obdlogger.LogMaster;
 import cz.tio.android.obdlogger.Obd;
 import cz.tio.android.obdlogger.PicCom;
-import cz.tio.android.obdlogger.PicComBt;
-import cz.tio.android.obdlogger.Probe;
 import cz.tio.android.obdlogger.PicConnectionLostException;
 import cz.tio.android.obdlogger.PicTimeoutExpiredException;
+import cz.tio.android.obdlogger.Probe;
 
 import java.util.ArrayList;
+
+/**
+ * Represents message passed from main activity to the communication service
+ * running as a background thread.
+ */
+class ComSvcMsg {
+    /* Message keys */
+    /* Command - message received from UI */
+    public static final String KEY_CMD = "cmd";
+    /* Argument 1 */
+    public static final String KEY_ARG1 = "arg1";
+
+    /* Commands */
+    /* Invalid command */
+    public static final int CMD_INVALID = -1;
+    /* Terminate communication service. */
+    public static final int CMD_QUIT = 0;
+    /* Get list of supported PIDs. */
+    public static final int CMD_GET_SUPPORTED_PIDS = 1;
+    /* Get PID value. */
+    public static final int CMD_GET_PID_VALUE = 2;
+
+    /* Results */
+    /* ECU not available */
+    public static final int RES_ECU_NOT_AVAILABLE = 0;
+    /* Connection to ECU established */
+    public static final int RES_ECU_CONNECTED = 1;
+    /* List of supported PIDs */
+    public static final int RES_GET_SUPPORTED_PIDS = 2;
+    /* Get PID value. */
+    public static final int RES_GET_PID_VALUE = 3;
+
+    /** Set to <code>true</code> when object contains unprocessed message. */
+    private boolean mValid;
+
+    /** Reference to data payload. */
+    private Bundle mData;
+
+    /**
+     * Checks if the message contains new data to be processed.
+     *
+     * @return  <code>true</code> if message contains new data;
+     *          <code>false</code> otherwise.
+     */
+    synchronized public boolean hasData() {
+        return mValid;
+    }
+
+    /**
+     * Sends a message to the consumer. Assumes that previous message
+     * was processed.
+     *
+     * @param b the data payload
+     */
+    synchronized public void put(Bundle b) {
+        mData = b;
+
+        mValid = true;
+
+        notifyAll();
+    }
+
+    /**
+     * Gets data payload from the message. Blocks until new message
+     * is available.
+     *
+     * @return  the data payload in form of Bundle
+     */
+    synchronized public Bundle get() throws InterruptedException {
+        while (mValid == false) {
+            wait();
+        }
+
+        mValid = false;
+
+        return mData;
+    }
+
+    /**
+     * Constructor
+     */
+    public ComSvcMsg() {
+        super();
+
+        mData = null;
+        mValid = false;
+    }
+}
 
 /**
  * Represents communication service running as a background thread.
  */
 class CommunicationService {
+    static final String TAG = "ComSvc";
+
+    /* Modes of operation. */
+    /* OBD data logger. */
+    public static final int MODE_LOGGER = 0;
+    /* OBD diagnostic device. */
+    public static final int MODE_DIAG = 1;
+
     /* Initiates communication with PIC module. */
     private static final int ST_COMM_INIT_PIC = 0;
     private static final int ST_COMM_INIT_PIC1 = 1;
@@ -33,6 +131,10 @@ class CommunicationService {
     private static final int ST_COMM_INIT_ECU = 3;
     /* Acquire probe value. */
     private static final int ST_ACQUIRE_PROBE_VALUE = 4;
+
+    /* Diagnostic mode. */
+    /* Wait for command from UI. */
+    private static final int ST_DIAG_WAIT_FOR_CMD = 5;
 
     private boolean mDebug = false;
     private boolean mQuit = false;
@@ -46,6 +148,15 @@ class CommunicationService {
 
     /* Reference to main Activity */
     private Activity mActivity;
+
+    /* Message handler delivering messages to main UI thread. */
+    private Handler mHandler;
+
+    /* Container which delivers messages from main UI thread. */
+    private ComSvcMsg mUiMsg;
+
+    /* Mode of operation. */
+    private int mMode;
 
     /* Progress dialog displayed when the device is connecting to PIC. */
     private ProgressDialog mPicConnectPd;
@@ -65,9 +176,6 @@ class CommunicationService {
     /* List of PIDs passed to PIC module for auto-scan mode */
     private String mPidAutoScanList;
 
-    /* Status of PIC module communication */
-    private Button mStsPic;
-
     /* Status of ECU communication */
     private Button mStsEcu;
 
@@ -79,6 +187,15 @@ class CommunicationService {
      */
     public void finish() {
         mQuit = true;
+
+        /* If operating in diag mode, send thread 'quit' message. */
+        if (mMode == MODE_DIAG) {
+            Bundle b = new Bundle();
+
+            b.putInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_QUIT);
+
+            mUiMsg.put(b);
+        }
     }
 
     /**
@@ -244,9 +361,19 @@ class CommunicationService {
                     }
 
                     /*
-                     * Connection with ECU established,
-                     * let user know via indicator on status bar.
+                     * Connection with ECU established.
+                     * Based on current mode, either send message to UI
+                     * or let user know via indicator on status bar.
                      */
+                    if (mMode == MODE_DIAG) {
+                        if (!mHandler.sendMessage(mHandler.obtainMessage(
+                                ComSvcMsg.RES_ECU_CONNECTED)))
+                            mLog.e(TAG, "Sending message to UI failed.");
+
+                        mState = ST_DIAG_WAIT_FOR_CMD;
+                        continue;
+                    }
+
                     updateStatusIndicator(mStsEcu, true);
 
                     mPidSpeedGroups.initPidStateMachine();
@@ -553,9 +680,119 @@ class CommunicationService {
                             mLog.captureProbes(mPidLogList, mObd);
                         }
                     } else {
-                        mLog.w(String.format("Discarding packet <%s>.", p));
+                        mLog.w(TAG, String.format("Discarding packet <%s>.",
+                                p));
 
                         continue;
+                    }
+                } else if (mState == ST_DIAG_WAIT_FOR_CMD) {
+                    Bundle msg;
+
+                    /* Block until UI asks us to do something. */
+                    try {
+                        mLog.d(TAG, "Waiting for UI message...");
+                        msg = mUiMsg.get();
+                    } catch (InterruptedException e) {
+                        mLog.w(TAG, "Communication thread interrupted when " +
+                                "waiting for message from UI.");
+                        continue;
+                    }
+
+                    /* Data payload empty, there is nothing to process. */
+                    if (msg == null) {
+                        mLog.w(TAG, "EMPTY.");
+
+                        continue;
+                    }
+
+                    mLog.d(TAG, "RECEIVED.");
+
+                    /* Process the message. */
+                    int cmd = msg.getInt(ComSvcMsg.KEY_CMD,
+                            ComSvcMsg.CMD_INVALID);
+
+                    mLog.d(TAG, String.format("UI command: %d", cmd));
+
+                    switch (cmd) {
+                    /* Get list of supported PIDs. */
+                    case ComSvcMsg.CMD_GET_SUPPORTED_PIDS:
+                        ArrayList<String> pidList = null;
+
+                        try {
+                            mLog.d(TAG, "Obtaining list of supported PIDs...");
+                            pidList = mObd.getSupportedPids();
+                        } catch (PicTimeoutExpiredException e) {
+                            /* Timeout expired, let UI know. */
+                            mLog.e(TAG, "TIMEOUT.");
+                        } catch (PicConnectionLostException e) {
+                            /* Connection with PIC lost. */
+                            mLog.e(TAG, "CONNECTION LOST.");
+
+                            mState = ST_COMM_INIT_PIC;
+                            continue;
+                        }
+
+                        /* Pass the result to the UI. */
+                        if (!mHandler.sendMessage(mHandler.obtainMessage(
+                                ComSvcMsg.RES_GET_SUPPORTED_PIDS, pidList))) {
+                            mLog.e(TAG, "Sending list of supported PIDs to " +
+                                    "UI failed.");
+                        }
+
+                        break;
+
+                    /* Get PID value. */
+                    case ComSvcMsg.CMD_GET_PID_VALUE:
+                        String pidId = msg.getString(ComSvcMsg.KEY_ARG1, "");
+
+                        if (pidId.equals("")) {
+                            mLog.w(TAG, "PID ID not provided.");
+                            continue;
+                        }
+
+                        Probe probe = mObd.getProbe(pidId);
+
+                        if (probe == null) {
+                            mLog.w(TAG, "Probe for PID <" + pidId + "> not " +
+                                    "found.");
+                            continue;
+                        }
+
+                        try {
+                            mLog.d(TAG, "Obtaining value of PID <" + pidId +
+                                    ">...");
+                            probe.acquire();
+                        } catch (PicTimeoutExpiredException e) {
+                            /* Timeout expired, let UI know. */
+                            mLog.e(TAG, "TIMEOUT.");
+                            continue;
+                        } catch (PicConnectionLostException e) {
+                            /* Connection with PIC lost. */
+                            mLog.e(TAG, "CONNECTION LOST.");
+
+                            mState = ST_COMM_INIT_PIC;
+                            continue;
+                        }
+
+                        /* Pass the result to the UI. */
+                        String resStr = " " + probe.getLabel() + ": " +
+                                probe.physToText();
+
+                        if (!mHandler.sendMessage(mHandler.obtainMessage(
+                                ComSvcMsg.RES_GET_PID_VALUE, resStr))) {
+                            mLog.e(TAG, "Sending PID value to UI failed.");
+                        }
+
+                        break;
+
+                    /* Terminate the thread. */
+                    case ComSvcMsg.CMD_QUIT:
+                        mQuit = true;
+                        break;
+
+                    case ComSvcMsg.CMD_INVALID:
+                        mLog.w(TAG, "Invalid command.");
+                        break;
                     }
                 }
             } /* while */
@@ -592,18 +829,17 @@ class CommunicationService {
      * Constructor.
      *
      * @param activity  the reference to activity which spawned this service
+     * @param handler   the message handler delivering messages to UI thread
+     * @param uiMsg     the container delivering messages from UI thread
+     * @param mode      the mode of operation
+     * @param obd       the OBD communication object
      */
-    public CommunicationService(Activity activity) {
+    public CommunicationService(Activity activity, Handler handler,
+            ComSvcMsg uiMsg, int mode, Obd obd) {
         super();
 
-         /*
-         * Instantiates OBD communication module along with all lower
-         * layer communication modules.
-         */
-        mObd = new Obd(
-                new PicCom(
-                new PicComBt("OBD converter"),
-                new PicComCallback(activity)), activity);
+        /* Save reference to OBD communication object. */
+        mObd = obd;
 
         /*
          * Determine if we should run in debug mode talking to to ECU simulator.
@@ -616,7 +852,7 @@ class CommunicationService {
 
         /* Create progress dialog displayed when connecting to PIC. */
         mPicConnectPd = new ProgressDialog(activity);
-        mPicConnectPd.setTitle("Connecting to PIC...");
+        mPicConnectPd.setTitle("Connecting to ECU...");
         mPicConnectPd.setMessage("Please wait.");
         mPicConnectPd.setCancelable(false);
         mPicConnectPd.setIndeterminate(true);
@@ -627,11 +863,19 @@ class CommunicationService {
         /* Initialize state machine */
         mState = ST_COMM_INIT_PIC;
 
-        /* Save reference to main Activity */
+        /* Save reference to main Activity. */
         mActivity = activity;
 
+        /* Save reference to UI message handler. */
+        mHandler = handler;
+
+        /* Save reference to message. */
+        mUiMsg = uiMsg;
+
+        /* Save mode. */
+        mMode = mode;
+
         /* Initialize references to status indicators */
-        mStsPic = (Button) activity.findViewById(R.id.picState);
         mStsEcu = (Button) activity.findViewById(R.id.ecuState);
         mStsGps = (Button) activity.findViewById(R.id.gpsState);
 
@@ -683,6 +927,10 @@ class CommunicationService {
      */
     private void updateStatusIndicator(final Button stsIndicator,
             final boolean on) {
+
+        /* If indicator does not exist, there is nothing to update. */
+        if (stsIndicator == null)
+            return;
 
         mActivity.runOnUiThread(new Runnable() {
             public void run() {
@@ -852,6 +1100,10 @@ class PicComCallback implements IPicComCallback {
      */
     private void updateStatusIndicator(final Button stsIndicator,
             final boolean on) {
+
+        /* If indicator does not exist, there is nothing to update. */
+        if (stsIndicator == null)
+            return;
 
         mActivity.runOnUiThread(new Runnable() {
             public void run() {

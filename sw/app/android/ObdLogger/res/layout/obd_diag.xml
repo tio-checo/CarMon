@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:keepScreenOn = "true"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:orientation="vertical" >
+
+    <Button
+        android:id="@+id/diagLiveDataButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="true"
+        android:text="@string/diagLiveDataButtonText"
+        android:textSize="30dp"
+        android:onClick="launchObdPids" />
+
+    <Button
+        android:id="@+id/diagPermDtcButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/diagPermDtcButtonText"
+        android:textSize="30dp" />
+
+    <Button
+        android:id="@+id/diagPendDtcButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/diagPendDtcButtonText"
+        android:textSize="30dp" />
+
+    <Button
+        android:id="@+id/diagFreezeFrameButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/diagFreezeFrameButtonText"
+        android:textSize="30dp" />
+</LinearLayout>
+

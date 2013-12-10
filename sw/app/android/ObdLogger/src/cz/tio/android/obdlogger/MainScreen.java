@@ -13,6 +13,7 @@ public class MainScreen extends Activity {
 
     /* IDs identifying launched activities */
     static final int OBD_LOGGER_ACTIVITY_ID = 1;
+    static final int OBD_DIAG_ACTIVITY_ID = 2;
 
     /* IDs of Preferences */
     static final int SET_DEBUG_MODE_ID = 1;
@@ -20,11 +21,18 @@ public class MainScreen extends Activity {
     /* Reference to common application logger */
 //    private LogMaster mLog = LogMaster.getInstance();
 
-    /** Called when Logger Start Button is clicked. */
+    /** Called when OBD Logger Start Button is clicked. */
     public void launchObdLogger(View view) {
         Intent i = new Intent(this, ObdLogger.class);
 
         startActivityForResult(i, OBD_LOGGER_ACTIVITY_ID);
+    }
+
+    /** Called when OBD Diag Start Button is clicked. */
+    public void launchObdDiag(View view) {
+        Intent i = new Intent(this, ObdDiag.class);
+
+        startActivityForResult(i, OBD_DIAG_ACTIVITY_ID);
     }
 
     /** Called when the activity is first created. */
@@ -119,12 +127,23 @@ public class MainScreen extends Activity {
         Log.d(TAG, "-> M.onActivityResult " + resultCode);
 
         switch (requestCode) {
+        /* OBD logger */
         case OBD_LOGGER_ACTIVITY_ID:
             if (resultCode == Activity.RESULT_OK) {
                 /* Activity succeeded. */
             } else {
                 /* Activity failed. */
             }
+            break;
+
+        /* OBD diag */
+        case OBD_DIAG_ACTIVITY_ID:
+            if (resultCode == Activity.RESULT_OK) {
+                /* Activity succeeded. */
+            } else {
+                /* Activity failed. */
+            }
+            break;
         }
 
         Log.d(TAG, "<- M.onActivityResult");

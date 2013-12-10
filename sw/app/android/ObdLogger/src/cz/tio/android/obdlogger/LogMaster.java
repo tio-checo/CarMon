@@ -20,6 +20,8 @@ import cz.tio.android.obdlogger.Probe;
  * Designed as singleton.
  */
 public class LogMaster {
+    static final String TAG = "LogMaster";
+
     /* Log file capturing values of probes. */
     private static String mFilenameProbe;
     private static File mFileProbe;
@@ -77,8 +79,7 @@ public class LogMaster {
             try {
                 mFileProbe.createNewFile();
             } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create file " +
-                        mFilenameProbe, e);
+                Log.e(TAG, "Failed to create file " + mFilenameProbe, e);
 
                 return -1;
             }
@@ -88,8 +89,7 @@ public class LogMaster {
             try {
                 mFileSts.createNewFile();
             } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create file " +
-                        mFilenameSts, e);
+                Log.e(TAG, "Failed to create file " + mFilenameSts, e);
 
                 return -1;
             }
@@ -99,7 +99,7 @@ public class LogMaster {
         try {
             mFileWriterProbe = new FileWriter(mFileProbe, true);
         } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create FileWriter.", e);
+                Log.e(TAG, "Failed to create FileWriter.", e);
 
                 return -1;
         }
@@ -107,7 +107,7 @@ public class LogMaster {
         try {
             mFileWriterSts = new FileWriter(mFileSts, true);
         } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to create FileWriter.", e);
+                Log.e(TAG, "Failed to create FileWriter.", e);
 
                 return -1;
         }
@@ -123,7 +123,7 @@ public class LogMaster {
     public static LogMaster getInstance() {
         /* Create singleton if it does not exist yet */
         if (mInstance == null) {
-            Log.d(ObdLogger.TAG, "Creating LogMaster singleton.");
+            Log.d(TAG, "Creating LogMaster singleton.");
             mInstance = new LogMaster();
         }
 
@@ -132,10 +132,10 @@ public class LogMaster {
          */
         if (!mLogFilesInitialized) {
             if (init() == -1) {
-                Log.e(ObdLogger.TAG, "Failed to initialize log files.");
+                Log.e(TAG, "Failed to initialize log files.");
             } else {
                 mLogFilesInitialized = true;
-                Log.d(ObdLogger.TAG, "Log files initialized.");
+                Log.d(TAG, "Log files initialized.");
             }
         }
 
@@ -174,7 +174,7 @@ public class LogMaster {
             /* Footer */
             mFileWriterProbe.write("\n# Starting phase battery voltage\n");
         } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "Failed to write into log file.", e);
+            Log.e(TAG, "Failed to write into log file.", e);
 
             return false;
         }
@@ -209,7 +209,7 @@ public class LogMaster {
             try {
                 mFileWriterProbe.write(logHeader + "\n");
             } catch (IOException e) {
-                Log.e(ObdLogger.TAG, "Failed to writer header into log file.", e);
+                Log.e(TAG, "Failed to writer header into log file.", e);
 
                 return;
             }
@@ -239,7 +239,7 @@ public class LogMaster {
         try {
             mFileWriterProbe.write(logStr + "\n");
         } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "Writing to log file failed.", e);
+            Log.e(TAG, "Writing to log file failed.", e);
         }
     }
 
@@ -252,29 +252,9 @@ public class LogMaster {
     }
 
     /**
-     * Prepends message with relative timestamp.
+     * Logs error message.
      *
-     * @param  msg Message to be logged.
-     * @return     Message with timestamp prepended.
-     */
-    private String prependRelTimestamp(String msg) {
-        return String.format("[%.3f] %s", ObdLogger.getRunTime(), msg);
-    }
-
-    /**
-     * Implements common logging code.
-     */
-    private void common(String level, String msg) {
-        try {
-            mFileWriterSts.write(String.format("[%s] %s: %s\n",
-                     getTimestamp(), level, msg));
-        } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "Writing to status log file failed.", e);
-        }
-    }
-
-    /**
-     * Logs error messages.
+     * @param msg   the message to be logged
      */
     synchronized public void e(String msg) {
         common("ERROR", msg);
@@ -283,7 +263,21 @@ public class LogMaster {
     }
 
     /**
-     * Logs warning messages.
+     * Logs tagged error message.
+     *
+     * @param tag   the tag identifying the message
+     * @param msg   the message to be logged
+     */
+    synchronized public void e(String tag, String msg) {
+        common("ERROR", msg);
+
+        Log.e(tag, prependRelTimestamp(msg));
+    }
+
+    /**
+     * Logs warning message.
+     *
+     * @param msg   the message to be logged
      */
     synchronized public void w(String msg) {
         common("WARNING", msg);
@@ -292,7 +286,21 @@ public class LogMaster {
     }
 
     /**
-     * Logs info messages.
+     * Logs tagged warning message.
+     *
+     * @param tag   the tag identifying the message
+     * @param msg   the message to be logged
+     */
+    synchronized public void w(String tag, String msg) {
+        common("WARNING", msg);
+
+        Log.w(tag, prependRelTimestamp(msg));
+    }
+
+    /**
+     * Logs info message.
+     *
+     * @param msg   the message to be logged
      */
     synchronized public void i(String msg) {
         common("INFO", msg);
@@ -301,12 +309,38 @@ public class LogMaster {
     }
 
     /**
-     * Logs debug messages.
+     * Logs tagged info message.
+     *
+     * @param tag   the tag identifying the message
+     * @param msg   the message to be logged
+     */
+    synchronized public void i(String tag, String msg) {
+        common("INFO", msg);
+
+        Log.i(tag, prependRelTimestamp(msg));
+    }
+
+    /**
+     * Logs debug message.
+     *
+     * @param msg   the message to be logged
      */
     synchronized public void d(String msg) {
         common("DEBUG", msg);
 
         Log.d(ObdLogger.TAG, prependRelTimestamp(msg));
+    }
+    
+    /**
+     * Logs tagged debug message.
+     *
+     * @param tag   the tag identifying the message
+     * @param msg   the message to be logged
+     */
+    synchronized public void d(String tag, String msg) {
+        common("DEBUG", msg);
+
+        Log.d(tag, prependRelTimestamp(msg));
     }
     
     /**
@@ -322,19 +356,44 @@ public class LogMaster {
             mFileWriterProbe.flush();
             mFileWriterProbe.close();
         } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "Failed to finalize probe log file.", e);
+            Log.e(TAG, "Failed to finalize probe log file.", e);
         }
 
         try {
             mFileWriterSts.flush();
             mFileWriterSts.close();
         } catch (IOException e) {
-            Log.e(ObdLogger.TAG, "Failed to finalize status log file.", e);
+            Log.e(TAG, "Failed to finalize status log file.", e);
         }
 
-        Log.d(ObdLogger.TAG, "Log files closed.");
+        Log.d(TAG, "Log files closed.");
         mLogFilesInitialized = false;
         mLogHeaderWritten = false;
+    }
+
+    /**
+     * Prepends message with relative timestamp.
+     *
+     * @param  msg Message to be logged.
+     * @return     Message with timestamp prepended.
+     */
+    private String prependRelTimestamp(String msg) {
+        return String.format("[%.3f] %s", ObdLogger.getRunTime(), msg);
+    }
+
+    /**
+     * Implements common logging code.
+     *
+     * @param level     the logging level
+     * @param msg       the message to be logged
+     */
+    private void common(String level, String msg) {
+        try {
+            mFileWriterSts.write(String.format("[%s] %s: %s\n",
+                     getTimestamp(), level, msg));
+        } catch (IOException e) {
+            Log.e(TAG, "Writing to status log file failed.", e);
+        }
     }
 }
 

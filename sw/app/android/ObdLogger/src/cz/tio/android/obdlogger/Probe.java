@@ -96,6 +96,8 @@ public abstract class Probe {
 
     /**
      * Returns probe ID.
+     *
+     * @return probe ID
      */
     public String getId() {
         return mId;
@@ -103,20 +105,36 @@ public abstract class Probe {
 
     /**
      * Returns label.
+     *
+     * @return probe label
      */
     public String getLabel() {
         return mLabel;
     }
 
     /**
+     * Returns description.
+     *
+     * @return probe description
+     */
+    public String getDescription() {
+        return mDesc;
+    }
+
+    /**
      * Returns units.
+     *
+     * @return probe units
      */
     public String getUnits() {
         return mUnits;
     }
 
     /**
-     * Returns true if last acquired value is valid. Otherwise returns false.
+     * Checks if last acquired value is valid.
+     *
+     * @return <code>true</code> if last acquired value is valid;
+     *         <code>false</code> otherwise.
      */
     public boolean currYIsValid() {
         return mCurrYValid;
@@ -124,6 +142,8 @@ public abstract class Probe {
 
     /**
      * Returns last acquired value.
+     *
+     * @return last acquired value
      */
     public double getCurrY() {
         return mCurrY;
@@ -133,13 +153,22 @@ public abstract class Probe {
      * Converts physical value to text which is to be displayed on "dashboard".
      * Appends physical units if there are any. Replaces decimal point
      * with decimal comma.
+     *
+     * @return text to be displayed on dashboard
      */
     public String physToText() {
+        StringBuffer s;
+
         if (!mCurrYValid) {
             return "";
         }
 
-        StringBuffer s = new StringBuffer(String.format(mFormatString, mCurrY));
+        /* If format string assumes integer value, cast appropriately. */
+        if (mFormatString.endsWith("X"))
+            s = new StringBuffer(String.format(mFormatString,
+                    ((long) mCurrY) & 0xffffffffL));
+        else
+            s = new StringBuffer(String.format(mFormatString, mCurrY));
 
         if (!mUnits.equals("-")) {
             s.append(" " + mUnits);
@@ -155,6 +184,8 @@ public abstract class Probe {
     /**
      * Converts PID value to text which is to be logged to file. Replaces
      * decimal comma with decimal point.
+     *
+     * @return text to be logged into file
      */
     public String physToLog() {
         if (!mCurrYValid) {
@@ -173,6 +204,8 @@ public abstract class Probe {
     /**
      * Converts parameter value to fraction displayed via progress bar
      * on dashboard.
+     *
+     * @return value to be displayed on dashboard in form of progress bar
      */
     public double physToPbFraction() {
         if (!mCurrYValid) {

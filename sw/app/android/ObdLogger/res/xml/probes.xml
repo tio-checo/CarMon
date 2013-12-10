@@ -20,6 +20,32 @@
 
 <ProbeList>
 <ObdProbes>
+    <!-- 00 - PIDs supported [01 - 20] -->
+    <Pid>
+        <Id>00</Id>
+        <Description>PIDs supported [01 - 20]</Description>
+        <Label>SUP1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
+    <!-- 01 - Status since DTCs cleared -->
+    <Pid>
+        <Id>01</Id>
+        <Description>Status since DTCs cleared</Description>
+        <Label>Sts</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
     <!-- 04 - Calculated engine load -->
     <Pid>
         <Id>04</Id>
@@ -184,6 +210,19 @@
         <PhysToString>%.0f</PhysToString>
     </Pid>
 
+    <!-- 20 - PIDs supported [21 - 40] -->
+    <Pid>
+        <Id>20</Id>
+        <Description>PIDs supported [21 - 40]</Description>
+        <Label>SUP2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
     <!-- 21 - Distance traveled with MIL on -->
     <Pid>
         <Id>21</Id>
@@ -308,6 +347,19 @@
         <PhysToString>%.0f</PhysToString>
     </Pid>
 
+    <!-- 40 - PIDs supported [41 - 60] -->
+    <Pid>
+        <Id>40</Id>
+        <Description>PIDs supported [41 - 60]</Description>
+        <Label>SUP3</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
     <!-- 42 - Control module voltage -->
     <Pid>
         <Id>42</Id>
@@ -319,6 +371,90 @@
         <PhysToPbAdd>0.0</PhysToPbAdd>
         <PhysToPbMul>1.0</PhysToPbMul>
         <PhysToString>%.1f</PhysToString>
+    </Pid>
+
+    <!-- 49 - Accelerator pedal position D -->
+    <Pid>
+        <Id>49</Id>
+        <Description>Accelerator pedal position D</Description>
+        <Label>GASd</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 4A - Accelerator pedal position E -->
+    <Pid>
+        <Id>4A</Id>
+        <Description>Accelerator pedal position E</Description>
+        <Label>GASe</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 4C - Commanded throttle actuator -->
+    <Pid>
+        <Id>4C</Id>
+        <Description>Commanded throttle actuator</Description>
+        <Label>THROTc</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <!-- 100/255 -->
+        <RawToPhysMul>0.392156863</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 4D - Time run with MIL on -->
+    <Pid>
+        <Id>4D</Id>
+        <Description>Time run with MIL on</Description>
+        <Label>MILon</Label>
+        <Units>min</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 4E - Time since trouble codes cleared -->
+    <Pid>
+        <Id>4E</Id>
+        <Description>Time since trouble codes cleared</Description>
+        <Label>DTCcl</Label>
+        <Units>min</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!--
+        4F - Maximum values for equivalence ratio, oxygen sensor voltage,
+        oxygen sensor current, intake manifold aboslute pressure.
+    -->
+    <Pid>
+        <Id>4F</Id>
+        <Description>Max Er, Ov, Oc, Mp</Description>
+        <Label>MAX</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
     </Pid>
 </ObdProbes>
 <PicProbes>

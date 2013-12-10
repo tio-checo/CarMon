@@ -41,4 +41,12 @@
     <string name="diagStartButtonText">OBD Diag</string>
     <string name="scopeStartButtonText">Scope</string>
     <string name="viewerStartButtonText">Browse data</string>
+
+    <!--
+        OBD diag screen buttons.
+    -->
+    <string name="diagLiveDataButtonText">Live Data</string>
+    <string name="diagPermDtcButtonText">Permanent DTCs</string>
+    <string name="diagPendDtcButtonText">Pending DTCs</string>
+    <string name="diagFreezeFrameButtonText">Freeze frame data</string>
 </resources>

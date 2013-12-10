@@ -18,9 +18,10 @@
         android:id="@+id/diagStartButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:enabled="false"
+        android:enabled="true"
         android:text="@string/diagStartButtonText"
-        android:textSize="30dp" />
+        android:textSize="30dp"
+        android:onClick="launchObdDiag" />
 
     <Button
         android:id="@+id/scopeStartButton"

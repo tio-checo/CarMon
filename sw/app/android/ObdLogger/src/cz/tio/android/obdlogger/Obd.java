@@ -11,6 +11,7 @@ import cz.tio.android.obdlogger.ObdProbe;
 import cz.tio.android.obdlogger.Probe;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -90,7 +91,9 @@ public class Obd {
 
     /**
      * Finishes communication with ECU.
-     * Returns true in case of success, otherwise returns false.
+     *
+     * @return  <code>true</code> in case of success;
+     *          <code>false</code> otherwise.
      */
     public boolean close() {
         /* Assume success. */
@@ -135,6 +138,22 @@ public class Obd {
     }
 
     /**
+     * Returns description for given PID.
+     *
+     * @param   pid the PID
+     * @return      String describing given PID
+     */
+    public String getDescription(String pid) {
+        /* Return empty string for unknown PIDs. */
+        Probe probe = getProbe(pid);
+
+        if (probe == null)
+            return "";
+
+        return probe.getDescription();
+    }
+
+    /**
      * Returns reference to probe stored in probe pool.
      *
      * @param   id  the probe ID
@@ -157,10 +176,11 @@ public class Obd {
     /**
      * Asks ECU for PID value.
      *
-     * @return   PID value in form of byte array
-     * @throws   PicTimeoutExpiredException when timeout expires while
+     * @param   pidId   the id of requested PID
+     * @return          PID value in form of byte array
+     * @throws  PicTimeoutExpiredException when timeout expires while
      *                                      waiting for data from PIC
-     *           PicConnectionLostException when lost connection with PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
      */
     public int[] getPidValue(String pidId)
             throws PicTimeoutExpiredException, PicConnectionLostException {
@@ -223,6 +243,51 @@ public class Obd {
         }
 
         return pidData;
+    }
+
+    /**
+     * Asks ECU for supported PIDs.
+     *
+     * @return   list of supported PIDs; <code>null</code>in case of failure.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws   PicConnectionLostException when lost connection with PIC
+     */
+    public ArrayList<String> getSupportedPids()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        ArrayList<String> pidList = new ArrayList<String>();
+
+        /* PIDs containing bitmap of supported PIDs */
+        int[] supPidIds = {0x00, 0x20, 0x40, 0x60, 0x80};
+
+        for (int i = 0; i < supPidIds.length; i++) {
+            int[] pidBitmap = getPidValue(String.format("%02X", supPidIds[i]));
+
+            /* Returned array has to have exactly 4 entries. */
+            if (pidBitmap.length != 4) {
+                mLog.e(String.format("getSupportedPids: <%d> is invalid " +
+                        "length of bitmap, should be <4>", pidBitmap.length));
+
+                return null;
+            }
+
+            for (int j = 0; j < 4; j++) {
+                for (int k = 0; k < 8; k++) {
+                    /* If PID is supported, add it to the list. */
+                    if ((pidBitmap[j] & (0x80 >> k)) != 0) {
+                        pidList.add(String.format("%02X",
+                                supPidIds[i] + j * 8 + k + 1));
+                    }
+                }
+            }
+
+            /* If next PID bitmap is not available, we are done. */
+            if ((pidBitmap[3] & 0x01) == 0) {
+                break;
+            }
+        }
+
+        return pidList;
     }
 
     /**

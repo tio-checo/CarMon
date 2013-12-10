@@ -10,6 +10,9 @@ import android.widget.Toast;
 
 import cz.tio.android.obdlogger.CommunicationService;
 import cz.tio.android.obdlogger.LogMaster;
+import cz.tio.android.obdlogger.Obd;
+import cz.tio.android.obdlogger.PicCom;
+import cz.tio.android.obdlogger.PicComBt;
 
 public class ObdLogger extends Activity {
     static final String TAG = "ObdLogger";
@@ -24,6 +27,9 @@ public class ObdLogger extends Activity {
     /* Records time when application started. */
     private static double mTimeStart;
 
+    /* OBD object. */
+    private Obd mObd = null;
+
     /* Communication service handling communication with PIC module and ECU */
     private CommunicationService mComService = null;
 
@@ -34,8 +40,18 @@ public class ObdLogger extends Activity {
      * Launches communication service.
      */
     private void launchComService() {
+        /*
+         * Instantiates OBD communication module along with all lower
+         * layer communication modules.
+         */
+        mObd = new Obd(
+                new PicCom(
+                new PicComBt("OBD converter"), new PicComCallback(this)),
+                this);
+
         /* Instantiate communication service. */
-        mComService = new CommunicationService(this);
+        mComService = new CommunicationService(this, null, null,
+                CommunicationService.MODE_LOGGER, mObd);
 
         /* Create background thread handling communication with PIC module. */
         commThread = new Thread(null, mComService.loop, "ComService");
@@ -64,7 +80,7 @@ public class ObdLogger extends Activity {
         /* Bluetooth adapter */
         BluetoothAdapter mBluetoothAdapter = null;
 
-        Log.d(TAG, "-> O.onCreate()");
+        Log.d(TAG, "-> Ol.onCreate()");
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.obd_logger);
@@ -103,7 +119,7 @@ public class ObdLogger extends Activity {
             launchComService();
         }
 
-        Log.d(TAG, "<- O.onCreate()");
+        Log.d(TAG, "<- Ol.onCreate()");
     }
 
     /** Called when the activity is started. */
@@ -111,8 +127,8 @@ public class ObdLogger extends Activity {
     public void onStart() {
         super.onStart();
 
-        Log.d(TAG, "-> O.onStart()");
-        Log.d(TAG, "<- O.onStart()");
+        Log.d(TAG, "-> Ol.onStart()");
+        Log.d(TAG, "<- Ol.onStart()");
     }
 
     /** Called when the activity is paused. */
@@ -120,8 +136,8 @@ public class ObdLogger extends Activity {
     public void onPause() {
         super.onPause();
 
-        Log.d(TAG, "-> O.onPause()");
-        Log.d(TAG, "<- O.onPause()");
+        Log.d(TAG, "-> Ol.onPause()");
+        Log.d(TAG, "<- Ol.onPause()");
     }
 
     /** Called when the activity is resumed. */
@@ -129,8 +145,8 @@ public class ObdLogger extends Activity {
     public void onResume() {
         super.onResume();
 
-        Log.d(TAG, "-> O.onResume()");
-        Log.d(TAG, "<- O.onResume()");
+        Log.d(TAG, "-> Ol.onResume()");
+        Log.d(TAG, "<- Ol.onResume()");
     }
 
     /** Called when the activity is restarted. */
@@ -138,8 +154,8 @@ public class ObdLogger extends Activity {
     public void onRestart() {
         super.onRestart();
 
-        Log.d(TAG, "-> O.onRestart()");
-        Log.d(TAG, "<- O.onRestart()");
+        Log.d(TAG, "-> Ol.onRestart()");
+        Log.d(TAG, "<- Ol.onRestart()");
     }
 
     /** Called when the activity is stopped. */
@@ -147,8 +163,8 @@ public class ObdLogger extends Activity {
     public void onStop() {
         super.onStop();
 
-        Log.d(TAG, "-> O.onStop()");
-        Log.d(TAG, "<- O.onStop()");
+        Log.d(TAG, "-> Ol.onStop()");
+        Log.d(TAG, "<- Ol.onStop()");
     }
 
     /** Called when the activity is destroyed. */
@@ -156,7 +172,7 @@ public class ObdLogger extends Activity {
     public void onDestroy() {
         super.onDestroy();
 
-        Log.d(TAG, "-> O.onDestroy()");
+        Log.d(TAG, "-> Ol.onDestroy()");
 
         /*
          * If communication thread was spawned, let it know
@@ -187,7 +203,7 @@ public class ObdLogger extends Activity {
         /* Close log files */
         mLog.finish();
 
-        Log.d(TAG, "<- O.onDestroy()");
+        Log.d(TAG, "<- Ol.onDestroy()");
     }
 
     /**
@@ -195,7 +211,7 @@ public class ObdLogger extends Activity {
      * spawned by startActivityForResult() is done.
      */
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        Log.d(TAG, "-> O.onActivityResult " + resultCode);
+        Log.d(TAG, "-> Ol.onActivityResult " + resultCode);
 
         switch (requestCode) {
         case REQUEST_ENABLE_BT:
@@ -217,7 +233,7 @@ public class ObdLogger extends Activity {
             }
         }
 
-        Log.d(TAG, "<- O.onActivityResult");
+        Log.d(TAG, "<- Ol.onActivityResult");
     }
 }
 
