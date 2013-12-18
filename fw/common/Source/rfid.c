@@ -112,6 +112,12 @@ static unsigned char rfid_heartbeat_mode;
 /* When set to TRUE, turn the LED on for a while. */
 static BOOL rfid_turn_led_on;
 
+/* Packet sequence. Used by master to detect packet loss. */
+static int pkt_num;
+
+/* Packet header - null-terminated string (two ASCII HEX characters). */
+static char pkt_hdr[3];
+
 /* local functions */
 /*
  * handle heartbeat LED
@@ -386,8 +392,15 @@ rfid_id20_svc(void)
 			ts = pcore_gettime();
 			strncpy(rfid_msg_buf, ts, RFID_TIMESTAMP_LN);
 
+			/* Convert sequence number to ASCII HEX string. */
+			snprintf(pkt_hdr, sizeof (pkt_hdr), "%02X", pkt_num);
+
+			/* Increment sequence number. */
+			if (++pkt_num > 255)
+				pkt_num = 1;
+			
 			/* Send the message to the master. */
-			rfid_send_data_response_to_master("00", rfid_msg_buf,
+			rfid_send_data_response_to_master(pkt_hdr, rfid_msg_buf,
 			    RFID_TIMESTAMP_LN + RFID_MSG_LN);
 		}
 
@@ -547,6 +560,9 @@ rfid_init(void)
 	/* Let LED indicator flash. */
 	rfid_turn_led_on = FALSE;
 	rfid_heartbeat_mode = HB_MODE_TICKS;
+
+	/* Initialize packet sequence. */
+	pkt_num = 1;
 
 	return 0;
 }
