@@ -24,7 +24,8 @@ public class Obd {
     static final String PKT_ACK = "EA";
     static final String PKT_NAK = "EN";
     static final String PKT_GET_PID = "EOP";
-    static final String PKT_GET_PID_RESP = "E00P";
+    static final String PKT_GET_PID_RESP = "EP00";
+    static final String PKT_GET_PID_AS_RESP = "ER";
 
     /* private attributes */
     private static final int ST_COMM_INIT = 0;

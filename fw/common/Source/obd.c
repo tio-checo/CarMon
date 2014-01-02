@@ -53,6 +53,11 @@ static unsigned char obd_resp_data_buf[OBD_ECU_PACKET_MAXLN];
 /* If set to TRUE, send response containing data to master */
 static BOOL fl_send_data;
 
+/* Packet sequence. Used by master to detect packet loss. */
+static int pkt_num;
+/* Packet header for PID autoscan mode - "Rnn" null-terminated string */
+static char pkt_hdr[4];
+
 /* local functions */
 
 /*
@@ -103,6 +108,8 @@ obd_comm_ecu_svc(void)
 
 		/* packet received */
 		if (ret == 0) {
+			char *pkt_hdr_p = "P00";
+
 			/*
 			 * Copy PID and its value to response data buffer,
 			 * discard header byte.
@@ -110,7 +117,19 @@ obd_comm_ecu_svc(void)
 			for (i = 1; i < ln; i++)
 				obd_resp_data_buf[i - 1] = d[i];
 
-			mcom_prepare_generic_response(&obd_resp_data, "00P",
+			/* Prepare data header for autoscan mode. */
+			if (obd_autoscan_run) {
+				snprintf(pkt_hdr, sizeof (pkt_hdr), "R%02X",
+				    pkt_num);
+
+				pkt_hdr_p = pkt_hdr;
+
+				/* Increment sequence number. */
+				if (++pkt_num > 255)
+					pkt_num = 1;
+			}
+
+			mcom_prepare_generic_response(&obd_resp_data, pkt_hdr_p,
 			    obd_resp_data_buf, MCOM_DATA_TYPE_BYTE, ln - 1);
 		} else {
 			obd_resp_data_buf[0] = (rx_err >> 8) & 0xff;
@@ -337,6 +356,9 @@ obd_init(void)
 
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;
+
+	/* Initialize packet sequence. */
+	pkt_num = 1;
 
 	/* register and enable OBD service */
 	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);

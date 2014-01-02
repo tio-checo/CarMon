@@ -167,6 +167,9 @@ class CommunicationService {
     /* OBD communication module. */
     private Obd mObd;
 
+    /* OBD packet seqence number. */
+    private int mSeqNum;
+
     /* Pid speed groups */
     private PidGroups mPidSpeedGroups;
 
@@ -642,7 +645,22 @@ class CommunicationService {
                                 mDashboard.updateIndicator(currProbe);
                             }
                         }
-                    } else if (p.startsWith(Obd.PKT_GET_PID_RESP)) {
+                    } else if (p.startsWith(Obd.PKT_GET_PID_AS_RESP)) {
+                        /* Validate packet sequence number */
+                        int curSeqNum = Integer.parseInt(p.substring(2, 4), 16);
+
+                        /* If out of sync, log the warning and resync */
+                        if (curSeqNum != mSeqNum) {
+                            mLog.w(TAG, String.format("Bad sequence number " +
+                                    "(expected <%d>, got <%d>, resyncing...",
+                                    mSeqNum, curSeqNum));
+
+                            mSeqNum = curSeqNum;
+                        }
+
+                        /* Update packet sequence number */
+                        mSeqNum++;
+
                         currPid = p.substring(4, 6);
                         Probe currProbe = mObd.getProbe(currPid);
 
@@ -840,6 +858,9 @@ class CommunicationService {
 
         /* Save reference to OBD communication object. */
         mObd = obd;
+
+        /* Initialize OBD packet seqence number. */
+        mSeqNum = 1;
 
         /*
          * Determine if we should run in debug mode talking to to ECU simulator.
