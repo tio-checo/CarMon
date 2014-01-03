@@ -659,7 +659,9 @@ class CommunicationService {
                         }
 
                         /* Update packet sequence number */
-                        mSeqNum++;
+                        if (++mSeqNum > 255) {
+                            mSeqNum = 1;
+                        }
 
                         currPid = p.substring(4, 6);
                         Probe currProbe = mObd.getProbe(currPid);
