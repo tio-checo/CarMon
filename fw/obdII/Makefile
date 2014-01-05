@@ -12,13 +12,14 @@ BUILD_DIR= build
 # project directories containing header files
 HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 -I../common/Include -I../common/Include/USB/ -I../common/Include/MDDFS/ \
--I../common/Include/peripheral -I../commmon/Include/peripheral/int/
+-I../common/Include/peripheral -I../common/Include/peripheral/int/ \
+-I../common/Include/peripheral/can
 
 # compiler flags
 #  - code optimized for size
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE \
+-DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -42,7 +43,14 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/spi_getc_spi2_lib_legacy.o \
     $(BUILD_DIR)/spi_open_spi2_lib_legacy.o \
     $(BUILD_DIR)/FSIO.o $(BUILD_DIR)/SD-SPI.o \
-
+    $(BUILD_DIR)/CANConfiguration.o \
+    $(BUILD_DIR)/CANFilterFunctions.o \
+    $(BUILD_DIR)/CANErrorFunctions.o \
+    $(BUILD_DIR)/CANEventFunctions.o \
+    $(BUILD_DIR)/CANInfoFunctions.o \
+    $(BUILD_DIR)/CANReceiveFunctions.o \
+    $(BUILD_DIR)/CANTransmitFunctions.o \
+    $(BUILD_DIR)/can_hal.o
 
 APPNAME= main
 
@@ -77,6 +85,30 @@ $(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/bt.o: ../common/Source/bt.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANConfiguration.o: ../common/Source/peripheral/can/CANConfiguration.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANErrorFunctions.o: ../common/Source/peripheral/can/CANErrorFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANEventFunctions.o: ../common/Source/peripheral/can/CANEventFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANFilterFunctions.o: ../common/Source/peripheral/can/CANFilterFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANInfoFunctions.o: ../common/Source/peripheral/can/CANInfoFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANReceiveFunctions.o: ../common/Source/peripheral/can/CANReceiveFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/CANTransmitFunctions.o: ../common/Source/peripheral/can/CANTransmitFunctions.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/can_hal.o: ../common/Source/can_hal.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c

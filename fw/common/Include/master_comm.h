@@ -4,6 +4,7 @@
 #include <GenericTypeDefs.h>
 
 /* module IDs and commands */
+#define	MCOMM_CAN_ID		'C'	/* CAN module ID */
 #define	MCOMM_COMM_ID		'M'	/* communication module ID */
 #define	MCOMM_PIC_ID		'P'	/* PIC module ID */
 #define MCOMM_RFID_ID		'R'	/* RFID module ID */
@@ -81,6 +82,12 @@ extern int mcom_prepare_nak_response(mcom_response_t *, unsigned char);
 /* Prepare generic response to master. */
 extern int mcom_prepare_generic_response(mcom_response_t *, char *, void *,
     int, int);
+
+/*
+ * Translate error codes from underlying modules to error
+ * codes understood by master.
+ */
+extern int mcom_err_translate(int);
 
 /* Queue response for transmission to master */
 extern int mcom_queue_response(mcom_response_t *);

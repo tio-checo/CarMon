@@ -30,7 +30,7 @@
 /* Initialization routine. */
 extern int rfid_init(void);
 
-/* Processes query from master targeted to PIC core module */
+/* Processes query from master targeted to RFID module */
 extern int rfid_process_query(char *, int);
 
 #endif /* __RFID_H */

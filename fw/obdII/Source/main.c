@@ -8,6 +8,7 @@
 #include "xc.h"
 
 #include "bt.h"
+#include "can_hal.h"
 #include "data_acq.h"
 #include "kwp2k.h"
 #include "master_comm.h"
@@ -118,6 +119,9 @@ main(int argc, char **argv)
 	/* USB module */
 	uapp_init();
 
+	/* CAN module */
+	can_init();
+
 	/* All services are initialized, thus enable main service handler. */
 	rtl_svc_handler_enable();
 
@@ -146,6 +150,9 @@ main(int argc, char **argv)
 
 			/* Suspend data acquisition module */
 			daq_suspend();
+
+			/* Suspend CAN module */
+			can_suspend();
 
 			/* turn off LEDs */
 			LATBSET = (1 << 12);

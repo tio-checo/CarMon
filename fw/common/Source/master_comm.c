@@ -23,6 +23,10 @@
 #include "bt.h"
 #include "data_acq.h"
 
+#ifdef CANHAL_MODULE
+#include "can_hal.h"
+#endif
+
 #ifdef KWP2K_MODULE
 #include "kwp2k.h"
 #endif
@@ -243,6 +247,19 @@ mcom_decode_packet(void)
 		}
 
 		break;
+
+#ifdef CANHAL_MODULE
+	/* CAN module */
+	case MCOMM_CAN_ID:
+		err = can_process_query(&mcom_co.rx_buf[1], ln);
+
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
+
+		break;
+#endif
 
 #ifdef RFID_MODULE
 	/* RFID module */
@@ -892,3 +909,28 @@ mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
 	return 0;
 }
 
+/*
+ * Translate error codes from underlying modules to error
+ * codes understood by master.
+ */
+int
+mcom_err_translate(int err_in)
+{
+	int err_out;
+
+	switch (err_in) {
+	case EINVAL:
+		err_out = MCOM_NAK_EINVAL;
+		break;
+
+	case EBUSY:
+		err_out = MCOM_NAK_MODULE_BUSY;
+		break;
+
+	default:
+		err_out = err_in;
+		break;
+	} /* switch */
+
+	return err_out;
+}

@@ -50,6 +50,8 @@ SUBSTITUTE GOODS, TECHNOLOGY, SERVICES, OR ANY CLAIMS BY THIRD PARTIES
 #include <p32xxxx.h>
 #include <sys/kmem.h>
 
+#include "GenericTypeDefs.h"
+
 // *****************************************************************************
 // *****************************************************************************
 // Section: Constants & Data Types
@@ -86,7 +88,6 @@ typedef enum
     CAN_NUMBER_OF_MODULES   // Number of available CAN modules.
 
 }CAN_MODULE;
-
 
 
 // *****************************************************************************

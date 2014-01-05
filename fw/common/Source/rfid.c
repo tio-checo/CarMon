@@ -269,9 +269,9 @@ rfid_comm_svc(void)
  * Sends data packet to master.
  */
 static int
-rfid_send_data_response_to_master(char *pkt_num, char *buf, int ln)
+rfid_send_data_response_to_master(char *pkt_hdr, char *buf, int ln)
 {
-	mcom_prepare_generic_response(&rfid_resp_data, pkt_num,
+	mcom_prepare_generic_response(&rfid_resp_data, pkt_hdr,
 	    buf, MCOM_DATA_TYPE_ASCII, ln);
 
 	fl_send_data = TRUE;
@@ -468,7 +468,6 @@ rfid_log_svc(void)
 		if (rec == NULL) {
 			/* Send the message to the master. */
 			rfid_send_data_response_to_master("00", rec, 0);
-
 		} else {
 			/*
 			 * Send the record to the master - discard \r\n
@@ -487,7 +486,7 @@ rfid_log_svc(void)
 }
 
 /*
- * Main acquisition service routine - called periodically from timer interrupt.
+ * Main service routine - called periodically from timer interrupt.
  */
 static int
 rfid_svc(void)
