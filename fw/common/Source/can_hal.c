@@ -58,7 +58,17 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
     125000	/* 125 kbit */
 };
 
-/* macros */
+/* local macros */
+/* evaluates to TRUE if snoop mode is active */
+#define CAN_SNOOP_ENABLED	(can_mode & 0x80)
+/* enable snoop mode */
+#define CAN_SNOOP_ENABLE	can_mode |= 0x80
+/* disable snoop mode */
+#define CAN_SNOOP_DISABLE	can_mode &= 0x7f
+/* get current mode - filter out snoop bit */
+#define CAN_GET_MODE		(can_mode & 0x7f)
+/* set current mode */
+#define CAN_SET_MODE(x)		(can_mode = (x))
 
 /* local types */
 
@@ -66,13 +76,15 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 /* state machine handling packets received from CAN module */
 static enum {
 	CAN_RX_ST_IDLE = 0,	/* idle */
-	CAN_RX_ST_WAIT4PKT = 1	/* wait for received message */
+	CAN_RX_ST_WAIT4PKT	/* wait for received message */
 } can_rx_st;
 
 /* state machine handling packets transmitted by CAN module */
 static enum {
 	CAN_TX_ST_IDLE = 0,	/* idle */
-	CAN_TX_ST_WAIT4TXDONE = 1	/* wait transmission to be done */
+	CAN_TX_ST_WAIT4TXDONE,	/* wait transmission to be done */
+	CAN_TX_ST_CONF1,	/* configure CAN module */
+	CAN_TX_ST_CONF2
 } can_tx_st;
 
 /*
@@ -83,8 +95,6 @@ static enum {
 static unsigned int can_fifos[(CAN_RX_CHANNEL_SIZE + CAN_TX_CHANNEL_SIZE) * 4];
 
 /* communication with master */
-/* If TRUE, messages received from CAN are sent directly to master. */
-static BOOL can_send2master;
 /* structure holding ACK/NAK response to master */
 static mcom_response_t can_resp_ack_nak;
 /* If set to TRUE, send ack/nak response packet to master */
@@ -96,6 +106,13 @@ static char can_resp_buf[40];
 static mcom_response_t can_resp_data;
 /* If set to TRUE, send response containing data to master */
 static BOOL fl_send_data;
+
+/* Communication mode */
+static int can_mode;
+/* Communication speed */
+static CAN_COMM_SPEED can_speed;
+/* If TRUE, sends ACK to master after done with configuration. */
+static BOOL can_conf_send_ack;
 
 /* local functions */
 
@@ -212,7 +229,7 @@ can_rx_svc(void)
 			break;
 
 		/* Send the message directly to master. */
-		if (can_send2master) {
+		if (CAN_SNOOP_ENABLED) {
 			int i;
 
 			/*
@@ -325,6 +342,50 @@ can_tx_svc(void)
 
 		break;
 
+	/* Configure communication speed. */
+	case CAN_TX_ST_CONF1:
+		/* Wait until module enters configuration mode. */
+		if (CANGetOperatingMode(CAN1) != CAN_CONFIGURATION)
+			break;
+
+		/* Set speed. */
+		CANSetSpeed(CAN1, &can_bit_timing_cfg[can_speed],
+		    GetSystemClock(), can_speeds[can_speed]);
+
+		/* Convert "Listen All Message" mode, preserve snoop bit. */
+		if (CAN_GET_MODE == MODE_LISTEN_ALL_MESSAGES) {
+			BOOL snoop_enabled = CAN_SNOOP_ENABLED;
+
+			CAN_SET_MODE(CAN_LISTEN_ALL_MESSAGES);
+
+			if (snoop_enabled) {
+				CAN_SNOOP_ENABLE;
+			}
+		}
+
+		/* Switch module to the desired operating mode. */
+		CANSetOperatingMode(CAN1, CAN_GET_MODE);
+
+		can_tx_st = CAN_TX_ST_CONF2;
+		break;
+
+	/* Finish configuration and send ACK to master. */
+	case CAN_TX_ST_CONF2:
+		/* Wait until module enters desired mode. */
+		if (CANGetOperatingMode(CAN1) != CAN_GET_MODE)
+			break;
+
+		/* Send ACK to master indicating that configuration is done. */
+		if (can_conf_send_ack) {
+			can_conf_send_ack = FALSE;
+
+			mcom_prepare_ack_response(&can_resp_ack_nak);
+			fl_send_ack_nak = TRUE;
+		}
+
+		can_tx_st = CAN_TX_ST_IDLE;
+		break;
+
 	default:
 		break;
 	} /* switch */
@@ -432,8 +493,8 @@ can_hw_init(void)
 	CANSetTimeStampPrescalar(CAN1, (GetSystemClock() / 1000) - 1);
 
 	/* 250kbit speed. */
-	CANSetSpeed(CAN1, &can_bit_timing_cfg[SPEED_250k], GetSystemClock(),
-	    can_speeds[SPEED_250k]);
+	CANSetSpeed(CAN1, &can_bit_timing_cfg[can_speed], GetSystemClock(),
+	    can_speeds[can_speed]);
 
 	/*
 	 * Configure mask 0 and filter 0 to accept all messages,
@@ -447,8 +508,8 @@ can_hw_init(void)
 	CANEnableFilter(CAN1, CAN_FILTER0, TRUE);
 
 	/* Configuration finished, thus enter "Normal Operation" mode. */
-	CANSetOperatingMode(CAN1,CAN_NORMAL_OPERATION);
-	while(CANGetOperatingMode(CAN1) != CAN_NORMAL_OPERATION);
+	CANSetOperatingMode(CAN1, CAN_GET_MODE);
+	while(CANGetOperatingMode(CAN1) != CAN_GET_MODE);
 
 	return 0;
 }
@@ -493,45 +554,73 @@ can_configure(char *data, int ln)
 		return EINVAL;
 	}
 
-	/* Obtain and validate mode. */
+	/* Obtain mode. */
 	mode = (int) hex2ulong(data + 2, 2);
-	if ((mode & 0x7f) > 4) {
-		return EINVAL;
-	}
 
-	/* Obtain and validate speed. */
+	/* Obtain speed. */
 	speed = (int) hex2ulong(data + 4, 2);
-	if (speed >= CAN_NUM_SUPPORTED_SPEEDS) {
-		return EINVAL;
-	}
 
-	/*
-	 * Request CAN to enter "Configuration" mode
-	 * and wait until the switch is done.
-	 */
-	CANSetOperatingMode(CAN1, CAN_CONFIGURATION);
-	while(CANGetOperatingMode(CAN1) != CAN_CONFIGURATION);
-
-	/* Set speed. */
-	CANSetSpeed(CAN1, &can_bit_timing_cfg[speed], GetSystemClock(),
-	    can_speeds[speed]);
-
-	/* Set mode. */
-	can_send2master = mode >> 7;
-	mode &= 0x7f;
-
-	/* Convert "Listen All Message" mode */
-	if (mode == 4) {
-		mode = 7;
-	}
-
-	CANSetOperatingMode(CAN1, mode);
-	while(CANGetOperatingMode(CAN1) != mode);
-
-	return 0;
+	/* Let the service finish process of configuration. */
+	return can_set_mode_speed(mode, speed, TRUE);
 }
 
 /* global functions */
+/*
+ * Checks if configuration process is in progress.
+ * Returns:
+ *   TRUE if configuration is in progress; FALSE otherwise.
+ */
+BOOL
+can_configuration_in_progress(void) {
+	return (can_tx_st == CAN_TX_ST_CONF1 || can_tx_st == CAN_TX_ST_CONF2);
+}
+
+/*
+ * Sets communication mode and speed.
+ * Returns:
+ *   0      - speed configured.
+ *   EINVAL - specified mode or speed not supported.
+ *   EBUSY  - module currently busy, speed can't be set.
+ */
+int
+can_set_mode_speed(int mode, int speed, BOOL send_ack)
+{
+	/*
+	 * Transmit service is used to apply configuration, so check if that
+	 * service is currently available.
+	 */
+	if (can_tx_st != CAN_TX_ST_IDLE) {
+		return EBUSY;
+	}
+
+	/* Mode is to be configured. */
+	if (mode != -1) {
+		if ((mode & 0x7f) > 4) {
+			return EINVAL;
+		}
+
+		CAN_SET_MODE(mode);
+	}
+
+	/* Speed is to be configured. */
+	if (speed != -1) {
+		if (speed >= CAN_NUM_SUPPORTED_SPEEDS) {
+			return EINVAL;
+		}
+
+		can_speed = speed;
+	}
+
+	/* Instruct CAN to commence entering "Configuration" mode. */
+	CANSetOperatingMode(CAN1, CAN_CONFIGURATION);
+
+	/* If TRUE, sends ACK to master once configuration is finished. */
+	can_conf_send_ack = send_ack;
+
+	can_tx_st = CAN_TX_ST_CONF1;
+
+	return 0;
+}
 
 /*
  * Initialization routine.
@@ -539,6 +628,17 @@ can_configure(char *data, int ln)
 int
 can_init(void)
 {
+	/*
+	 * Default communication mode
+	 *  - "Normal Operation" mode
+	 *  - snoop mode enabled
+	 */
+	CAN_SET_MODE(CAN_NORMAL_OPERATION);
+	CAN_SNOOP_ENABLE;
+
+	/* Default communication speed. */
+	can_speed = SPEED_250k;
+
 	/*
 	 * Initialize CAN1 module.
 	 */
@@ -549,9 +649,6 @@ can_init(void)
 
 	/* Initialize state machine for transmitting CAN frames. */
 	can_tx_st = CAN_TX_ST_IDLE;
-
-	/* Messages received from CAN are sent directly to master. */
-	can_send2master = TRUE;
 
 	/* Set module ID for purposes of communication with master. */
 	can_resp_ack_nak.id = MCOMM_CAN_ID;
@@ -597,6 +694,15 @@ can_process_query(char *data, int ln)
 		case MCOMM_CAN_CMD_CFG:
 			/* configure module */
 			err = can_configure(data + 1, ln - 1);
+
+			/*
+			 * If configuration process has been succesfully
+			 * commenced, ack/nak will be sent later -
+			 * once the process of configuration is finished.
+			 */
+			if (err == 0) {
+				fl_send_ack_nak = FALSE;
+			}
 
 			break;
 

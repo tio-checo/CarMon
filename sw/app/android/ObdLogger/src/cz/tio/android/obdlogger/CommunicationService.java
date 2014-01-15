@@ -315,13 +315,13 @@ class CommunicationService {
 
                     /* Set ECU communication mode. */
                     if (mEcuSim) {
-                        mode = PicCom.ECU_COMM_MODE_KWP2K_DEBUG;
+                        mode = Obd.ECU_COMM_MODE_KWP2K_DEBUG;
                     } else {
-                        mode = PicCom.ECU_COMM_MODE_KWP2K_ENHANCED;
+                        mode = Obd.ECU_COMM_MODE_KWP2K_NORMAL;
                     }
 
                     try {
-                        if (pc.setEcuCommMode(mode) == 0) {
+                        if (mObd.setEcuCommMode(mode)) {
                             mState = ST_COMM_INIT_ECU;
                         } else {
                             /* Command failed, re-try. */

@@ -78,11 +78,6 @@ class NullPicComCallback implements IPicComCallback {
 public class PicCom {
     static final String TAG = "PicCom";
 
-    /* ECU communication modes */
-    static final String ECU_COMM_MODE_KWP2K_BASIC = "01";
-    static final String ECU_COMM_MODE_KWP2K_ENHANCED = "02";
-    static final String ECU_COMM_MODE_KWP2K_DEBUG = "03";
-
     /* states of receive state machine */
     private static final int ST_WAIT4SOF = 1;
     private static final int ST_RECV_DATA = 2;
@@ -146,7 +141,7 @@ public class PicCom {
 
             try {
                 /** Send packet to PIC and wait until response arrives. */
-                setEcuCommMode(ECU_COMM_MODE_KWP2K_ENHANCED);
+                getAdValue("08");
 
                 /*
                  * Response to our query arrived, consider communication
@@ -388,23 +383,6 @@ public class PicCom {
 
         /* Wait just for ACK */
         return waitForAckNak("E", true, false);
-    }
-
-    /**
-     * Changes ECU communication mode.
-     *
-     * @param
-     * @return
-     * @throws   PicTimeoutExpiredException when timeout expires while
-     *                                      waiting for data from PIC
-     *           PicConnectionLostException when lost connection with PIC
-     */
-    public int setEcuCommMode(String mode)
-            throws PicTimeoutExpiredException, PicConnectionLostException {
-        sendPacket("M" + mode);
-
-        /* Wait for ACK */
-        return waitForAckNak("M");
     }
 
     /**

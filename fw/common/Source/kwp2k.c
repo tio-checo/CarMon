@@ -1309,7 +1309,10 @@ kwp2k_comm_is_established(void)
 }
 
 /*
- * Set communication mode
+ * Sets communication mode.
+ * Returns:
+ *   0      - mode successfully configured
+ *   EINVAL - invalid mode
  */
 int
 kwp2k_set_mode(int new_mode)

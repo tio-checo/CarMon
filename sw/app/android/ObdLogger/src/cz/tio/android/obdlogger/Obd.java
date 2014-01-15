@@ -21,11 +21,21 @@ import org.xmlpull.v1.XmlPullParserException;
  * Implements OBD communication protocol.
  */
 public class Obd {
+    /* ECU communication modes */
+    static final String ECU_COMM_MODE_KWP2K_AUTO = "00";
+    static final String ECU_COMM_MODE_KWP2K_NORMAL = "01";
+    static final String ECU_COMM_MODE_KWP2K_DEBUG = "02";
+    static final String ECU_COMM_MODE_CAN_SID_250 = "03";
+    static final String ECU_COMM_MODE_CAN_SID_500 = "04";
+    static final String ECU_COMM_MODE_CAN_EID_250 = "05";
+    static final String ECU_COMM_MODE_CAN_EID_500 = "06";
+
     static final String PKT_ACK = "EA";
     static final String PKT_NAK = "EN";
     static final String PKT_GET_PID = "EOP";
     static final String PKT_GET_PID_RESP = "EP00";
     static final String PKT_GET_PID_AS_RESP = "ER";
+    static final String PKT_SET_COMM_MODE = "EOC";
 
     /* private attributes */
     private static final int ST_COMM_INIT = 0;
@@ -172,6 +182,65 @@ public class Obd {
      */
     public PicCom getPicCom() {
         return mPicCom;
+    }
+
+    /**
+     * Selects ECU communication mode.
+     *
+     * @param    mode the communication mode
+     * @return   <code>true</code> in case of success;
+     *           <code>false</code> otherwise.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public boolean setEcuCommMode(String mode)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        String sp = PKT_SET_COMM_MODE + mode;
+        String rp = null;
+
+        /* Ask ECU for PID value. */
+        mPicCom.sendPacket(sp);
+
+        /* Wait until ACK or NAK is received. */
+        try {
+            /* Wait for response from ECU module. */
+            rp = mPicCom.getPacket("E");
+        } catch (PicTimeoutExpiredException e) {
+            /*
+             * Timeout expired. Communication needs to be established again.
+             */
+            mLog.w("Timeout when waiting for ECU response.");
+
+            mComEcuEstablished = false;
+
+            throw e;
+        } catch (PicConnectionLostException e) {
+            mComEcuEstablished = false;
+
+            throw e;
+        }
+
+        /*
+         * ACK received.
+         */
+        if (rp.startsWith(PKT_ACK)) {
+            return true;
+        } else if (rp.startsWith(PKT_NAK)) {
+            /*
+             * NAK received, log it.
+             */
+            mLog.w(String.format(
+                    "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
+        } else {
+            /*
+             * Unknown response received, log it.
+             */
+            mLog.w(String.format(
+                    "ECU responded with invalid <%s> to <%s> packet.", rp, sp));
+        }
+
+        return false;
     }
 
     /**

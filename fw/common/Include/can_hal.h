@@ -22,6 +22,16 @@
 #define	MCOMM_CAN_RSP_FRAME_RECEIVED	'R'
 
 /* types */
+/* supported modes */
+typedef enum {
+	MODE_NORMAL,
+	MODE_DISABLED,
+	MODE_LOOPBACK,
+	MODE_LISTEN_ONLY,
+	MODE_LISTEN_ALL_MESSAGES,
+	CAN_NUM_SUPPORTED_MODES
+} CAN_COMM_MODE;
+
 /* supported speeds */
 typedef enum {
 	SPEED_1M,
@@ -29,7 +39,7 @@ typedef enum {
 	SPEED_250k,
 	SPEED_125k,
 	CAN_NUM_SUPPORTED_SPEEDS
-} CAN_SUPPORTED_SPEEDS;
+} CAN_COMM_SPEED;
 
 /* public functions */
 /* Initialization routine. */
@@ -40,6 +50,22 @@ extern int can_suspend(void);
 
 /* Processes query from master targeted to CAN module */
 extern int can_process_query(char *, int);
+
+/*
+ * Sets communication mode and speed.
+ * Returns:
+ *   0      - speed configured.
+ *   EINVAL - specified mode or speed not supported.
+ *   EBUSY  - module currently busy, speed can't be set.
+ */
+extern int can_set_mode_speed(int, int, BOOL);
+
+/*
+ * Checks if configuration process is in progress.
+ * Returns:
+ *   TRUE if configuration is in progress; FALSE otherwise.
+ */
+extern BOOL can_configuration_in_progress(void);
 
 #endif /* __CAN_HAL_H */
 

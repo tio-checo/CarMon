@@ -8,20 +8,19 @@
 #include <errno.h>
 
 #include "bt.h"
+#include "can_hal.h"
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "obd.h"
 #include "utils.h"
 #include "rt_light.h"
 
-/* states of OBD ECU state machine */
-#define	OBD_ECU_ST_IDLE		0	/* machine idle */
-#define	OBD_ECU_ST_WAIT4PKT	1	/* wait for packet from ECU */
-
 /* max number of PIDs scanned in auto-scan mode */
 #define	OBD_PID_LIST_LN		100
 
 /* local variables */
+/* Type of lower communication layer */
+static OBD_COMM_MODE obd_comm_mode;
 /*
  * list of OBD PIDs which are scanned and their values sent periodically
  * to master
@@ -35,12 +34,23 @@ static int obd_autoscan_curr;
 static BOOL obd_autoscan_run;
 
 /* OBD ECU state machine */
-static int obd_ecu_st;
+static enum {
+	OBD_ECU_ST_IDLE = 0,	/* machine idle */
+	OBD_ECU_ST_WAIT4PKT	/* wait for packet from ECU */
+} obd_ecu_st;
 
 /* packet to be sent to ECU */
 static unsigned char obd_packet_ecu[OBD_ECU_PACKET_MAXLN];
 
 /* communication module */
+/* state machine handling sending response to master */
+static enum {
+	OBD_COMM_ST_IDLE = 0,		/* machine idle */
+	OBD_COMM_ST_WAIT4KWP2KCONFDONE,	/* wait until KWP 2000 module is done
+					   with configuration */
+	OBD_COMM_ST_WAIT4CANCONFDONE	/* wait until CAN module is done
+					   with configuration */
+} obd_comm_st;
 /* structure holding ACK/NAK response to master */
 static mcom_response_t obd_resp_ack_nak;
 /* If set to TRUE, send ack/nak response packet to master */
@@ -197,6 +207,36 @@ obd_comm_ecu_svc(void)
 static int
 obd_comm_master_svc(void)
 {
+	/* Wait for various conditions before sending ACK/NAK to master */
+	switch (obd_comm_st) {
+		case OBD_COMM_ST_IDLE:
+			break;
+
+		/* Wait until KWP 2000 module is done with configuration. */
+		case OBD_COMM_ST_WAIT4KWP2KCONFDONE:
+			/*
+			 * For now configuration of KWP 2000 module
+			 * is immediate, so no need to wait. Though
+			 * it may change in future.
+			 */
+			mcom_prepare_ack_response(&obd_resp_ack_nak);
+			fl_send_ack_nak = TRUE;
+
+			obd_comm_st = OBD_COMM_ST_IDLE;
+			break;
+
+		/* Wait until CAN module is done with configuration. */
+		case OBD_COMM_ST_WAIT4CANCONFDONE:
+			if (can_configuration_in_progress())
+				break;
+
+			mcom_prepare_ack_response(&obd_resp_ack_nak);
+			fl_send_ack_nak = TRUE;
+
+			obd_comm_st = OBD_COMM_ST_IDLE;
+			break;
+	} /* switch */
+
 	/*
 	 * There is ack/nak response to be sent to master, attempt to queue it
 	 * for transmission.
@@ -247,6 +287,105 @@ obd_svc(void)
 	return 0;
 }
 
+/*
+ * Selects communication mode.
+ * Returns:
+ *        0 - configuration process successfully commenced
+ *   EINVAL - input data invalid
+ */
+static int
+obd_set_comm_mode(OBD_COMM_MODE mode)
+{
+	int err = 0;
+	CAN_COMM_SPEED can_speed = SPEED_500k;
+	int kwp_mode = KWP2K_MODE_DEBUG;
+
+	if ((mode < 0) || (mode >= OBD_COMM_MODE_NUMBER_OF_MODES))
+		return EINVAL;
+
+	switch (mode) {
+	/* Auto mode - TODO */
+	case OBD_COMM_MODE_AUTO:
+		/* For now just make sure ACK is sent to master. */
+		obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
+		break;
+
+	/* KWP 2000 normal */
+	case OBD_COMM_MODE_KWP2K_NORM:
+		kwp_mode = KWP2K_MODE_ENHANCED;
+
+	/* KWP 2000 debug */
+	case OBD_COMM_MODE_KWP2K_DEBUG:
+		err = kwp2k_set_mode(kwp_mode);
+
+		/*
+		 * If KWP 2000 module successfully commenced changing the mode,
+		 * wait until the switch is done, then send ACK to master.
+		 */
+		if (err == 0) {
+			obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
+		}
+
+		break;
+
+	/* Controller Area Network (CAN) */
+	case OBD_COMM_MODE_CAN_SID_250:
+	case OBD_COMM_MODE_CAN_EID_250:
+		can_speed = SPEED_250k;
+
+	case OBD_COMM_MODE_CAN_SID_500:
+	case OBD_COMM_MODE_CAN_EID_500:
+		/*
+		 * Configure CAN module:
+		 *  - "Normal Operation" mode
+		 *  - set communication speed
+		 *  - instruct CAN module not to send ACK to master,
+		 *    since OBD module will take care of it.
+		 */
+		err = can_set_mode_speed(MODE_NORMAL, can_speed, FALSE);
+
+		/*
+		 * If CAN module successfully commenced changing the mode,
+		 * wait until the switch is done, then send ACK to master.
+		 */
+		if (err == 0) {
+			obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
+		}
+
+		break;
+
+	/* Just to satisfy the compiler. */
+	case OBD_COMM_MODE_NUMBER_OF_MODES:
+		break;
+	} /* switch */
+
+	if (err == 0)
+		obd_comm_mode = mode;
+
+	return err;
+}
+
+/*
+ * Configures the module.
+ * Returns:
+ *        0 - configuration process successfully commenced
+ *   EINVAL - input data invalid
+ */
+static int
+obd_conf(char *data, int ln)
+{
+	int mode, err;
+
+	if (ln != 2)
+		return EINVAL;
+
+	mode = hex2ulong(data, 2);
+
+	err = obd_set_comm_mode(mode);
+
+	return err;
+}
+
 /* global functions */
 
 /*
@@ -256,6 +395,7 @@ int
 obd_process_query(char *data, int ln)
 {
 	int err;
+	BOOL translate_err = TRUE;
 	BOOL respond_with_ack = TRUE;
 	BOOL respond_now = TRUE;
 
@@ -271,6 +411,22 @@ obd_process_query(char *data, int ln)
 
 	/* Handle OBD commands */
 	switch (data[1]) {
+		/* Configure the module. */
+		case OBD_CMD_CONF:
+			err = obd_conf(&data[2], ln - 2);
+
+			if (err != 0) {
+				respond_with_ack = FALSE;
+			} else {
+				/*
+				 * Let OBD service respond later once
+				 * configuration process is finished.
+				 */
+				respond_now = FALSE;
+			}
+
+			break;
+
 		/* Get PID value */
 		case OBD_CMD_GETPID:
 			err = obd_ecu_get_pid(hex2ulong(&data[2], 2));
@@ -320,6 +476,7 @@ obd_process_query(char *data, int ln)
 		/* unknown command */
 		default:
 			err = MCOM_NAK_UNKNOWN_IDCMD;
+			translate_err = FALSE;
 			respond_with_ack = FALSE;
 
 			break;
@@ -335,6 +492,10 @@ obd_process_query(char *data, int ln)
 	if (respond_with_ack) {
 		mcom_prepare_ack_response(&obd_resp_ack_nak);
 	} else {
+		/* Translate error code if appropriate. */
+		if (translate_err)
+			err = mcom_err_translate(err);
+
 		mcom_prepare_nak_response(&obd_resp_ack_nak, err);
 	}
 
@@ -349,7 +510,11 @@ obd_process_query(char *data, int ln)
 int
 obd_init(void)
 {
+	/* Initialize ECU state machine */
 	obd_ecu_st = OBD_ECU_ST_IDLE;
+
+	/* Initialize state machine sending response to master. */
+	obd_comm_st = OBD_COMM_ST_IDLE;
 
 	/* Set id of module in response structure */
 	obd_resp_data.id = obd_resp_ack_nak.id = MCOMM_ECU_ID;
@@ -359,6 +524,9 @@ obd_init(void)
 
 	/* Initialize packet sequence. */
 	pkt_num = 1;
+
+	/* Select KWP2000 as default communication layer. */
+	obd_set_comm_mode(OBD_COMM_MODE_KWP2K_NORM);
 
 	/* register and enable OBD service */
 	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);
