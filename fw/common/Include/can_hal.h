@@ -52,13 +52,13 @@ extern int can_suspend(void);
 extern int can_process_query(char *, int);
 
 /*
- * Sets communication mode and speed.
+ * Configures the CAN module.
  * Returns:
  *   0      - speed configured.
  *   EINVAL - specified mode or speed not supported.
  *   EBUSY  - module currently busy, speed can't be set.
  */
-extern int can_set_mode_speed(int, int, BOOL);
+extern int can_configure(int, int, int, UINT32, UINT32, BOOL);
 
 /*
  * Checks if configuration process is in progress.

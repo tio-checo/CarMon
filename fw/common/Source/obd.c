@@ -297,7 +297,9 @@ static int
 obd_set_comm_mode(OBD_COMM_MODE mode)
 {
 	int err = 0;
-	CAN_COMM_SPEED can_speed = SPEED_500k;
+	CAN_COMM_SPEED can_speed;
+	int filter_mode;
+	UINT32 filter, mask;
 	int kwp_mode = KWP2K_MODE_DEBUG;
 
 	if ((mode < 0) || (mode >= OBD_COMM_MODE_NUMBER_OF_MODES))
@@ -331,18 +333,38 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 	/* Controller Area Network (CAN) */
 	case OBD_COMM_MODE_CAN_SID_250:
 	case OBD_COMM_MODE_CAN_EID_250:
-		can_speed = SPEED_250k;
-
 	case OBD_COMM_MODE_CAN_SID_500:
 	case OBD_COMM_MODE_CAN_EID_500:
+		/* Configure speed. */
+		if ((mode == OBD_COMM_MODE_CAN_SID_250) ||
+		    (mode == OBD_COMM_MODE_CAN_EID_250)) {
+			can_speed = SPEED_250k;
+		} else {
+			can_speed = SPEED_500k;
+		}
+
+		/* Configure acceptance filter. */
+		if ((mode == OBD_COMM_MODE_CAN_SID_250) ||
+		    (mode == OBD_COMM_MODE_CAN_SID_500)) {
+			filter_mode = 0x01;
+			filter = 0x7df;
+			mask = 0x7c0;
+		} else {
+			filter_mode = 0x03;
+			filter = 0x18daf100;
+			mask = 0x1ff80000;
+		}
+
 		/*
 		 * Configure CAN module:
 		 *  - "Normal Operation" mode
 		 *  - set communication speed
+		 *  - configure acceptance filter
 		 *  - instruct CAN module not to send ACK to master,
 		 *    since OBD module will take care of it.
 		 */
-		err = can_set_mode_speed(MODE_NORMAL, can_speed, FALSE);
+		err = can_configure(MODE_NORMAL, can_speed, filter_mode,
+		    filter, mask, FALSE);
 
 		/*
 		 * If CAN module successfully commenced changing the mode,
