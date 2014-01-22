@@ -53,15 +53,10 @@ static enum {
 } obd_comm_st;
 /* structure holding ACK/NAK response to master */
 static mcom_response_t obd_resp_ack_nak;
-/* If set to TRUE, send ack/nak response packet to master */
-static BOOL fl_send_ack_nak;
-
 /* structure holding data response to master */
 static mcom_response_t obd_resp_data;
 /* buffer holding response data payload */
 static unsigned char obd_resp_data_buf[OBD_ECU_PACKET_MAXLN];
-/* If set to TRUE, send response containing data to master */
-static BOOL fl_send_data;
 
 /* Packet sequence. Used by master to detect packet loss. */
 static int pkt_num;
@@ -69,6 +64,59 @@ static int pkt_num;
 static char pkt_hdr[4];
 
 /* local functions */
+
+/*
+ * Sends data packet to master.
+ */
+static int
+obd_send_data_response_to_master(char *hdr, int ln)
+{
+	int err;
+
+	err = mcom_prepare_generic_response(&obd_resp_data, hdr,
+	    obd_resp_data_buf, MCOM_DATA_TYPE_BYTE, ln);
+
+	if (err == 0) {
+		mcom_queue_response(&obd_resp_data);
+	}
+
+	return err;
+}
+
+/*
+ * Sends ACK to master.
+ */
+static int
+obd_send_ack_response_to_master(void)
+{
+	
+	int err;
+
+	err = mcom_prepare_ack_response(&obd_resp_ack_nak);
+
+	if (err == 0) {
+		mcom_queue_response(&obd_resp_ack_nak);
+	}
+
+	return err;
+}
+
+/*
+ * Sends NAK to master.
+ */
+static int
+obd_send_nak_response_to_master(unsigned char e)
+{
+	int err;
+
+	err = mcom_prepare_nak_response(&obd_resp_ack_nak, e);
+
+	if (err == 0) {
+		mcom_queue_response(&obd_resp_ack_nak);
+	}
+
+	return err;
+}
 
 /*
  * Send query for PID value to ECU. Let OBD service take care
@@ -139,20 +187,14 @@ obd_comm_ecu_svc(void)
 					pkt_num = 1;
 			}
 
-			mcom_prepare_generic_response(&obd_resp_data, pkt_hdr_p,
-			    obd_resp_data_buf, MCOM_DATA_TYPE_BYTE, ln - 1);
+			obd_send_data_response_to_master(pkt_hdr_p, ln - 1);
 		} else {
 			obd_resp_data_buf[0] = (rx_err >> 8) & 0xff;
 			obd_resp_data_buf[1] = rx_err & 0xff;
 
 			/* error occurred */
-			mcom_prepare_generic_response(&obd_resp_data,
-			    MCOM_RESP_NAK, obd_resp_data_buf,
-			    MCOM_DATA_TYPE_BYTE, 2);
+			obd_send_data_response_to_master(MCOM_RESP_NAK, 2);
 		}
-
-		/* Send packet to master */
-		fl_send_data = TRUE;
 
 		/*
 		 * If connection with master has been lost, cancel auto-scan
@@ -179,11 +221,7 @@ obd_comm_ecu_svc(void)
 			obd_resp_data_buf[0] = (ret >> 8) & 0xff;
 			obd_resp_data_buf[1] = ret & 0xff;
 
-			mcom_prepare_generic_response(&obd_resp_data,
-			    MCOM_RESP_NAK, obd_resp_data_buf,
-			    MCOM_DATA_TYPE_BYTE, 2);
-
-			fl_send_data = TRUE;
+			obd_send_data_response_to_master(MCOM_RESP_NAK, 2);
 
 			obd_autoscan_run = FALSE;
 
@@ -219,8 +257,7 @@ obd_comm_master_svc(void)
 			 * is immediate, so no need to wait. Though
 			 * it may change in future.
 			 */
-			mcom_prepare_ack_response(&obd_resp_ack_nak);
-			fl_send_ack_nak = TRUE;
+			obd_send_ack_response_to_master();
 
 			obd_comm_st = OBD_COMM_ST_IDLE;
 			break;
@@ -230,42 +267,11 @@ obd_comm_master_svc(void)
 			if (can_configuration_in_progress())
 				break;
 
-			mcom_prepare_ack_response(&obd_resp_ack_nak);
-			fl_send_ack_nak = TRUE;
+			obd_send_ack_response_to_master();
 
 			obd_comm_st = OBD_COMM_ST_IDLE;
 			break;
 	} /* switch */
-
-	/*
-	 * There is ack/nak response to be sent to master, attempt to queue it
-	 * for transmission.
-	 */
-	if (fl_send_ack_nak) {
-		if (mcom_queue_response(&obd_resp_ack_nak) != 0) {
-			return EAGAIN;
-		}
-
-		fl_send_ack_nak = FALSE;
-
-		/*
-		 * Since transmitter is now busy, there is no point to continue
-		 * with attempt to send data response. thus return.
-		 */
-		return 0;
-	}
-
-	/*
-	 * There is data response to be sent to master, attempt to queue it
-	 * for transmission.
-	 */
-	if (fl_send_data) {
-		if (mcom_queue_response(&obd_resp_data) != 0) {
-			return EAGAIN;
-		}
-
-		fl_send_data = FALSE;
-	}
 
 	return 0;
 }
@@ -277,7 +283,6 @@ obd_comm_master_svc(void)
 static int
 obd_svc(void)
 {
-
 	/* Handle OBD communication with ECU */
 	obd_comm_ecu_svc();
 
@@ -423,10 +428,7 @@ obd_process_query(char *data, int ln)
 
 	/* Verify that the command is targeted to OBD submodule */
 	if (data[0] != ECU_OBD_ID) {
-		mcom_prepare_nak_response(&obd_resp_ack_nak,
-		    MCOM_NAK_UNKNOWN_IDCMD);
-
-		fl_send_ack_nak = TRUE;
+		obd_send_nak_response_to_master(MCOM_NAK_UNKNOWN_IDCMD);
 
 		return 0;
 	}
@@ -512,16 +514,14 @@ obd_process_query(char *data, int ln)
 	 * Send response to master indicating that command was processed.
 	 */
 	if (respond_with_ack) {
-		mcom_prepare_ack_response(&obd_resp_ack_nak);
+		obd_send_ack_response_to_master();
 	} else {
 		/* Translate error code if appropriate. */
 		if (translate_err)
 			err = mcom_err_translate(err);
 
-		mcom_prepare_nak_response(&obd_resp_ack_nak, err);
+		obd_send_nak_response_to_master(err);
 	}
-
-	fl_send_ack_nak = TRUE;
 
 	return 0;
 }
@@ -539,7 +539,8 @@ obd_init(void)
 	obd_comm_st = OBD_COMM_ST_IDLE;
 
 	/* Set id of module in response structure */
-	obd_resp_data.id = obd_resp_ack_nak.id = MCOMM_ECU_ID;
+	mcom_response_init(&obd_resp_ack_nak, MCOMM_ECU_ID);
+	mcom_response_init(&obd_resp_data, MCOMM_ECU_ID);
 
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;

@@ -98,15 +98,12 @@ static struct mcom_comm_object_t {
 
 	/* pointer to response currently transmitted to master */
 	mcom_response_t *resp;
-
-	/* flag indicating that packet is being sent to master */
-	BOOL fl_send_packet;
 } mcom_co;
 
 /* local buffer for handling response to master */
 static mcom_response_t mcom_resp;
 
-/* flag indicating desired to suspend the system */
+/* flag indicating desire to suspend the system */
 static BOOL mcom_suspend_fl;
 
 /* main state machine */
@@ -549,13 +546,13 @@ mcom_process_packet_st(void)
 #endif
 
 	/*
-	 * Wait until packet response to master is queued for transmission,
+	 * Queue packet response to master for transmission,
 	 * then allow receiving another packet from master.
 	 */
 	case MCOM_ST_SEND2MASTER:
-		if (mcom_queue_response(&mcom_resp) == 0) {
-			mcom_st = MCOM_ST_W4PACKET;
-		}
+		mcom_queue_response(&mcom_resp);
+
+		mcom_st = MCOM_ST_W4PACKET;
 
 		break;
 	} /* switch */
@@ -573,28 +570,26 @@ mcom_tx_st(void)
 	static char tmp_buf[4];
 	static unsigned int item_ln, item_index, buf_ln, buf_index, chsum;
 	unsigned int d;
+	mcom_response_t *r;
 
-	/*
-	 * If module is sending out characters (not idle), wait until
-	 * current character is queued for transmission.
-	 */
-	if ((mcom_st_tx != MCOM_ST_TX_IDLE) && ((mcom_co.putchar)(ch) != 0)) {
+	/* Module idle, return. */
+	if (mcom_st_tx == MCOM_ST_TX_IDLE) {
 		return 0;
-	}	 
+	}
+
+	/* Handle first character to be sent. */
+	if (mcom_st_tx == MCOM_ST_TX_SOF) {
+		ch = MCOM_PKT_SOF;
+	}
+
+	/* Wait until current character is queued for transmission. */
+	if ((mcom_co.putchar)(ch) != 0) {
+		return 0;
+	} 
 
 	switch (mcom_st_tx) {
 	/* machine is IDLE */
 	case MCOM_ST_TX_IDLE:
-		/*
-		 * If there is a new packet to be sent, initiate transmission
-		 * by sending SOF character.
-		 */
-		if (mcom_co.fl_send_packet) {
-			ch = MCOM_PKT_SOF;
-
-			mcom_st_tx = MCOM_ST_TX_SOF;
-		}
-
 		break;
 
 	/* send SOF */
@@ -759,11 +754,21 @@ mcom_tx_st(void)
 
 	/* send EOF */
 	case MCOM_ST_TX_EOF:
-		/* wait for another packet to be sent */
-		mcom_st_tx = MCOM_ST_TX_IDLE;
+		/* Save pointer to the processed response. */
+		r = mcom_co.resp;
 
-		/* signal that transmitter is ready again */
-		mcom_co.fl_send_packet = FALSE;
+		/*
+		 * Move to the next packet in the queue. Continue with sending
+		 * until all packets in the queue are transmitted.
+		 */
+		mcom_co.resp = r->next;
+		r->next = NULL;
+
+		if (mcom_co.resp == NULL) {
+			mcom_st_tx = MCOM_ST_TX_IDLE;
+		} else {
+			mcom_st_tx = MCOM_ST_TX_SOF;
+		}
 
 		break;
 	}
@@ -826,9 +831,6 @@ mcom_init(void)
 	/* local structure holding response to master - unset module ID */
 	mcom_resp.id = MCOMM_COMM_ID;
 
-	/* flag indicating that response is to be sent to master */
-	mcom_co.fl_send_packet = FALSE;
-
 	/* receiver - wait for packet from master */
 	mcom_st_rx = MCOM_ST_RX_W4SOF;
 	/* transmitter idle */
@@ -846,30 +848,61 @@ mcom_init(void)
 }
 
 /*
- * Put response to master to the transmit queue.
- * If the queue is full, return EAGAIN, otherwise return 0.
+ * Initialize response structure.
+ */
+int
+mcom_response_init(mcom_response_t *resp, char module_id)
+{
+	resp->id = module_id;
+	
+	resp->next = NULL;
+
+	return 0;
+}
+
+/*
+ * Put response to master to the end of transmit queue.
  */
 int
 mcom_queue_response(mcom_response_t *resp)
 {
-	/* If there is currently response being sent, signal it */
-	if (mcom_co.fl_send_packet) {
-		return EAGAIN;
+	mcom_response_t *r;
+
+	/*
+	 * If transmitter is idle, put the response to the beginning
+	 * of the queue and kick off transmission process.
+	 */
+	if (mcom_co.resp == NULL) {
+		mcom_co.resp = resp;
+		mcom_st_tx = MCOM_ST_TX_SOF;
+
+		return 0;
 	}
 
-	mcom_co.resp = resp;
-	mcom_co.fl_send_packet = TRUE;
+	/* Find the end of the queue and put the response there. */
+	for (r = mcom_co.resp; r->next != NULL; r = r->next)
+		;
+
+	r->next = resp;
 
 	return 0;
 }
 
 /*
  * Send generic response to master.
+ * Return EAGAIN if structure already contains data to be transmitted.
  */
 int
 mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
     int dtype, int dln)
 {
+	/*
+	 * If structure holds data which have not yet been sent to master,
+	 * make sure not to overwrite them.
+	 */
+	if (mcom_response_inuse(resp))
+		return EAGAIN;
+
 	/* pointer to packet header */
 	resp->header = header;
 	/* pointer to data payload */
@@ -888,10 +921,8 @@ mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
 int
 mcom_prepare_ack_response(mcom_response_t *resp)
 {
-	mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
+	return mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
 	    MCOM_DATA_TYPE_BYTE, 0);
-
-	return 0;
 }
 
 /*
@@ -903,10 +934,26 @@ mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
 	static unsigned char e;
 
 	e = err;
-	mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
+	return mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
 	    MCOM_DATA_TYPE_BYTE, 1);
+}
 
-	return 0;
+/*
+ * Returns TRUE if given response structure is in use; FALSE otherwise.
+ *
+ * Structure is in use if it is queued to be sent to master.
+ * Transmit queue is assumed to be really short, so walking the whole queue
+ * is not supposed to take very long.
+ */
+BOOL
+mcom_response_inuse(mcom_response_t *resp)
+{
+	mcom_response_t *r;
+
+	for (r = mcom_co.resp; (r != NULL) && (r != resp); r = r->next)
+		;
+
+	return (r == resp);
 }
 
 /*
@@ -934,3 +981,4 @@ mcom_err_translate(int err_in)
 
 	return err_out;
 }
+

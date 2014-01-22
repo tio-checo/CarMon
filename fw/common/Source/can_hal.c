@@ -98,15 +98,17 @@ static unsigned int can_fifos[(CAN_RX_CHANNEL_SIZE + CAN_TX_CHANNEL_SIZE) * 4];
 /* communication with master */
 /* structure holding ACK/NAK response to master */
 static mcom_response_t can_resp_ack_nak;
-/* If set to TRUE, send ack/nak response packet to master */
-static BOOL fl_send_ack_nak;
 
 /* response data buffer - must be large enough to hold the longest response. */
 static char can_resp_buf[40];
 /* structure holding data response to master */
 static mcom_response_t can_resp_data;
-/* If set to TRUE, send response containing data to master */
-static BOOL fl_send_data;
+
+/*
+ * Number of packets dropped (not sent to master) due to high rate
+ * of incoming CAN frames.
+ */
+static int can_num_dropped_frames;
 
 /* Configuration parameters. */
 /* Communication mode */
@@ -128,14 +130,52 @@ static BOOL can_conf_send_ack;
  * Sends data packet to master.
  */
 static int
-can_send_data_response_to_master(char *pkt_hdr, char *buf, int ln)
+can_send_data_response_to_master(char *hdr)
 {
-	mcom_prepare_generic_response(&can_resp_data, pkt_hdr,
-	    buf, MCOM_DATA_TYPE_ASCII, ln);
+	int err;
 
-	fl_send_data = TRUE;
+	err = mcom_prepare_generic_response(&can_resp_data, hdr,
+	    can_resp_buf, MCOM_DATA_TYPE_ASCII, strlen(can_resp_buf));
 
-	return 0;
+	if (err == 0) {
+		mcom_queue_response(&can_resp_data);
+	}
+
+	return err;
+}
+
+/*
+ * Sends ACK to master.
+ */
+static int
+can_send_ack_response_to_master(void)
+{
+	int err;
+
+	err = mcom_prepare_ack_response(&can_resp_ack_nak);
+
+	if (err == 0) {
+		mcom_queue_response(&can_resp_ack_nak);
+	}
+
+	return err;
+}
+
+/*
+ * Sends NAK to master.
+ */
+static int
+can_send_nak_response_to_master(unsigned char e)
+{
+	int err;
+
+	err = mcom_prepare_nak_response(&can_resp_ack_nak, e);
+
+	if (err == 0) {
+		mcom_queue_response(&can_resp_ack_nak);
+	}
+
+	return err;
 }
 
 /*
@@ -241,63 +281,63 @@ can_rx_svc(void)
 			int i;
 
 			/*
-			 * If module now busy with sending another response,
-			 * try again later.
+			 * If module is now busy with sending previous response,
+			 * discard the frame.
 			 */
-			if (fl_send_data) {
-				break;
-			}
+			if (mcom_response_inuse(&can_resp_data)) {
+				if (can_num_dropped_frames < 255)
+					can_num_dropped_frames++;
+			} else {
+				/*
+				 * Convert received CAN frame to the response.
+				 * Format of the response data payload:
+				 *
+				 *  -----------------------------------
+				 *  | TSTAMP | TYPE | ID | DLC | DATA |
+				 *  -----------------------------------
+				 *
+				 * where:
+				 *
+				 *  TSTAMP timestamp (2 bytes)
+				 *  TYPE   message type (1 byte)
+				 *          - bit 0 - RTR (1 for remote frame)
+				 *          - bit 1 - EID (1 for extended ID)
+				 *  ID     message identifier (4 bytes)
+				 *          - TYPE[1] == 1: 29-bit extended
+				 *          - TYPE[1] == 0: 11-bit standard
+				 *  DLC    data length code - 0..8 (1 byte)
+				 *  DATA   data payload (0..8 bytes)
+				 * 
+				 */
+				snprintf(can_resp_buf, sizeof (can_resp_buf),
+				    "%04X%02X%08X%02X",
+				    rxm->msgSID.CMSGTS,
+				    rxm->msgEID.RTR | (rxm->msgEID.IDE << 1),
+				    rxm->msgEID.IDE ? (rxm->msgSID.SID << 18) |
+				    rxm->msgEID.EID : rxm->msgSID.SID,
+				    rxm->msgEID.DLC);
 
-			/*
-			 * Convert received CAN frame to the response message.
-			 * Format of the response data payload:
-			 *
-			 *  -----------------------------------
-			 *  | TSTAMP | TYPE | ID | DLC | DATA |
-			 *  -----------------------------------
-			 *
-			 * where:
-			 *
-			 *  TSTAMP timestamp (2 bytes)
-			 *  TYPE   message type (1 byte)
-			 *          - bit 0 - RTR (1 for remote frame)
-			 *          - bit 1 - EID (1 for extended ID)
-			 *  ID     message identifier (4 bytes)
-			 *          - TYPE[1] == 1: 29-bit extended
-			 *          - TYPE[1] == 0: 11-bit standard
-			 *  DLC    data length code - 0..8 (1 byte)
-			 *  DATA   data payload (0..8 bytes)
-			 * 
-			 */
-			snprintf(can_resp_buf, sizeof (can_resp_buf),
-			    "%04X%02X%08X%02X",
-			    rxm->msgSID.CMSGTS,
-			    rxm->msgEID.RTR | (rxm->msgEID.IDE << 1),
-			    rxm->msgEID.IDE ? (rxm->msgSID.SID << 18) |
-			    rxm->msgEID.EID : rxm->msgSID.SID,
-			    rxm->msgEID.DLC);
+				/* Add data payload. */
+				for (i = 0; i < rxm->msgEID.DLC; i++) {
+					int ln = strlen(can_resp_buf);
+					char *rp = can_resp_buf + ln;
 
-			/* Add data payload. */
-			for (i = 0; i < rxm->msgEID.DLC; i++) {
-				int ln = strlen(can_resp_buf);
-				char *rp = can_resp_buf + ln;
+					ln = sizeof (can_resp_buf) - ln;
 
-				ln = sizeof (can_resp_buf) - ln;
+					/* Avoid writing past the buffer. */
+					if (ln <= 0) {
+						break;
+					}
 
-				/* Check we are not writing past the buffer. */
-				if (ln <= 0) {
-					break;
+					snprintf(rp, ln, "%02X", rxm->data[i]);
 				}
 
-				snprintf(rp, ln, "%02X", rxm->data[i]);
+				/* Send the message to the master. */
+				can_send_data_response_to_master("R00");
 			}
-
-			/* Send the message to the master. */
-			can_send_data_response_to_master("R00", can_resp_buf,
-			    strlen(can_resp_buf));
 		}
 
-		/* Update the message buffer pointer. */
+		/* Move to the next message. */
 		CANUpdateChannel(CAN1, CAN_RX_CHANNEL);
 
 		break;
@@ -372,13 +412,10 @@ can_tx_svc(void)
 		 */
 		txc &= CAN_TX_CHANNEL_ERROR | CAN_TX_CHANNEL_ARBITRATION_LOST;
 		if (txc == 0) {
-			mcom_prepare_ack_response(&can_resp_ack_nak);
+			can_send_ack_response_to_master();
 		} else {
-			mcom_prepare_nak_response(&can_resp_ack_nak,
-			    0x80 | txc);
+			can_send_nak_response_to_master(0x80 | txc);
 		}
-
-		fl_send_ack_nak = TRUE;
 
 		can_tx_st = CAN_TX_ST_IDLE;
 
@@ -421,8 +458,7 @@ can_tx_svc(void)
 		if (can_conf_send_ack) {
 			can_conf_send_ack = FALSE;
 
-			mcom_prepare_ack_response(&can_resp_ack_nak);
-			fl_send_ack_nak = TRUE;
+			can_send_ack_response_to_master();
 		}
 
 		can_tx_st = CAN_TX_ST_IDLE;
@@ -431,48 +467,6 @@ can_tx_svc(void)
 	default:
 		break;
 	} /* switch */
-
-	return 0;
-}
-
-/*
- * Takes care of sending response to master. Two responses might be scheduled
- * for transmission - ack/nak one and data one.
- * ack/nak response takes precedence over data response, since it is short,
- * thus it will occupy transmitter for shorter time.
- */
-static int
-can_comm_svc(void)
-{
-	/*
-	 * There is ack/nak response to be sent to master, attempt to queue it
-	 * for transmission.
-	 */
-	if (fl_send_ack_nak) {
-		if (mcom_queue_response(&can_resp_ack_nak) != 0) {
-			return EAGAIN;
-		}
-
-		fl_send_ack_nak = FALSE;
-
-		/*
-		 * Since transmitter is now busy, there is no point to continue
-		 * with attempt to send data response. thus return.
-		 */
-		return 0;
-	}
-
-	/*
-	 * There is data response to be sent to master, attempt to queue it
-	 * for transmission.
-	 */
-	if (fl_send_data) {
-		if (mcom_queue_response(&can_resp_data) != 0) {
-			return EAGAIN;
-		}
-
-		fl_send_data = FALSE;
-	}
 
 	return 0;
 }
@@ -488,9 +482,6 @@ can_svc(void)
 
 	/* Handle packets to be transmitted by CAN module. */
 	can_tx_svc();
-
-	/* Handle communication with master device. */
-	can_comm_svc();
 
 	return 0;
 }
@@ -767,8 +758,10 @@ can_init(void)
 	can_tx_st = CAN_TX_ST_IDLE;
 
 	/* Set module ID for purposes of communication with master. */
-	can_resp_ack_nak.id = MCOMM_CAN_ID;
-	can_resp_data.id = MCOMM_CAN_ID;
+	mcom_response_init(&can_resp_ack_nak, MCOMM_CAN_ID);
+	mcom_response_init(&can_resp_data, MCOMM_CAN_ID);
+
+	can_num_dropped_frames = 0;
 
 	/* Register and enable RFID service. */
 	rtl_svc_init("Can", can_svc, TRUE, FALSE);
@@ -802,7 +795,7 @@ can_process_query(char *data, int ln)
 	BOOL translate_err = TRUE;
 
 	/* Assume ACK/NAK will be sent to master */
-	fl_send_ack_nak = TRUE;
+	BOOL fl_send_ack_nak = TRUE;
 
 	/* Handle particular commands */
 	switch (data[0]) {
@@ -841,21 +834,23 @@ can_process_query(char *data, int ln)
 		/* Get status of the module. */
 		case MCOMM_CAN_CMD_GET_STATUS:
 			/* Communication channel busy. */
-			if (fl_send_data) {
+			if (mcom_response_inuse(&can_resp_data)) {
 				err = MCOM_NAK_MODULE_BUSY;
 				translate_err = FALSE;
+
+				break;
 			}
 
 			snprintf(can_resp_buf, sizeof (can_resp_buf),
-			    "%02X%02X%02X",
+			    "%02X%02X%02X%02X",
 			    ((CANGetErrorState(CAN1) >> 16) & 0x3f) |
 			    (C1FIFOINT0bits.RXOVFLIF << 6),
 			    CANGetTxErrorCount(CAN1),
-			    CANGetRxErrorCount(CAN1));
+			    CANGetRxErrorCount(CAN1),
+			    can_num_dropped_frames & 0xff);
 
 			/* Send the message to the master. */
-			can_send_data_response_to_master("00", can_resp_buf,
-			    strlen(can_resp_buf));
+			can_send_data_response_to_master("00");
 
 			/* Data will be sent to master instead of ACK/NAK */
 			fl_send_ack_nak = FALSE;
@@ -879,13 +874,13 @@ can_process_query(char *data, int ln)
 	 * and error code.
 	 */
 	if (err == 0) {
-		mcom_prepare_ack_response(&can_resp_ack_nak);
+		can_send_ack_response_to_master();
 	} else {
 		/* Translate error code if appropriate. */
 		if (translate_err)
 			err = mcom_err_translate(err);
 
-		mcom_prepare_nak_response(&can_resp_ack_nak, err);
+		can_send_nak_response_to_master(err);
 	}
 
 	return 0;

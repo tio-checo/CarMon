@@ -68,10 +68,14 @@ typedef struct mcom_response {
 	void *data;			/* pointer to data payload */
 	unsigned int data_type;	/* data type */
 	unsigned int data_ln;		/* data length */
+	struct mcom_response *next;	/* next response to be sent to master */
 } mcom_response_t;
 
 /* initialize master communication module */
 extern int mcom_init(void);
+
+/* Initialize response structure. */
+extern int mcom_response_init(mcom_response_t *, char);
 
 /* Prepare ACK response to master. */
 extern int mcom_prepare_ack_response(mcom_response_t *);
@@ -82,6 +86,9 @@ extern int mcom_prepare_nak_response(mcom_response_t *, unsigned char);
 /* Prepare generic response to master. */
 extern int mcom_prepare_generic_response(mcom_response_t *, char *, void *,
     int, int);
+
+/* Returns TRUE if given response structure is in use; FALSE otherwise. */
+extern BOOL mcom_response_inuse(mcom_response_t *);
 
 /*
  * Translate error codes from underlying modules to error

@@ -233,31 +233,21 @@ static int
 rfid_comm_svc(void)
 {
 	/*
-	 * There is ack/nak response to be sent to master, attempt to queue it
-	 * for transmission.
+	 * There is ack/nak response to be sent to master,
+	 * queue it for transmission.
 	 */
 	if (fl_send_ack_nak) {
-		if (mcom_queue_response(&rfid_resp_ack_nak) != 0) {
-			return EAGAIN;
-		}
+		mcom_queue_response(&rfid_resp_ack_nak);
 
 		fl_send_ack_nak = FALSE;
-
-		/*
-		 * Since transmitter is now busy, there is no point to continue
-		 * with attempt to send data response. thus return.
-		 */
-		return 0;
 	}
 
 	/*
-	 * There is data response to be sent to master, attempt to queue it
-	 * for transmission.
+	 * There is data response to be sent to master,
+	 * queue it for transmission.
 	 */
 	if (fl_send_data) {
-		if (mcom_queue_response(&rfid_resp_data) != 0) {
-			return EAGAIN;
-		}
+		mcom_queue_response(&rfid_resp_data);
 
 		fl_send_data = FALSE;
 	}
