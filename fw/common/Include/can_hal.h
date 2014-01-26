@@ -12,6 +12,8 @@
 
 /* constants */
 /* CAN module commands and responses */
+/* analyze the bus  */
+#define	MCOMM_CAN_CMD_SNOOP		'A'
 /* configure the module  */
 #define	MCOMM_CAN_CMD_CFG		'C'
 /* get status of the module */
@@ -50,6 +52,12 @@ extern int can_suspend(void);
 
 /* Processes query from master targeted to CAN module */
 extern int can_process_query(char *, int);
+
+/* Sends data packet to master. */
+extern int can_send_data_response_to_master(char *, char *);
+
+/* Returns TRUE if current data response is in use; FALSE otherwise. */
+extern BOOL can_response_inuse(void);
 
 /*
  * Configures the CAN module.

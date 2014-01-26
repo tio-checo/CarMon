@@ -16,6 +16,7 @@
 
 #include "master_comm.h"
 #include "can_hal.h"
+#include "can_snoop.h"
 #include "rt_light.h"
 #include "utils.h"
 
@@ -59,14 +60,8 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 };
 
 /* local macros */
-/* evaluates to TRUE if snoop mode is active */
-#define CAN_SNOOP_ENABLED	(can_mode & 0x80)
-/* enable snoop mode */
-#define CAN_SNOOP_ENABLE	can_mode |= 0x80
-/* disable snoop mode */
-#define CAN_SNOOP_DISABLE	can_mode &= 0x7f
-/* get current mode - filter out snoop bit */
-#define CAN_GET_MODE		(can_mode & 0x7f)
+/* get current mode */
+#define CAN_GET_MODE		can_mode
 /* set current mode */
 #define CAN_SET_MODE(x)		(can_mode = (x))
 
@@ -99,16 +94,11 @@ static unsigned int can_fifos[(CAN_RX_CHANNEL_SIZE + CAN_TX_CHANNEL_SIZE) * 4];
 /* structure holding ACK/NAK response to master */
 static mcom_response_t can_resp_ack_nak;
 
-/* response data buffer - must be large enough to hold the longest response. */
-static char can_resp_buf[40];
 /* structure holding data response to master */
 static mcom_response_t can_resp_data;
 
-/*
- * Number of packets dropped (not sent to master) due to high rate
- * of incoming CAN frames.
- */
-static int can_num_dropped_frames;
+/* response data buffer - must be large enough to hold the longest response. */
+static char can_resp_buf[40];
 
 /* Configuration parameters. */
 /* Communication mode */
@@ -129,13 +119,13 @@ static BOOL can_conf_send_ack;
 /*
  * Sends data packet to master.
  */
-static int
-can_send_data_response_to_master(char *hdr)
+int
+can_send_data_response_to_master(char *hdr, char *buf)
 {
 	int err;
 
 	err = mcom_prepare_generic_response(&can_resp_data, hdr,
-	    can_resp_buf, MCOM_DATA_TYPE_ASCII, strlen(can_resp_buf));
+	    buf, MCOM_DATA_TYPE_ASCII, strlen(buf));
 
 	if (err == 0) {
 		mcom_queue_response(&can_resp_data);
@@ -276,66 +266,8 @@ can_rx_svc(void)
 		if ((rxm = CANGetRxMessage(CAN1, CAN_RX_CHANNEL)) == NULL)
 			break;
 
-		/* Send the message directly to master. */
-		if (CAN_SNOOP_ENABLED) {
-			int i;
-
-			/*
-			 * If module is now busy with sending previous response,
-			 * discard the frame.
-			 */
-			if (mcom_response_inuse(&can_resp_data)) {
-				if (can_num_dropped_frames < 255)
-					can_num_dropped_frames++;
-			} else {
-				/*
-				 * Convert received CAN frame to the response.
-				 * Format of the response data payload:
-				 *
-				 *  -----------------------------------
-				 *  | TSTAMP | TYPE | ID | DLC | DATA |
-				 *  -----------------------------------
-				 *
-				 * where:
-				 *
-				 *  TSTAMP timestamp (2 bytes)
-				 *  TYPE   message type (1 byte)
-				 *          - bit 0 - RTR (1 for remote frame)
-				 *          - bit 1 - EID (1 for extended ID)
-				 *  ID     message identifier (4 bytes)
-				 *          - TYPE[1] == 1: 29-bit extended
-				 *          - TYPE[1] == 0: 11-bit standard
-				 *  DLC    data length code - 0..8 (1 byte)
-				 *  DATA   data payload (0..8 bytes)
-				 * 
-				 */
-				snprintf(can_resp_buf, sizeof (can_resp_buf),
-				    "%04X%02X%08X%02X",
-				    rxm->msgSID.CMSGTS,
-				    rxm->msgEID.RTR | (rxm->msgEID.IDE << 1),
-				    rxm->msgEID.IDE ? (rxm->msgSID.SID << 18) |
-				    rxm->msgEID.EID : rxm->msgSID.SID,
-				    rxm->msgEID.DLC);
-
-				/* Add data payload. */
-				for (i = 0; i < rxm->msgEID.DLC; i++) {
-					int ln = strlen(can_resp_buf);
-					char *rp = can_resp_buf + ln;
-
-					ln = sizeof (can_resp_buf) - ln;
-
-					/* Avoid writing past the buffer. */
-					if (ln <= 0) {
-						break;
-					}
-
-					snprintf(rp, ln, "%02X", rxm->data[i]);
-				}
-
-				/* Send the message to the master. */
-				can_send_data_response_to_master("R00");
-			}
-		}
+		/* Let the received frame undergo process of analysis. */
+		can_snoop_process_frame(rxm);
 
 		/* Move to the next message. */
 		CANUpdateChannel(CAN1, CAN_RX_CHANNEL);
@@ -661,7 +593,7 @@ can_configure(int mode, int speed, int filter_mode, UINT32 filter,
 
 	/* Communication mode is to be configured. */
 	if (mode != -1) {
-		if ((mode & 0x7f) > MODE_LISTEN_ALL_MESSAGES) {
+		if (mode > MODE_LISTEN_ALL_MESSAGES) {
 			return EINVAL;
 		}
 
@@ -669,13 +601,7 @@ can_configure(int mode, int speed, int filter_mode, UINT32 filter,
 
 		/* Convert "Listen All Messages" mode, preserve snoop bit. */
 		if (CAN_GET_MODE == MODE_LISTEN_ALL_MESSAGES) {
-			BOOL snoop_enabled = CAN_SNOOP_ENABLED;
-
 			CAN_SET_MODE(CAN_LISTEN_ALL_MESSAGES);
-
-			if (snoop_enabled) {
-				CAN_SNOOP_ENABLE;
-			}
 		}
 	}
 
@@ -730,7 +656,6 @@ can_init(void)
 	 *  - snoop mode enabled
 	 */
 	CAN_SET_MODE(CAN_LISTEN_ONLY);
-	CAN_SNOOP_ENABLE;
 
 	/* Default communication speed. */
 	can_speed = SPEED_500k;
@@ -761,7 +686,8 @@ can_init(void)
 	mcom_response_init(&can_resp_ack_nak, MCOMM_CAN_ID);
 	mcom_response_init(&can_resp_data, MCOMM_CAN_ID);
 
-	can_num_dropped_frames = 0;
+	/* Initialize CAN analyzer. */
+	can_snoop_init();
 
 	/* Register and enable RFID service. */
 	rtl_svc_init("Can", can_svc, TRUE, FALSE);
@@ -783,6 +709,15 @@ can_suspend(void)
 	while(CANGetOperatingMode(CAN1) != CAN_DISABLE);
 
 	return 0;
+}
+
+/*
+ * Returns TRUE if current data response is in use; FALSE otherwise.
+ */
+BOOL
+can_response_inuse(void)
+{
+	return mcom_response_inuse(&can_resp_data);
 }
 
 /*
@@ -812,6 +747,12 @@ can_process_query(char *data, int ln)
 			if (err == 0) {
 				fl_send_ack_nak = FALSE;
 			}
+
+			break;
+
+		/* Analyze the bus. */
+		case MCOMM_CAN_CMD_SNOOP:
+			err = can_snoop_process_query(data + 1, ln - 1);
 
 			break;
 
@@ -847,10 +788,10 @@ can_process_query(char *data, int ln)
 			    (C1FIFOINT0bits.RXOVFLIF << 6),
 			    CANGetTxErrorCount(CAN1),
 			    CANGetRxErrorCount(CAN1),
-			    can_num_dropped_frames & 0xff);
+			    can_snoop_get_num_dropped_frames() & 0xff);
 
 			/* Send the message to the master. */
-			can_send_data_response_to_master("00");
+			can_send_data_response_to_master("00", can_resp_buf);
 
 			/* Data will be sent to master instead of ACK/NAK */
 			fl_send_ack_nak = FALSE;

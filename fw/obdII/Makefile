@@ -50,7 +50,8 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/CANInfoFunctions.o \
     $(BUILD_DIR)/CANReceiveFunctions.o \
     $(BUILD_DIR)/CANTransmitFunctions.o \
-    $(BUILD_DIR)/can_hal.o
+    $(BUILD_DIR)/can_hal.o \
+    $(BUILD_DIR)/can_snoop.o
 
 APPNAME= main
 
@@ -109,6 +110,9 @@ $(BUILD_DIR)/CANTransmitFunctions.o: ../common/Source/peripheral/can/CANTransmit
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/can_hal.o: ../common/Source/can_hal.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/can_snoop.o: ../common/Source/can_snoop.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
