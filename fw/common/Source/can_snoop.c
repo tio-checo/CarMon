@@ -74,6 +74,35 @@
  * | SOF | C | A | 02 | CHSUM | EOF |
  * ----------------------------------
  *
+ * Data analysis (03)
+ * ------------------
+ * The next step of this drill-down type of analysis is process of determining
+ * what kind of information particular data carry. To help with that,
+ * data analysis mode provides for possibility to focus on particular
+ * frame and analyzing changes in its data payload. The goal is to associate
+ * those changes with changes in real world (e.g. change in speedometer value).
+ * Frame is sent to master only if change in specified portion of data payload
+ * is detected.
+ * Format of CAN frame sent to master:
+ *
+ * ----------------------------------------------
+ * | SOF | C | R | 00 | ID | DATA | CHSUM | EOF |
+ * ----------------------------------------------
+ *
+ * where
+ * ID    4b     29-bit extended or 11-bit standard identifier
+ * DATA  0..8b  data payload
+ *
+ * Mode is activated in following way:
+ *
+ * -----------------------------------------
+ * | SOF | C | A | 03 | MASK | CHSUM | EOF |
+ * -----------------------------------------
+ *
+ * where
+ * MASK 8b Bitmask selecting which bits of data payload are undergoing process
+ *         of comparison. One means particular bit participates in the process.
+ *
  *********************************************************************/
 
 #include <errno.h>
@@ -102,7 +131,10 @@
     CAN_SNOOP_PSMASK_DLC | CAN_SNOOP_PSMASK_DATA)
 
 /* size of ID list */
-#define CAN_SNOOP_ID_LIST_SIZE	100
+#define CAN_SNOOP_ID_LIST_SIZE		100
+
+/* size of list of ID-data pairs */
+#define CAN_SNOOP_DATA_LIST_SIZE	30
 
 /* local macros */
 /* extract ID from the message buffer */
@@ -115,6 +147,7 @@ typedef enum {
 	SNOOP_MODE_DISABLED,		/* 00 - finish current analysis */
 	SNOOP_MODE_PASS_THROUGH,	/* 01 - pass through mode */
 	SNOOP_MODE_COLLECT_IDS,		/* 02 - address analysis */
+	SNOOP_MODE_DATA_ANALYSIS,	/* 03 - data analysis */
 	SNOOP_NUM_SUPPORTED_MODES
 } CAN_SNOOP_MODE;
 
@@ -123,7 +156,13 @@ typedef enum {
 static CAN_SNOOP_MODE can_snoop_mode;
 
 /* Bitmask specifying which data are to be sent to master. */
-static int can_snoop_data_mask;
+static int can_snoop_frame_mask;
+
+/*
+ * Bitmask applicable during data analysis. It specifies which portion of data
+ * payload is undergoing process of comparison.
+ */
+static BYTE can_snoop_data_mask[8];
 
 /*
  * Number of packets dropped (not sent to master) due to high rate
@@ -134,11 +173,22 @@ static int can_snoop_num_dropped_frames;
 /* response data buffer - must be large enough to hold the longest response. */
 static char can_snoop_resp_buf[40];
 
-/* structure used during address analysis */
+/* result of address analysis */
 static struct {
-	int num;				/* number of collected IDs. */
-	UINT32 list[CAN_SNOOP_ID_LIST_SIZE];	/* list of collected IDs. */
-} can_snoop_collect_ids_data;
+	int num;	/* number of objects stored in the object list. */
+
+	/* List holding result of various analysis. */
+	union {
+		/* ID list */
+		UINT32 id_list[CAN_SNOOP_ID_LIST_SIZE];
+
+		/* List of ID-data pairs */
+		struct {
+			UINT32 id;
+			BYTE data[8];
+		} data_list[CAN_SNOOP_DATA_LIST_SIZE];
+	};
+} can_snoop_data;
 
 /* local functions */
 /*
@@ -177,7 +227,7 @@ can_snoop_inc_dropped_frames(void)
  * 
  */
 static void
-can_snoop_encode_frame(CANRxMessageBuffer *rxm)
+can_snoop_encode_response(CANRxMessageBuffer *rxm)
 {
 	int i;
 	char tb[10];
@@ -186,13 +236,13 @@ can_snoop_encode_frame(CANRxMessageBuffer *rxm)
 	can_snoop_resp_buf[0] = '\0';
 
 	/* Time-stamp */
-	if (can_snoop_data_mask & CAN_SNOOP_PSMASK_TSTAMP) {
+	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_TSTAMP) {
 		snprintf(tb, sizeof (tb), "%04X", rxm->msgSID.CMSGTS);
 		strcat(can_snoop_resp_buf, tb);
 	}
 
 	/* Message type */
-	if (can_snoop_data_mask & CAN_SNOOP_PSMASK_TYPE) {
+	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_TYPE) {
 		snprintf(tb, sizeof (tb), "%02X",
 		    rxm->msgEID.RTR | (rxm->msgEID.IDE << 1));
 
@@ -200,20 +250,20 @@ can_snoop_encode_frame(CANRxMessageBuffer *rxm)
 	}
 
 	/* ID */
-	if (can_snoop_data_mask & CAN_SNOOP_PSMASK_ID) {
+	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_ID) {
 		snprintf(tb, sizeof (tb), "%08X", CAN_DECODE_ID(rxm));
 
 		strcat(can_snoop_resp_buf, tb);
 	}
 
 	/* DLC */
-	if (can_snoop_data_mask & CAN_SNOOP_PSMASK_DLC) {
+	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_DLC) {
 		snprintf(tb, sizeof (tb), "%02X", rxm->msgEID.DLC);
 		strcat(can_snoop_resp_buf, tb);
 	}
 
 	/* Add data payload. */
-	if (can_snoop_data_mask & CAN_SNOOP_PSMASK_DATA) {
+	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_DATA) {
 		for (i = 0; i < rxm->msgEID.DLC; i++) {
 			snprintf(tb, sizeof (tb), "%02X", rxm->data[i]);
 			strcat(can_snoop_resp_buf, tb);
@@ -243,7 +293,7 @@ can_snoop_pass_through(CANRxMessageBuffer *rxm)
 	if (can_response_inuse()) {
 		can_snoop_inc_dropped_frames();
 	} else {
-		can_snoop_encode_frame(rxm);
+		can_snoop_encode_response(rxm);
 
 		/* Send the message to the master. */
 		can_send_data_response_to_master("R00", can_snoop_resp_buf);
@@ -251,7 +301,7 @@ can_snoop_pass_through(CANRxMessageBuffer *rxm)
 }
 
 /*
- * Adress analysis.
+ * Address analysis.
  */
 static void
 can_snoop_collect_ids(CANRxMessageBuffer *rxm)
@@ -266,12 +316,12 @@ can_snoop_collect_ids(CANRxMessageBuffer *rxm)
 	 * If frame with new ID arrived, add ID to the list
 	 * and send it to the master.
 	 */
-	for (i = 0; i < can_snoop_collect_ids_data.num &&
-	    can_snoop_collect_ids_data.list[i] != id; i++)
+	for (i = 0; i < can_snoop_data.num &&
+	    can_snoop_data.id_list[i] != id; i++)
 		;
 
 	/* Already known ID. */
-	if (i < can_snoop_collect_ids_data.num) {
+	if (i < can_snoop_data.num) {
 		return;
 	}
 
@@ -279,7 +329,7 @@ can_snoop_collect_ids(CANRxMessageBuffer *rxm)
 	 * If the list is already full, inform master and terminate
 	 * the analysis.
 	 */
-	if (can_snoop_collect_ids_data.num >= CAN_SNOOP_ID_LIST_SIZE) {
+	if (can_snoop_data.num >= CAN_SNOOP_ID_LIST_SIZE) {
 		/*
 		 * Try to send the message to the master. If the attempt fails,
 		 * retry when next frame arrives.
@@ -306,15 +356,113 @@ can_snoop_collect_ids(CANRxMessageBuffer *rxm)
 
 		return;
 	} else {
-		can_snoop_encode_frame(rxm);
+		can_snoop_encode_response(rxm);
 
 		can_send_data_response_to_master("R00", can_snoop_resp_buf);
 	}
 
-	/* Add the ID to the list. */
-	can_snoop_collect_ids_data.list[can_snoop_collect_ids_data.num++] = id;
+	/* Add ID to the list. */
+	can_snoop_data.id_list[can_snoop_data.num++] = id;
+}
 
-	return;
+/*
+ * Data analysis.
+ */
+static void
+can_snoop_data_analysis(CANRxMessageBuffer *rxm)
+{
+	int i, index;
+	UINT32 id;
+	BYTE *payload;
+	BYTE ln;
+
+	/* Obtain ID from the packet. */
+	id = CAN_DECODE_ID(rxm);
+
+	/* Get reference to data payload. */
+	payload = rxm->data;
+
+	/* Size of data payload. */
+	ln = rxm->msgEID.DLC;
+
+	/*
+	 * If frame with new ID arrived, add it to the list
+	 * and send it to the master.
+	 */
+	for (index = 0; index < can_snoop_data.num; index++) {
+		/* ID found in the list, abort searching. */
+		if (can_snoop_data.data_list[index].id == id) {
+			break;
+		}
+	}
+
+	/* Frame with new ID arrived. */
+	if (index == can_snoop_data.num) {
+		/* If there is no free space in the list, discard the frame. */
+		if (index >= CAN_SNOOP_DATA_LIST_SIZE) {
+			return;
+		}
+
+		/*
+		 * Try to send the frame to the master. If the attempt fails,
+		 * discard the frame.
+		 */
+		if (can_response_inuse()) {
+			can_snoop_inc_dropped_frames();
+
+			return;
+		} else {
+			can_snoop_encode_response(rxm);
+
+			can_send_data_response_to_master("R00",
+			    can_snoop_resp_buf);
+		}
+
+		/* Add new ID to the list */
+		can_snoop_data.data_list[index].id = id;
+
+		/* Adjust number of objects in the list. */
+		can_snoop_data.num++;
+	} else {
+		/*
+		 * Frame with known ID arrived. Send it to the master
+		 * only if interesting portion of data payload changed.
+		 */
+		for (i = 0; i < ln; i++) {
+			BYTE msk = can_snoop_data_mask[i];
+
+			/* Change detected. */
+			if ((payload[i] & msk) != 
+			    (can_snoop_data.data_list[index].data[i] & msk)) {
+				break;
+			}
+		}
+
+		/* If frame has not changed, no action is to be taken. */
+		if (i == ln) {
+			return;
+		}
+
+		/*
+		 * Try to send the frame to the master. If the attempt fails,
+		 * discard the frame.
+		 */
+		if (can_response_inuse()) {
+			can_snoop_inc_dropped_frames();
+
+			return;
+		} else {
+			can_snoop_encode_response(rxm);
+
+			can_send_data_response_to_master("R00",
+			    can_snoop_resp_buf);
+		}
+	}
+
+	/* Store new data payload to the list. */
+	for (i = 0; i < ln; i++) {
+		can_snoop_data.data_list[index].data[i] = payload[i];
+	}
 }
 
 /* global functions */
@@ -330,10 +478,10 @@ can_snoop_init(void)
 	can_snoop_num_dropped_frames = 0;
 
 	/* Everything is sent to master by default. */
-	can_snoop_data_mask = CAN_SNOOP_PSMASK_ALL;
+	can_snoop_frame_mask = CAN_SNOOP_PSMASK_ALL;
 
 	/* structure used during address analysis */
-	can_snoop_collect_ids_data.num = 0;
+	can_snoop_data.num = 0;
 }
 
 /*
@@ -349,7 +497,7 @@ can_snoop_get_num_dropped_frames(void)
  * Processes master query.
  *
  * Returns:
- *       0 - snooping mode successfully configured
+ *  0      - snooping mode successfully configured
  *  EINVAL - invalid data provided
  *  EBUSY  - analysis already in progress
  */
@@ -357,6 +505,7 @@ int
 can_snoop_process_query(char *data, int ln)
 {
 	CAN_SNOOP_MODE mode;
+	int i, mask;
 
 	mode = (CAN_SNOOP_MODE) hex2ulong(data, 2);
 
@@ -374,13 +523,19 @@ can_snoop_process_query(char *data, int ln)
 		return EBUSY;
 	}
 
+	switch (mode) {
+	case SNOOP_MODE_DISABLED:
+		/* Handle transition from active to disabled mode. */
+		if (can_snoop_mode != SNOOP_MODE_DISABLED) {
+		}
+
+		break;
+
 	/*
 	 * Pass-through mode contains bitmask specifying which information
 	 * is to be sent to master.
 	 */
-	if (mode == SNOOP_MODE_PASS_THROUGH) {
-		int mask;
-
+	case SNOOP_MODE_PASS_THROUGH:
 		if (ln != 4) {
 			return EINVAL;
 		}
@@ -392,25 +547,59 @@ can_snoop_process_query(char *data, int ln)
 			return EINVAL;
 		}
 
-		can_snoop_data_mask = mask;
-	}
+		can_snoop_frame_mask = mask;
+
+		break;
 
 	/*
 	 * Initialize address analysis.
 	 */
-	if (mode == SNOOP_MODE_COLLECT_IDS) {
+	case SNOOP_MODE_COLLECT_IDS:
 		/* No more parameters expected. */
 		if (ln != 2) {
 			return EINVAL;
 		}
 
-		can_snoop_collect_ids_data.num = 0;
+		can_snoop_data.num = 0;
 
 		/* Only ID is sent to master. */
-		can_snoop_data_mask = CAN_SNOOP_PSMASK_ID;
-	}
+		can_snoop_frame_mask = CAN_SNOOP_PSMASK_ID;
 
-	/* Nothing to be done for now for disabled mode. */
+		break;
+
+	/*
+	 * Initialize data analysis.
+	 */
+	case SNOOP_MODE_DATA_ANALYSIS:
+		/* Check if mandatory bitmask has been provided. */
+		if (ln != 18) {
+			return EINVAL;
+		}
+
+		/* Clean up the list of snoop objects. */
+		can_snoop_data.num = 0;
+
+		/* ID and data payload is to be sent to master. */
+		can_snoop_frame_mask = CAN_SNOOP_PSMASK_ID |
+		    CAN_SNOOP_PSMASK_DATA;
+
+		/*
+		 * Store bitmask specifying which portion of data payload
+		 * will be undergoing process of comparison.
+		 */
+		for (i = 1; i <= 8; i++) {
+			can_snoop_data_mask[i - 1] =
+			    (BYTE) hex2ulong(data + 2 * i, 2);
+		}
+
+		break;
+
+	/* Make the compiler happy. */
+	case SNOOP_NUM_SUPPORTED_MODES:
+		break;
+	} /* switch */
+
+	/* Store current mode. */
 	can_snoop_mode = mode;
 
 	return 0;
@@ -435,6 +624,11 @@ can_snoop_process_frame(CANRxMessageBuffer *rxm)
 	/* 02 - Address analysis */
 	case SNOOP_MODE_COLLECT_IDS:
 		can_snoop_collect_ids(rxm);
+		break;
+
+	/* 03 - Data analysis */
+	case SNOOP_MODE_DATA_ANALYSIS:
+		can_snoop_data_analysis(rxm);
 		break;
 
 	/* Make the compiler happy. */

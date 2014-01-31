@@ -409,11 +409,11 @@ can_tx_svc(void)
 static int
 can_svc(void)
 {
-	/* Handle packets received by CAN module. */
-	can_rx_svc();
-
 	/* Handle packets to be transmitted by CAN module. */
 	can_tx_svc();
+
+	/* Handle packets received by CAN module. */
+	can_rx_svc();
 
 	return 0;
 }
@@ -740,7 +740,7 @@ can_process_query(char *data, int ln)
 			err = can_configure_decode(data + 1, ln - 1);
 
 			/*
-			 * If configuration process has been succesfully
+			 * If configuration process has been successfully
 			 * commenced, ack/nak will be sent later -
 			 * once the process of configuration is finished.
 			 */
