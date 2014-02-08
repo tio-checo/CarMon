@@ -472,12 +472,12 @@ can_snoop_data_analysis(CANRxMessageBuffer *rxm)
 void
 can_snoop_init(void)
 {
-	/* Pass-through mode enabled by default. */
-	can_snoop_mode = SNOOP_MODE_PASS_THROUGH;
+	/* Snooping disabled after power-on. */
+	can_snoop_mode = SNOOP_MODE_DISABLED;
 
 	can_snoop_num_dropped_frames = 0;
 
-	/* Everything is sent to master by default. */
+	/* If snooping enabled, everything is sent to master by default. */
 	can_snoop_frame_mask = CAN_SNOOP_PSMASK_ALL;
 
 	/* structure used during address analysis */

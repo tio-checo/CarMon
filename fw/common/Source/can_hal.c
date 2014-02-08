@@ -552,9 +552,13 @@ can_configure_decode(char *data, int ln)
 
 		/* Obtain filter. */
 		filter = (int) hex2ulong(data + 4, 8);
+		/* Only 29 bits are relevant. */
+		filter &= 0x1fffffff;
 
 		/* Obtain mask. */
 		mask = (int) hex2ulong(data + 12, 8);
+		/* Only 29 bits are relevant. */
+		mask &= 0x1fffffff;
 
 		/* Let the service finish process of configuration. */
 		return can_configure(-1, -1, mode, filter, mask, TRUE);
@@ -650,14 +654,10 @@ can_configure(int mode, int speed, int filter_mode, UINT32 filter,
 int
 can_init(void)
 {
-	/*
-	 * Default communication mode
-	 *  - "Listen Only" mode
-	 *  - snoop mode enabled
-	 */
+	/* Default is "Listen Only" communication mode. */
 	CAN_SET_MODE(CAN_LISTEN_ONLY);
 
-	/* Default communication speed. */
+	/* Default speed is 500kb. */
 	can_speed = SPEED_500k;
 
 	/*
