@@ -103,6 +103,34 @@
  * MASK 8b Bitmask selecting which bits of data payload are undergoing process
  *         of comparison. One means particular bit participates in the process.
  *
+ * Mode 04 - timing analysis
+ * -------------------------
+ * Timing analysis provides information about timing situation on the bus.
+ * In particular, it calculates number of frames received during analysis
+ * as well as minimum and maximum time between two subsequent frames.
+ * That mode can be either used to obtain overall picture about load on the bus
+ * or (with combination of the filtering) it is possible to collect information
+ * about frames with particular ID - e.g. frame rate as well as jitter can be
+ * determined.
+ * To commence the analysis, following frame is to be sent to master: 
+ * 
+ * ----------------------------------
+ * | SOF | C | A | 04 | CHSUM | EOF |
+ * ----------------------------------
+ *
+ * Once the analysis is finished by deactivation packet (see above),
+ * results are sent to master in following form:
+ *
+ * ----------------------------------------------------------
+ * | SOF | C | 00 | FNUM | TTIME | TMIN | TMAX |CHSUM | EOF |
+ * ----------------------------------------------------------
+ *
+ * where
+ * FNUM  4b number of frames per second
+ * TTIME 2b total time of analysis - resolution 1ms
+ * TMIN  2b minimum time between packets - resolution 100us
+ * TMAX  2b maximum time between packets - resolution 100us
+ *
  *********************************************************************/
 
 #include <errno.h>
@@ -117,6 +145,7 @@
 #include "master_comm.h"
 #include "can_hal.h"
 #include "can_snoop.h"
+#include "rt_light.h"
 #include "utils.h"
 
 /* local constants */
@@ -148,6 +177,7 @@ typedef enum {
 	SNOOP_MODE_PASS_THROUGH,	/* 01 - pass through mode */
 	SNOOP_MODE_COLLECT_IDS,		/* 02 - address analysis */
 	SNOOP_MODE_DATA_ANALYSIS,	/* 03 - data analysis */
+	SNOOP_MODE_TIME_ANALYSIS,	/* 04 - timing analysis */
 	SNOOP_NUM_SUPPORTED_MODES
 } CAN_SNOOP_MODE;
 
@@ -189,6 +219,20 @@ static struct {
 		} data_list[CAN_SNOOP_DATA_LIST_SIZE];
 	};
 } can_snoop_data;
+
+/*
+ * Result of timing analysis.
+ * time values has resolution of 100us.
+ */
+static struct {
+	UINT32 num;	/* number of packets received during analysis. */
+	UINT32 ttotal;	/* total time of analysis. */
+
+	UINT32 tmin;	/* min time between two frames. */
+	UINT32 tmax;	/* max time between two frames. */
+
+	UINT32 tlast;	/* time since last received packet. */
+} can_snoop_time_anal;
 
 /* local functions */
 /*
@@ -269,6 +313,60 @@ can_snoop_encode_response(CANRxMessageBuffer *rxm)
 			strcat(can_snoop_resp_buf, tb);
 		}
 	}
+}
+
+/*
+ * Prepare message containing result of timing analysis.
+ *
+ * Format of the response data payload:
+ *
+ *  ------------------------------
+ *  | FNUM | TTIME | TMIN | TMAX |
+ *  ------------------------------
+ *
+ * where:
+ *
+ *  FNUM  number of frames received (4 bytes)
+ *  TTIME total time of analysis
+ *  TMIN  minimum time between two received frames (2 bytes)
+ *  TMAX  maximum time between two received frames (2 bytes)
+ * 
+ */
+static void
+can_snoop_encode_time_anal_result(void)
+{
+	UINT32 ttime;
+	char tb[10];
+
+	/* Clean up resulting buffer. */
+	can_snoop_resp_buf[0] = '\0';
+
+	/* FNUM */
+	snprintf(tb, sizeof (tb), "%08lX", can_snoop_time_anal.num);
+	strcat(can_snoop_resp_buf, tb);
+
+	/* TTIME - convert to 1ms resolution */
+	ttime = can_snoop_time_anal.ttotal / (1000ULL / RTL_SERVICE_PERIOD);
+
+	if (ttime > 0xffff) {
+		ttime = 0xffff;
+	}
+	snprintf(tb, sizeof (tb), "%04lX", ttime);
+	strcat(can_snoop_resp_buf, tb);
+
+	/* TMIN */
+	if (can_snoop_time_anal.tmin > 0xffff) {
+		can_snoop_time_anal.tmin = 0xffff;
+	}
+	snprintf(tb, sizeof (tb), "%04lX", can_snoop_time_anal.tmin);
+	strcat(can_snoop_resp_buf, tb);
+
+	/* TMAX */
+	if (can_snoop_time_anal.tmax > 0xffff) {
+		can_snoop_time_anal.tmax = 0xffff;
+	}
+	snprintf(tb, sizeof (tb), "%04lX", can_snoop_time_anal.tmax);
+	strcat(can_snoop_resp_buf, tb);
 }
 
 /*
@@ -465,6 +563,53 @@ can_snoop_data_analysis(CANRxMessageBuffer *rxm)
 	}
 }
 
+/*
+ * Timing analysis.
+ */
+static void
+can_snoop_time_analysis(CANRxMessageBuffer *rxm)
+{
+	UINT32 tdif;
+
+	/*
+	 * Do not touch the statistics if the timer has been frozen
+	 * (to protect it from overflow).
+	 */
+	if (can_snoop_time_anal.ttotal >= 0xfffffffe) {
+		return;
+	}
+
+	/* Increment total number of received frames. */
+	can_snoop_time_anal.num++;
+
+	/*
+	 * If this is the first frame received, just capture time
+	 * when the packet arrived.
+	 */
+	if (can_snoop_time_anal.tlast == 0xffffffff) {
+		can_snoop_time_anal.tlast = can_snoop_time_anal.ttotal;
+
+		return;
+	}
+
+	/* Calculate time passed since the last packet was received. */
+	tdif = can_snoop_time_anal.ttotal - can_snoop_time_anal.tlast;
+
+	/* Refresh time of last packet received. */
+	can_snoop_time_anal.tlast = can_snoop_time_anal.ttotal;
+
+	/* Re-calculate statistics. */
+	/* Minimal time between two frames. */
+	if (can_snoop_time_anal.tmin > tdif) {
+		can_snoop_time_anal.tmin = tdif;
+	}
+
+	/* Maximal time between two frames. */
+	if (can_snoop_time_anal.tmax < tdif) {
+		can_snoop_time_anal.tmax = tdif;
+	}
+}
+
 /* global functions */
 /*
  * Initializes analyzer.
@@ -525,8 +670,16 @@ can_snoop_process_query(char *data, int ln)
 
 	switch (mode) {
 	case SNOOP_MODE_DISABLED:
-		/* Handle transition from active to disabled mode. */
-		if (can_snoop_mode != SNOOP_MODE_DISABLED) {
+		/*
+		 * Timing analysis has been finished,
+		 * thus send resulting data to master.
+		 */
+		if (can_snoop_mode == SNOOP_MODE_TIME_ANALYSIS) {
+			can_snoop_encode_time_anal_result();
+
+			/* Send the message to the master. */
+			can_send_data_response_to_master("R00",
+			    can_snoop_resp_buf);
 		}
 
 		break;
@@ -594,6 +747,27 @@ can_snoop_process_query(char *data, int ln)
 
 		break;
 
+	/*
+	 * Initialize timing analysis.
+	 */
+	case SNOOP_MODE_TIME_ANALYSIS:
+		/* Reset number of packets received during analysis. */
+		can_snoop_time_anal.num = 0;
+
+		/* Reset total time of analysis. */
+		can_snoop_time_anal.ttotal = 0;
+
+		/* Reset min time between two frames. */
+		can_snoop_time_anal.tmin = 0xffffffff;
+
+		/* Reset max time between two frames. */
+		can_snoop_time_anal.tmax = 0;
+
+		/* Initialize time since last received packet. */
+		can_snoop_time_anal.tlast = 0xffffffff;
+
+		break;
+
 	/* Make the compiler happy. */
 	case SNOOP_NUM_SUPPORTED_MODES:
 		break;
@@ -631,6 +805,11 @@ can_snoop_process_frame(CANRxMessageBuffer *rxm)
 		can_snoop_data_analysis(rxm);
 		break;
 
+	/* 04 - Timing analysis */
+	case SNOOP_MODE_TIME_ANALYSIS:
+		can_snoop_time_analysis(rxm);
+		break;
+
 	/* Make the compiler happy. */
 	case SNOOP_NUM_SUPPORTED_MODES:
 		break;
@@ -638,3 +817,24 @@ can_snoop_process_frame(CANRxMessageBuffer *rxm)
 
 	return 0;
 }
+
+/*
+ * Snoop callback function. Called from CAN service. Handles snooping timers.
+ */
+void
+can_snoop_cb(void)
+{
+	/*
+	 * If timing analysis in progress, increment timer measuring
+	 * total time of analysis.
+	 */
+	if (can_snoop_mode == SNOOP_MODE_TIME_ANALYSIS) {
+		/* If we are approaching overflow, freeze the timer. */
+		if (can_snoop_time_anal.ttotal >= 0xfffffffe) {
+			return;
+		}
+
+		can_snoop_time_anal.ttotal++;
+	}
+}
+

@@ -409,6 +409,9 @@ can_tx_svc(void)
 static int
 can_svc(void)
 {
+	/* Snoop callback function. Handles snooping timers. */
+	can_snoop_cb();
+
 	/* Handle packets to be transmitted by CAN module. */
 	can_tx_svc();
 
