@@ -118,7 +118,7 @@
  * | SOF | C | A | 04 | CHSUM | EOF |
  * ----------------------------------
  *
- * Once the analysis is finished by deactivation packet (see above),
+ * Once the analysis is finished by deactivation packet <CA00>,
  * results are sent to master in following form:
  *
  * ----------------------------------------------------------
@@ -126,7 +126,7 @@
  * ----------------------------------------------------------
  *
  * where
- * FNUM  4b number of frames per second
+ * FNUM  4b total number of frames received during analysis
  * TTIME 2b total time of analysis - resolution 1ms
  * TMIN  2b minimum time between packets - resolution 100us
  * TMAX  2b maximum time between packets - resolution 100us
