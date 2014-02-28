@@ -2,16 +2,16 @@
 <resources>
     <string name="app_name">ObdLogger</string>
     <string name="indicator1Label">RPM</string>
-    <string name="indicator2Label">LOAD</string>
+    <string name="indicator2Label">Turbo</string>
     <string name="indicator3Label">MAF</string>
-    <string name="indicator4Label">WATER</string>
-    <string name="indicator5Label">RAIL</string>
+    <string name="indicator4Label">Water</string>
+    <string name="indicator5Label">Rail</string>
     <string name="indicator6Label">EGR</string>
-    <string name="indicator7Label">BATT</string>
+    <string name="indicator7Label">Batt</string>
     <string name="indicator8Label"></string>
 
     <string name="indicator1Value">-</string>
-    <string name="indicator2Value">- %</string>
+    <string name="indicator2Value">-</string>
     <string name="indicator3Value">- g/s</string>
     <string name="indicator4Value">- stC</string>
     <string name="indicator5Value">- MPa</string>

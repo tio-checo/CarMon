@@ -696,7 +696,7 @@ class CommunicationService {
                          * in the first group get processed.
                          */
                         /* TODO: Use some method for this check */
-                        if (currPid.equals("0B")) {
+                        if (currPid.equals("2D")) {
                             mLog.captureProbes(mPidLogList, mObd);
                         }
                     } else {
@@ -905,12 +905,12 @@ class CommunicationService {
         /* Create list of PID priority groups */
         mPidSpeedGroups = new PidGroups();
 
-        /* Fast - Calculated Engine Load, Intake Manifold Absolute Pressure */
-        String grpF[] = {"04", "0B"};
+        /* Fast - EGR, EGR error */
+        String grpF[] = {"2C", "2D"};
         mPidSpeedGroups.create(0, "fast", grpF);
 
-        /* Medium - RPM, MAF, Rail Pressure, EGR */
-        String grpM[] = {"0C", "10", "23", "2C"};
+        /* Medium - Intake Manifold Abs. Pressure, RPM, MAF, Rail Pressure */
+        String grpM[] = {"0B", "0C", "10", "23"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*
@@ -1227,8 +1227,8 @@ class Dashboard {
                 R.id.indicator1Label, R.id.indicator1Value, 0, "0C");
         /* Calculated Engine Load */
         mDashboardIndicators[1] = new DashboardIndicator(activity,
-//                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
-                R.id.indicator2Label, R.id.indicator2Value, 0, "04");
+                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
+//                R.id.indicator2Label, R.id.indicator2Value, 0, "04");
         /* MAF */
         mDashboardIndicators[2] = new DashboardIndicator(activity,
                 R.id.indicator3Label, R.id.indicator3Value, 0, "10");
