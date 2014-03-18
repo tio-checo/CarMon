@@ -165,12 +165,6 @@
 /* size of list of ID-data pairs */
 #define CAN_SNOOP_DATA_LIST_SIZE	30
 
-/* local macros */
-/* extract ID from the message buffer */
-#define CAN_DECODE_ID(frame) \
-    ((frame)->msgEID.IDE ? ((frame)->msgSID.SID << 18) | (frame)->msgEID.EID : \
-    (frame)->msgSID.SID)
-
 /* local types */
 typedef enum {
 	SNOOP_MODE_DISABLED,		/* 00 - finish current analysis */
@@ -295,7 +289,7 @@ can_snoop_encode_response(CANRxMessageBuffer *rxm)
 
 	/* ID */
 	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_ID) {
-		snprintf(tb, sizeof (tb), "%08X", CAN_DECODE_ID(rxm));
+		snprintf(tb, sizeof (tb), "%08X", CAN_GET_ID(rxm));
 
 		strcat(can_snoop_resp_buf, tb);
 	}
@@ -408,7 +402,7 @@ can_snoop_collect_ids(CANRxMessageBuffer *rxm)
 	UINT32 id;
 
 	/* Obtain ID from the packet. */
-	id = CAN_DECODE_ID(rxm);
+	id = CAN_GET_ID(rxm);
 
 	/*
 	 * If frame with new ID arrived, add ID to the list
@@ -475,7 +469,7 @@ can_snoop_data_analysis(CANRxMessageBuffer *rxm)
 	BYTE ln;
 
 	/* Obtain ID from the packet. */
-	id = CAN_DECODE_ID(rxm);
+	id = CAN_GET_ID(rxm);
 
 	/* Get reference to data payload. */
 	payload = rxm->data;

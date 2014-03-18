@@ -25,10 +25,11 @@ public class Obd {
     static final String ECU_COMM_MODE_KWP2K_AUTO = "00";
     static final String ECU_COMM_MODE_KWP2K_NORMAL = "01";
     static final String ECU_COMM_MODE_KWP2K_DEBUG = "02";
-    static final String ECU_COMM_MODE_CAN_SID_250 = "03";
-    static final String ECU_COMM_MODE_CAN_SID_500 = "04";
-    static final String ECU_COMM_MODE_CAN_EID_250 = "05";
-    static final String ECU_COMM_MODE_CAN_EID_500 = "06";
+    static final String ECU_COMM_MODE_KWP2K_MIXED = "03";
+    static final String ECU_COMM_MODE_CAN_SID_250 = "04";
+    static final String ECU_COMM_MODE_CAN_SID_500 = "05";
+    static final String ECU_COMM_MODE_CAN_EID_250 = "06";
+    static final String ECU_COMM_MODE_CAN_EID_500 = "07";
 
     static final String PKT_ACK = "EA";
     static final String PKT_NAK = "EN";

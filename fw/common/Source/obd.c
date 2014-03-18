@@ -32,11 +32,14 @@ static int obd_autoscan_num;
 static int obd_autoscan_curr;
 /* TRUE activates auto-scan mode */
 static BOOL obd_autoscan_run;
+/* TRUE de-activates auto-scan mode */
+static BOOL obd_autoscan_stop;
 
 /* OBD ECU state machine */
 static enum {
 	OBD_ECU_ST_IDLE = 0,	/* machine idle */
-	OBD_ECU_ST_WAIT4PKT	/* wait for packet from ECU */
+	OBD_ECU_ST_GETPID,	/* ask for pid value */
+	OBD_ECU_ST_SENDRESPONSE	/* send response to master */
 } obd_ecu_st;
 
 /* packet to be sent to ECU */
@@ -60,8 +63,29 @@ static unsigned char obd_resp_data_buf[OBD_ECU_PACKET_MAXLN];
 
 /* Packet sequence. Used by master to detect packet loss. */
 static int pkt_num;
-/* Packet header for PID autoscan mode - "Rnn" null-terminated string */
-static char pkt_hdr[4];
+
+/* Mapping between CAN frames (Toyota 2AD-FTV engine) and OBD PIDs. */
+static const struct obd_can_map {
+	int		canid;	/* CAN ID - SID in this particular case */
+	unsigned char	pid;	/* OBD PID */
+	unsigned char	offset;	/* position of PID data within CAN frame */
+	unsigned char	ln;	/* number of data bytes representing PID */
+	long		add;	/* additive constant */
+	long		mul;	/* multiplication constant */
+	long		div;	/* division constant */
+} obd_can_map_verso[] = {
+	/* Engine RPM */
+	{ 0x2c4, 0x0c, 0, 2, 0, 4 * 1000, 1285 },
+	/* Accelerator pedal position D */
+	{ 0x2c1, 0x49, 6, 1, 0, 1, 1 }
+};
+
+/* List of structures holding PID values obtained via snooping CAN bus */
+static struct obd_can_pid_value {
+	BOOL	valid;			/* TRUE if data are valid */
+	unsigned char	data[2];	/* PID data */	
+} obd_can_pid_values[sizeof (obd_can_map_verso) /
+    sizeof (struct obd_can_map)];
 
 /* local functions */
 
@@ -119,25 +143,110 @@ obd_send_nak_response_to_master(unsigned char e)
 }
 
 /*
- * Send query for PID value to ECU. Let OBD service take care
- * of sending response from ECU to master.
+ * Tries to obtain value of given PID from CAN.
+ *
+ * Returns:
+ *        0 - PID value successfully obtained
+ *  ENOTSUP - CAN does not support given PID
  */
 static int
-obd_ecu_get_pid(int pid)
+obd_get_pid_from_can(int pid, unsigned char **value, int *ln)
 {
-	int err;
+	int i;
+	int mapln = sizeof (obd_can_map_verso) / sizeof (struct obd_can_map);
+	const struct obd_can_map *map = obd_can_map_verso;
 
-	/* prepare packet for ECU */
+	/* Not operating neither in mixed mode nor in debug mode, return. */
+	if ((obd_comm_mode != OBD_COMM_MODE_KWP2K_MIXED) &&
+	    (obd_comm_mode != OBD_COMM_MODE_KWP2K_DEBUG)) {
+		return ENOTSUP;
+	}
+
+	/* Search for given PID in the map. */
+	for (i = 0; (map[i].pid != pid) && (i < mapln); i++)
+		;
+
+	/* PID not supported. */
+	if (i >= mapln) {
+		return ENOTSUP;
+	}
+
+	/*
+	 * PID found. If it contains valid data,
+	 * return pointers to data and size.
+	 */
+	if (!obd_can_pid_values[i].valid) {
+		return ENOTSUP;
+	}
+
+	*value = obd_can_pid_values[i].data;
+	*ln = map[i].ln;
+
+	return 0;
+}
+
+/*
+ * Gets PID value.
+ *
+ * Returns:
+ *        0 - PID value obtained
+ *   EAGAIN - operation in progress
+ *   EBUSY  - KWP2000 module busy - could not send the request
+ *   EIO    - ECU did not respond
+ */
+static int
+obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
+{
+	static BOOL in_progress = FALSE;
+
+	int ret;
+
+	/* Operation in progress, wait for data or error. */
+	if (in_progress) {
+		unsigned char *kwp_data;
+		int kwp_ln;
+		int rx_err;
+
+		ret = kwp2k_ul_recv(&kwp_data, &kwp_ln, &rx_err);
+
+		/* Operation in progress, try again later. */
+		if (ret == EAGAIN) {
+			return EAGAIN;
+		}
+
+		/* Operation finished. */
+		in_progress = FALSE;
+
+		/* Pass resulting data to the caller, discard header. */
+		*d = kwp_data + 2;
+		*ln = kwp_ln - 2;
+
+		return ret;
+	}
+
+	/*
+	 * If we are operating in KWP2000/CAN mixed mode and value of given
+	 * PID is provided via CAN, do not ask ECU for the value.
+	 * Instead use the one obtained via monitoring CAN bus.
+	 */
+	if (obd_get_pid_from_can(pid, d, ln) == 0) {
+		return 0;
+	}
+
+	/* Start new request */
 	obd_packet_ecu[0] = OBD_MODE_GET_PID;
 	obd_packet_ecu[1] = pid;
 
-	err = kwp2k_ul_send(obd_packet_ecu, 2);
+	ret = kwp2k_ul_send(obd_packet_ecu, 2);
 
-	/* Packet sent out successfully, so wait for ECU response */
-	if (err == 0)
-		obd_ecu_st = OBD_ECU_ST_WAIT4PKT;
+	/* Packet sent out successfully, wait for ECU response */
+	if (ret == 0) {
+		in_progress = TRUE;
 
-	return err;
+		ret = EAGAIN;
+	}
+
+	return ret;
 }
 
 /*
@@ -146,92 +255,110 @@ obd_ecu_get_pid(int pid)
 static int
 obd_comm_ecu_svc(void)
 {
-	int ln, i;
-	int ret;
-	int rx_err;
-	unsigned char *d;
+	static int ret;
+	static int ln;
+	static unsigned char *d;
+	static char hdr[6];
+
+	int i, curr_pid;
 
 	switch (obd_ecu_st) {
 	/* machine idle */
 	case OBD_ECU_ST_IDLE:
 		break;
 
-	/* wait for packet from ECU */
-	case OBD_ECU_ST_WAIT4PKT:
-		ret = kwp2k_ul_recv(&d, &ln, &rx_err);
+	/* ask ECU for pid value */
+	case OBD_ECU_ST_GETPID:
+		curr_pid = obd_autoscan_pid_list[obd_autoscan_curr];
 
-		/* packet being received now */
-		if (ret == EAGAIN)
+		/* Wait until pid value is received or error occurs. */
+		ret = obd_ecu_get_pid(curr_pid, &d, &ln);
+
+		/* Operation still in progress, try again later. */
+		if (ret == EAGAIN) {
 			break;
+		}
 
-		/* packet received */
+		/* Operation finished, process the result. */
+
+		/*
+		 * Connection with master lost - discard obtained data
+		 * and disable auto-scan mode.
+		 */
+		if (!bt_is_paired()) {
+			obd_autoscan_run = FALSE;
+
+			obd_ecu_st = OBD_ECU_ST_IDLE;
+		} else {
+			/* Send result to master. */
+			obd_ecu_st = OBD_ECU_ST_SENDRESPONSE;
+		}
+
+		break;
+
+	/* Send response to master. */
+	case OBD_ECU_ST_SENDRESPONSE:
+		/* Wait until previous data response is sent to master. */
+		if (mcom_response_inuse(&obd_resp_data)) {
+			break;
+		}
+
+		/* PID value obtained, pass it to the master. */
 		if (ret == 0) {
-			char *pkt_hdr_p = "P00";
+			/* Copy PID and its value to response data buffer. */
+			for (i = 0; i < ln; i++) {
+				obd_resp_data_buf[i] = d[i];
+			}
 
 			/*
-			 * Copy PID and its value to response data buffer,
-			 * discard header byte.
+			 * Prepare data header - sequence number is incremented
+			 * in auto-scan mode.
 			 */
-			for (i = 1; i < ln; i++)
-				obd_resp_data_buf[i - 1] = d[i];
-
-			/* Prepare data header for autoscan mode. */
+			curr_pid = obd_autoscan_pid_list[obd_autoscan_curr];
 			if (obd_autoscan_run) {
-				snprintf(pkt_hdr, sizeof (pkt_hdr), "R%02X",
-				    pkt_num);
-
-				pkt_hdr_p = pkt_hdr;
+				snprintf(hdr, sizeof (hdr), "R%02X%02X",
+				    pkt_num, curr_pid);
 
 				/* Increment sequence number. */
 				if (++pkt_num > 255)
 					pkt_num = 1;
+			} else {
+				snprintf(hdr, sizeof (hdr), "P00%02X",
+				    curr_pid);
 			}
 
-			obd_send_data_response_to_master(pkt_hdr_p, ln - 1);
+			obd_send_data_response_to_master(hdr, ln);
 		} else {
-			obd_resp_data_buf[0] = (rx_err >> 8) & 0xff;
-			obd_resp_data_buf[1] = rx_err & 0xff;
+		/* Send NAK to master. */
+			obd_resp_data_buf[0] = mcom_err_translate(ret) & 0xff;
 
-			/* error occurred */
-			obd_send_data_response_to_master(MCOM_RESP_NAK, 2);
+			/*
+			 * Using obd_resp_data to send NAK to master, since
+			 * we are sure it is available. Thus, no need to
+			 * check if the operation succeeded.
+			 */
+			obd_send_data_response_to_master(MCOM_RESP_NAK, 1);
 		}
 
-		/*
-		 * If connection with master has been lost, cancel auto-scan
-		 * mode. Also switch to IDLE state if auto-scan is not enabled.
-		 */
-		if (!obd_autoscan_run || !bt_is_paired()) {
+		/* Upper layer de-activated auto-scan mode. */
+		if (obd_autoscan_stop) {
+			obd_autoscan_stop = FALSE;
 			obd_autoscan_run = FALSE;
-
-			obd_ecu_st = OBD_ECU_ST_IDLE;
-			break;
 		}
 
-		/* Move to the next PID */
-		obd_autoscan_curr = obd_autoscan_curr == obd_autoscan_num - 1 ?
-		    0 : obd_autoscan_curr + 1;
+		/* If operating in auto-scan mode, process next PID. */
+		if (obd_autoscan_run) {
+			obd_autoscan_curr = obd_autoscan_curr ==
+			    obd_autoscan_num - 1 ? 0 :
+			    obd_autoscan_curr + 1;
 
-		/*
-		 * If error occurs when sending out the query, inform master
-		 * and disable auto-scan mode.
-		 */
-		ret = obd_ecu_get_pid(obd_autoscan_pid_list[obd_autoscan_curr]);
-
-		if (ret != 0) {
-			obd_resp_data_buf[0] = (ret >> 8) & 0xff;
-			obd_resp_data_buf[1] = ret & 0xff;
-
-			obd_send_data_response_to_master(MCOM_RESP_NAK, 2);
-
-			obd_autoscan_run = FALSE;
-
+			obd_ecu_st = OBD_ECU_ST_GETPID;
+		} else {
 			obd_ecu_st = OBD_ECU_ST_IDLE;
-
-			break;
 		}
 
 		break;
-	}
+	} /* switch */
 
 	return 0;
 }
@@ -317,8 +444,9 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
 		break;
 
-	/* KWP 2000 normal */
+	/* KWP 2000 normal or mixed with CAN */
 	case OBD_COMM_MODE_KWP2K_NORM:
+	case OBD_COMM_MODE_KWP2K_MIXED:
 		kwp_mode = KWP2K_MODE_ENHANCED;
 
 	/* KWP 2000 debug */
@@ -386,8 +514,9 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		break;
 	} /* switch */
 
-	if (err == 0)
+	if (err == 0) {
 		obd_comm_mode = mode;
+	}
 
 	return err;
 }
@@ -414,6 +543,48 @@ obd_conf(char *data, int ln)
 }
 
 /* global functions */
+
+/*
+ * Callback routine processing received CAN frames.
+ */
+int
+obd_can_rx_cb(CANRxMessageBuffer *rxm)
+{
+	int i, j;
+	int id = CAN_GET_ID(rxm);
+	int mapln = sizeof (obd_can_map_verso) / sizeof (struct obd_can_map);
+	const struct obd_can_map *map = obd_can_map_verso;
+
+	/* Populate OBD PIDs from given frame. */
+	for (i = 0; i < mapln; i++) {
+		long value = 0;
+
+		/* Frame not interesting, skip it. */
+		if (map[i].canid != id) {
+			continue;
+		}
+
+		/* Transform data from raw CAN data to OBD PID. */
+		for (j = 0; j < map[i].ln; j++) {
+			value *= 256L;
+			value += rxm->data[map[i].offset + j];
+		}
+
+		value += map[i].add;
+		value *= map[i].mul;
+		value /= map[i].div;
+
+		for (j = map[i].ln - 1; j >= 0; j--) {
+			obd_can_pid_values[i].data[j] = value % 255L;
+			value /= 256L;
+		}
+
+		/* From now consider the data valid. */
+		obd_can_pid_values[i].valid = TRUE;
+	}
+
+	return 0;
+}
 
 /*
  * Processes query from master targeted to ECU module
@@ -453,14 +624,23 @@ obd_process_query(char *data, int ln)
 
 		/* Get PID value */
 		case OBD_CMD_GETPID:
-			err = obd_ecu_get_pid(hex2ulong(&data[2], 2));
-
-			if (err != 0) {
+			/* Module currently busy. */
+			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+				err = EBUSY;
 				respond_with_ack = FALSE;
-			} else {
-				/* Let OBD service respond with PID value */
-				respond_now = FALSE;
+
+				break;
 			}
+
+			/* We will obtain just one PID value. */
+			obd_autoscan_num = 1;
+			obd_autoscan_curr = 0;
+			obd_autoscan_pid_list[0] = hex2ulong(&data[2], 2);
+
+			/* Let OBD service respond. */
+			respond_now = FALSE;
+
+			obd_ecu_st = OBD_ECU_ST_GETPID;
 
 			break;
 
@@ -468,7 +648,15 @@ obd_process_query(char *data, int ln)
 		case OBD_CMD_GETPIDS:
 			/* PID list is empty. deactivate auto-scan mode */
 			if (ln == 2) {
-				obd_autoscan_run = FALSE;
+				obd_autoscan_stop = TRUE;
+				break;
+			}
+
+			/* Module currently busy. */
+			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+				err = EBUSY;
+				respond_with_ack = FALSE;
+
 				break;
 			}
 
@@ -485,15 +673,11 @@ obd_process_query(char *data, int ln)
 			/* Current PID */
 			obd_autoscan_curr = 0;
 
-			/* Kick off the auto-scan process */
-			err = obd_ecu_get_pid(obd_autoscan_pid_list[0]);
+			/* Activate auto-scan mode. */
+			obd_autoscan_run = TRUE;
+			obd_autoscan_stop = FALSE;
 
-			/* If error occurred, do not activate auto-scan mode. */
-			if (err == 0) {
-				obd_autoscan_run = TRUE;
-			} else {
-				respond_with_ack = FALSE;
-			}
+			obd_ecu_st = OBD_ECU_ST_GETPID;
 
 			break;
 
@@ -544,6 +728,7 @@ obd_init(void)
 
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;
+	obd_autoscan_stop = FALSE;
 
 	/* Initialize packet sequence. */
 	pkt_num = 1;

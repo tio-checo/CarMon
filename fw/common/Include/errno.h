@@ -9,7 +9,7 @@ extern "C" {
 #define	ENOENT	2
 #define	NOPATH	3
 #define	EMFILE	4
-#define	EACCESS	5
+#define	EIO	5	/* I/O error */
 #define	EBADF	6
 #define	EMCBD	7
 #define	ENOMEM	8
@@ -19,6 +19,7 @@ extern "C" {
 #define	EAGAIN	11
 #define	EPERM	12
 #define	EDATA	13
+#define	EACCES	13	/* Permission denied */
 #define EFAULT	14	/* Bad address */
 #define	EDRIVE	15
 #define	ECURDIR	16
@@ -27,6 +28,7 @@ extern "C" {
 #define	ENFILE	18
 #define	ENODEV	19	/* No such device */
 #define	ENOSPC	28	/* No space left on device */
+#define	ENOTSUP	48	/* Not supported */
 #define	EPROTO	71	/* Protocol error */
 
 #define	EDOM	33	/* Domain error */

@@ -17,6 +17,7 @@
 #include "master_comm.h"
 #include "can_hal.h"
 #include "can_snoop.h"
+#include "obd.h"
 #include "rt_light.h"
 #include "utils.h"
 
@@ -268,6 +269,9 @@ can_rx_svc(void)
 
 		/* Let the received frame undergo process of analysis. */
 		can_snoop_process_frame(rxm);
+
+		/* Let OBD layer process the frame. */
+		obd_can_rx_cb(rxm);
 
 		/* Move to the next message. */
 		CANUpdateChannel(CAN1, CAN_RX_CHANNEL);
@@ -673,6 +677,10 @@ can_init(void)
 	can_filter_mode = 0x01;
 	can_filter_mask = 0x7c0;
 	can_filter = 0x7df;
+
+	/* For now accept frames with SID addresses 0x2c0 - 0x2cf. */
+	can_filter_mask = 0x7f0;
+	can_filter = 0x2c0;
 
 	/*
 	 * Initialize CAN1 module.

@@ -317,7 +317,7 @@ class CommunicationService {
                     if (mEcuSim) {
                         mode = Obd.ECU_COMM_MODE_KWP2K_DEBUG;
                     } else {
-                        mode = Obd.ECU_COMM_MODE_KWP2K_NORMAL;
+                        mode = Obd.ECU_COMM_MODE_KWP2K_MIXED;
                     }
 
                     try {
@@ -905,12 +905,12 @@ class CommunicationService {
         /* Create list of PID priority groups */
         mPidSpeedGroups = new PidGroups();
 
-        /* Fast - EGR, EGR error */
-        String grpF[] = {"2C", "2D"};
+        /* Fast - RPM, EGR, EGR error */
+        String grpF[] = {"0C", "2C", "2D"};
         mPidSpeedGroups.create(0, "fast", grpF);
 
-        /* Medium - Intake Manifold Abs. Pressure, RPM, MAF, Rail Pressure */
-        String grpM[] = {"0B", "0C", "10", "23"};
+        /* Medium - MAF, Intake Manifold Abs. Pressure, Rail Pressure */
+        String grpM[] = {"10", "0B", "23"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*

@@ -23,6 +23,12 @@
 /* packet received */
 #define	MCOMM_CAN_RSP_FRAME_RECEIVED	'R'
 
+/* macros */
+/* extract ID from the message buffer */
+#define CAN_GET_ID(frame) \
+    ((frame)->msgEID.IDE ? ((frame)->msgSID.SID << 18) | (frame)->msgEID.EID : \
+    (frame)->msgSID.SID)
+
 /* types */
 /* supported modes */
 typedef enum {

@@ -9,6 +9,7 @@
 #define __OBD_H
 
 #include "GenericTypeDefs.h"
+#include "CAN.h"
 
 /* ECU submodule IDs */
 #define	ECU_OBD_ID		'O'	/* OBD module */
@@ -31,6 +32,7 @@ typedef enum {
     OBD_COMM_MODE_AUTO = 0,		/* Determined automatically */
     OBD_COMM_MODE_KWP2K_NORM,		/* KWP 2000 - normal mode */
     OBD_COMM_MODE_KWP2K_DEBUG,		/* KWP 2000 - debug mode */
+    OBD_COMM_MODE_KWP2K_MIXED,		/* KWP 2000 mixed with CAN */
     OBD_COMM_MODE_CAN_SID_250,		/* CAN - 11bit ID, 250kbit */
     OBD_COMM_MODE_CAN_SID_500,		/* CAN - 11bit ID, 500kbit */
     OBD_COMM_MODE_CAN_EID_250,		/* CAN - 29bit ID, 250kbit */
@@ -44,5 +46,8 @@ extern int obd_init(void);
 
 /* Processes query from master targeted to ECU module */
 extern int obd_process_query(char *, int);
+
+/* Callback routine processing received CAN frames */
+extern int obd_can_rx_cb(CANRxMessageBuffer *);
 
 #endif /* __OBD_H */

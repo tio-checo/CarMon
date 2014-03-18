@@ -974,6 +974,10 @@ mcom_err_translate(int err_in)
 		err_out = MCOM_NAK_MODULE_BUSY;
 		break;
 
+	case EIO:
+		err_out = MCOM_NAK_IO_ERROR;
+		break;
+
 	default:
 		err_out = err_in;
 		break;

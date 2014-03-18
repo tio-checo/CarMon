@@ -1141,7 +1141,12 @@ kwp2k_getchar(kwp2k_rx_char_t *k2p2k_ch)
 
 
 /*
- * Returns data received from ECU
+ * Waits for packet from ECU.
+ *
+ * Returns:
+ *        0 - packet received
+ *   EAGAIN - operation in progress
+ *   EIO    - ECU did not respond
  */
 int
 kwp2k_ul_recv(unsigned char **data, int *ln, int *err)
@@ -1159,7 +1164,7 @@ kwp2k_ul_recv(unsigned char **data, int *ln, int *err)
 		*data = NULL;
 		*err = kwp2k_ul_comm.error;
 
-		return EPROTO;
+		return EIO;
 	}
 
 	/* valid packet received, return reference to data payload */
