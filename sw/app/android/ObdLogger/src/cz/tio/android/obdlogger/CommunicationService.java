@@ -692,7 +692,7 @@ class CommunicationService {
                          * in the first group get processed.
                          */
                         /* TODO: Use some method for this check */
-                        if (currPid.equals("23")) {
+                        if (currPid.equals("49")) {
                             mLog.captureProbes(mPidLogList, mObd);
                         }
                     } else {
@@ -902,8 +902,8 @@ class CommunicationService {
         /* Create list of PID priority groups */
         mPidSpeedGroups = new PidGroups();
 
-        /* Fast - RPM, Rail Pressure */
-        String grpF[] = { "0C", "23"};
+        /* Fast - RPM, Rail Pressure, Accelerator pedal position D */
+        String grpF[] = { "0C", "23", "49" };
         mPidSpeedGroups.create(0, "fast", grpF);
 
         /* Medium - EGR, MAF, Intake Manifold Abs. Pressure */

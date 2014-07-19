@@ -103,6 +103,8 @@ class ECUSim(object):
                  'C233F101331A': ['83F11041336400'],
                  # supported PIDs 41-60
                  'C233F1014027': ['86F110414040DE000026'],
+                 # Accelerator pedal position D
+                 'C233F1014930': ['83F11041494000'],
                  # read stored DTCs
                  'C133F103E8': ['87F11043000000000000CB'],
                  # read pending DTCs

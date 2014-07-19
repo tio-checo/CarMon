@@ -82,7 +82,7 @@ static const struct obd_can_map {
 	/* Engine RPM */
 	{ 0x2c4, 0x0c, 0, 2, 0, 4 * 1000, 1285 },
 	/* Accelerator pedal position D */
-	{ 0x2c1, 0x49, 6, 1, 0, 1, 1 }
+	{ 0x2c1, 0x49, 6, 1, 0, 255, 200 }
 };
 
 /* List of structures holding PID values obtained via snooping CAN bus */
