@@ -31,6 +31,19 @@
 /* size of transmit buffer */
 #define CAN_TX_CHANNEL_SIZE	1
 
+/* OBD specific definitions */
+/* tester SID */
+#define	CAN_OBD_TESTER_SID	0x7df
+/* valid ECU SIDs - 0x7E8 - 0x7EF */
+#define	CAN_OBD_ECU_SID		0x7e8
+#define	CAN_OBD_ECU_SID_MSK	0x7f8
+/* tester EID */
+#define	CAN_OBD_TESTER_EID	0x18db33f1
+/* Size of CAN frame data payload - always 8 per standard */
+#define	CAN_OBD_DLC		8
+/* Max size of OBD data payload */
+#define	CAN_OBD_MAX_DATA_SIZE	(CAN_OBD_DLC - 1)
+
 /*
  * Bit timing configurations for supported speeds. Values specified
  *  - number of Time Quantum for Phase Segment 2 (PS2) - 1..8
@@ -72,7 +85,8 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 /* state machine handling packets received from CAN module */
 static enum {
 	CAN_RX_ST_IDLE = 0,	/* idle */
-	CAN_RX_ST_WAIT4PKT	/* wait for received message */
+	CAN_RX_ST_WAIT4PKT,	/* wait for received frame */
+	CAN_RX_ST_PASS2CONSUMER	/* passes received frame to upper layer */
 } can_rx_st;
 
 /* state machine handling packets transmitted by CAN module */
@@ -83,6 +97,11 @@ static enum {
 	CAN_TX_ST_CONF2,
 	CAN_TX_ST_CONF3
 } can_tx_st;
+
+/* Set to TRUE when CAN frame is received. Must be cleared by consumer. */
+static BOOL can_frame_received;
+/* Pointer to currently processed received frame. */
+static CANRxMessageBuffer *can_rx_frame;
 
 /*
  * CAN FIFOs
@@ -255,7 +274,7 @@ can_send_frame(char *pkt, int ln)
 static int
 can_rx_svc(void)
 {
-	CANRxMessageBuffer *rxm;
+	static CANRxMessageBuffer *rxm;
 
 	switch (can_rx_st) {
 	/* service idle */
@@ -270,11 +289,34 @@ can_rx_svc(void)
 		/* Let the received frame undergo process of analysis. */
 		can_snoop_process_frame(rxm);
 
-		/* Let OBD layer process the frame. */
+		/*
+		 * If OBD layer is operating in KWP2000/CAN mixed mode,
+		 * then this OBD callback takes care of processing
+		 * non-OBD CAN frames.
+		 */
 		obd_can_rx_cb(rxm);
 
-		/* Move to the next message. */
+		/* Proceed with passing received frame to upper layer. */
+		can_rx_st = CAN_RX_ST_PASS2CONSUMER;
+
+		break;
+
+	/*
+	 * Pass received message to upper layer.
+	 * Discard the frame if upper layer is not done with processing
+	 * previously received frame.
+	 */
+	case CAN_RX_ST_PASS2CONSUMER:
+		if (!can_frame_received) {
+			can_rx_frame = rxm;
+		}
+
+		can_frame_received = TRUE;
+
+		/* Wait for another message. */
 		CANUpdateChannel(CAN1, CAN_RX_CHANNEL);
+
+		can_rx_st = CAN_RX_ST_WAIT4PKT;
 
 		break;
 
@@ -672,15 +714,11 @@ can_init(void)
 	 * only. Tester sends frames with diagnostic functional address
 	 * 0x7DF. ECUs also accept 0x7E0 - 0x7E7 range of physical
 	 * addresses and respond with physical addresses which are within
-	 * range of 0x7E8 - 0x7Ef.
+	 * range of 0x7E8 - 0x7EF.
 	 */
 	can_filter_mode = 0x01;
 	can_filter_mask = 0x7c0;
 	can_filter = 0x7df;
-
-	/* For now accept frames with SID addresses 0x2c0 - 0x2cf. */
-	can_filter_mask = 0x7f0;
-	can_filter = 0x2c0;
 
 	/*
 	 * Initialize CAN1 module.
@@ -689,6 +727,7 @@ can_init(void)
 
 	/* Initialize state machine for receiving CAN frames. */
 	can_rx_st = CAN_RX_ST_WAIT4PKT;
+	can_frame_received = FALSE;
 
 	/* Initialize state machine for transmitting CAN frames. */
 	can_tx_st = CAN_TX_ST_IDLE;
@@ -838,3 +877,128 @@ can_process_query(char *data, int ln)
 	return 0;
 }
 
+/*
+ * Encodes OBD packet to CAN frame and sends the resulting packet to the bus.
+ *
+ * Returns:
+ *        0 - packet scheduled for transmission
+ *   EBUSY  - currently busy with sending previous packets
+ */
+int
+can_obd_send(unsigned char *data, int ln)
+{
+	CANTxMessageBuffer *txm;
+	int i;
+
+	if ((can_tx_st != CAN_TX_ST_IDLE) ||
+	    ((txm = CANGetTxMessageBuffer(CAN1, CAN_TX_CHANNEL)) == NULL)) {
+		return EBUSY;
+	}
+
+	/* Fill in message buffer with packet to be transmitted. */
+	/* First clean up the buffer. */
+	for (i = 0; i < 4; i++)
+		txm->messageWord[i] = 0;
+
+	/*
+	 * ID - only SID for now
+	 * TODO: add support for EID
+	 */
+	txm->msgSID.SID = CAN_OBD_TESTER_SID;
+	txm->msgEID.EID = 0;
+
+	/* DLC - always 8 bytes are sent per standard */
+	txm->msgEID.DLC = CAN_OBD_DLC;
+
+	/* RTR */
+	txm->msgEID.RTR = 0;
+
+	/*
+	 * IDE - only SID for now
+	 * TODO: add support for EID
+	 */
+	txm->msgEID.IDE = 0;
+
+	/* Add data payload. Make sure we don't write past buffer. */
+	if (ln > CAN_OBD_MAX_DATA_SIZE) {
+		ln = CAN_OBD_MAX_DATA_SIZE;
+	}
+
+	/* First data byte carries size of OBD payload. */
+	txm->data[0] = ln;
+
+	for (i = 0; i < ln; i++) {
+		txm->data[i + 1] = data[i];
+	}
+
+	/* Move pointer to the next free message buffer. */
+	CANUpdateChannel(CAN1, CAN_TX_CHANNEL);
+
+	/* Initiate the transmission. */
+	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
+	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
+
+	return 0;
+}
+
+/*
+ * Waits for CAN frame carrying OBD packet.
+ * TODO: Implement timeout mechanism, so that we do not wait
+ * for incoming packet forever.
+ *
+ * Returns:
+ *        0 - packet received
+ *   EAGAIN - operation in progress
+ *   EIO    - invalid (non-OBD) packet received
+ */
+int
+can_obd_recv(unsigned char **data, int *ln)
+{
+	static unsigned char obd_data[CAN_OBD_MAX_DATA_SIZE];
+
+	CANRxMessageBuffer *rxm;
+	int id;
+	int obd_ln, i;
+
+	/* Packet not received yet. */
+	if (!can_frame_received) {
+		return EAGAIN;
+	}
+
+	/* Save pointer to received frame and clear the flag. */
+	rxm = can_rx_frame;
+	can_frame_received = FALSE;
+
+	/*
+	 * It's not message from ECU. That is suspicious, as we should have
+	 * acceptance mask set appropriately.
+	 */
+	id = CAN_GET_ID(rxm);
+	if ((id & CAN_OBD_ECU_SID_MSK) != CAN_OBD_ECU_SID) {
+		return EIO;
+	}
+
+	/* Verify size of data payload - must be always 8 per standard. */
+	if (rxm->msgEID.DLC != CAN_OBD_DLC) {
+		return EIO;
+	}
+
+	/* The first data byte contains size of OBD data payload. */
+	obd_ln = rxm->data[0];
+
+	/* Invalid length of OBD data payload. */
+	if ((obd_ln > CAN_OBD_MAX_DATA_SIZE) || (obd_ln < 3)) {
+		return EIO;
+	}
+
+	/* CAN frame seems sane, so extract OBD data to local storage. */
+	for (i = 0; i < obd_ln; i++) {
+		obd_data[i] = rxm->data[i + 1];
+	}
+
+	/* Pass pointer to local storage and its size to the caller. */
+	*data = obd_data;
+	*ln = obd_ln;
+
+	return 0;
+}

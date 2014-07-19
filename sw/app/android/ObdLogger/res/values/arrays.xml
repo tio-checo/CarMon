@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocol_name">
+        <item>KWP2000 normal</item>
+        <item>KWP2000 debug</item>
+        <item>KWP2000 mixed with CAN</item>
+        <item>CAN 11bit 250kb</item>
+        <item>CAN 11bit 500kb</item>
+        <item>CAN 29bit 250kb</item>
+        <item>CAN 29bit 500kb</item>
+    </string-array>
+    <string-array name="pic_encoding">
+        <item>01</item>
+        <item>02</item>
+        <item>03</item>
+        <item>04</item>
+        <item>05</item>
+        <item>06</item>
+        <item>07</item>
+    </string-array>
+</resources>

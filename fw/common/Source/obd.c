@@ -21,6 +21,11 @@
 /* local variables */
 /* Type of lower communication layer */
 static OBD_COMM_MODE obd_comm_mode;
+
+/* pointer to lower layer functions for sending/receiving OBD packet */
+static int (*obd_send)(unsigned char *data, int ln);
+static int (*obd_recv)(unsigned char **data, int *ln);
+
 /*
  * list of OBD PIDs which are scanned and their values sent periodically
  * to master
@@ -192,7 +197,7 @@ obd_get_pid_from_can(int pid, unsigned char **value, int *ln)
  *        0 - PID value obtained
  *   EAGAIN - operation in progress
  *   EBUSY  - KWP2000 module busy - could not send the request
- *   EIO    - ECU did not respond
+ *   EIO    - ECU did not respond or invalid response received
  */
 static int
 obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
@@ -203,11 +208,10 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 
 	/* Operation in progress, wait for data or error. */
 	if (in_progress) {
-		unsigned char *kwp_data;
-		int kwp_ln;
-		int rx_err;
+		unsigned char *obd_data;
+		int obd_ln;
 
-		ret = kwp2k_ul_recv(&kwp_data, &kwp_ln, &rx_err);
+		ret = obd_recv(&obd_data, &obd_ln);
 
 		/* Operation in progress, try again later. */
 		if (ret == EAGAIN) {
@@ -217,9 +221,13 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 		/* Operation finished. */
 		in_progress = FALSE;
 
-		/* Pass resulting data to the caller, discard header. */
-		*d = kwp_data + 2;
-		*ln = kwp_ln - 2;
+		/*
+		 * Pass resulting data to the caller.
+		 * Drop the header which is in form of
+		 * [OBD_MODE_GET_PID | 0x40, pid].
+		 */
+		*d = obd_data + 2;
+		*ln = obd_ln - 2;
 
 		return ret;
 	}
@@ -237,7 +245,7 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 	obd_packet_ecu[0] = OBD_MODE_GET_PID;
 	obd_packet_ecu[1] = pid;
 
-	ret = kwp2k_ul_send(obd_packet_ecu, 2);
+	ret = obd_send(obd_packet_ecu, 2);
 
 	/* Packet sent out successfully, wait for ECU response */
 	if (ret == 0) {
@@ -305,7 +313,7 @@ obd_comm_ecu_svc(void)
 
 		/* PID value obtained, pass it to the master. */
 		if (ret == 0) {
-			/* Copy PID and its value to response data buffer. */
+			/* Copy PID value to response data buffer. */
 			for (i = 0; i < ln; i++) {
 				obd_resp_data_buf[i] = d[i];
 			}
@@ -440,25 +448,58 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 	switch (mode) {
 	/* Auto mode - TODO */
 	case OBD_COMM_MODE_AUTO:
+		/* obd_[send|recv] must be initialized to something. */
+		obd_send = kwp2k_ul_send;
+		obd_recv = kwp2k_obd_recv;
+
 		/* For now just make sure ACK is sent to master. */
 		obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
 		break;
 
-	/* KWP 2000 normal or mixed with CAN */
+	/* KWP2000 normal or mixed with CAN */
 	case OBD_COMM_MODE_KWP2K_NORM:
 	case OBD_COMM_MODE_KWP2K_MIXED:
 		kwp_mode = KWP2K_MODE_ENHANCED;
 
 	/* KWP 2000 debug */
 	case OBD_COMM_MODE_KWP2K_DEBUG:
+		/*
+		 * Initialize pointers to functions for sending and receiving
+		 * OBD packets.
+		 */
+		obd_send = kwp2k_ul_send;
+		obd_recv = kwp2k_obd_recv;
+
 		err = kwp2k_set_mode(kwp_mode);
 
+		/* Failed to configure KWP2000 mode, do not proceed. */
+		if (err != 0) {
+			break;
+		}
+
 		/*
-		 * If KWP 2000 module successfully commenced changing the mode,
+		 * Not operating in KWP2000/CAN mixed mode, so just wait
+		 * until KWP2000 configuration is finished.
+		 */
+		if (mode != OBD_COMM_MODE_KWP2K_MIXED) {
+			obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
+
+			break;
+		}
+
+		/*
+		 * Operating in mixed mode, configure CAN as well.
+		 * Accept frames with SID addresses 0x2C0 - 0x2CF.
+		 */
+		err = can_configure(MODE_LISTEN_ONLY, SPEED_500k, 0x01,
+		    0x2c0, 0x7f0, FALSE);
+
+		/*
+		 * If CAN module successfully commenced changing the mode,
 		 * wait until the switch is done, then send ACK to master.
 		 */
 		if (err == 0) {
-			obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
+			obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
 		}
 
 		break;
@@ -468,6 +509,13 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 	case OBD_COMM_MODE_CAN_EID_250:
 	case OBD_COMM_MODE_CAN_SID_500:
 	case OBD_COMM_MODE_CAN_EID_500:
+		/*
+		 * Initialize pointers to functions for sending and receiving
+		 * OBD packets.
+		 */
+		obd_send = can_obd_send;
+		obd_recv = can_obd_recv;
+
 		/* Configure speed. */
 		if ((mode == OBD_COMM_MODE_CAN_SID_250) ||
 		    (mode == OBD_COMM_MODE_CAN_EID_250)) {
@@ -476,7 +524,23 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 			can_speed = SPEED_500k;
 		}
 
-		/* Configure acceptance filter. */
+		/*
+		 * Configure acceptance filter to accept diagnostic messages.
+		 *
+		 * In case of SID tester sends frames with diagnostic
+		 * functional address 0x7DF. Besides that ECUs also accept
+		 * 0x7E0 - 0x7E7 range of physical addresses and respond
+		 * with physical addresses in range of 0x7E8 - 0x7EF.
+		 *
+		 * For EID, following CAN IDs are specified by standard:
+		 *   0x18DB33F1 - CAN identifier for functionally address
+		 *                request messages sent by the external
+		 *                test equipment.
+		 *   0x18DAxxF1 - Physical request CAN identifier
+		 *                from the external test equipment to ECU #xx.
+		 *   0x18DAF1xx - Physical response CAN identifier from ECU #xx
+		 *                to the external test equipment.
+		 */
 		if ((mode == OBD_COMM_MODE_CAN_SID_250) ||
 		    (mode == OBD_COMM_MODE_CAN_SID_500)) {
 			filter_mode = 0x01;
@@ -554,6 +618,14 @@ obd_can_rx_cb(CANRxMessageBuffer *rxm)
 	int id = CAN_GET_ID(rxm);
 	int mapln = sizeof (obd_can_map_verso) / sizeof (struct obd_can_map);
 	const struct obd_can_map *map = obd_can_map_verso;
+
+	/*
+	 * There is nothing to do if we are not operating
+	 * in KWP2000/CAN mixed mode.
+	 */
+	if (obd_comm_mode != OBD_COMM_MODE_KWP2K_MIXED) {
+		return 0;
+	}
 
 	/* Populate OBD PIDs from given frame. */
 	for (i = 0; i < mapln; i++) {
@@ -733,8 +805,8 @@ obd_init(void)
 	/* Initialize packet sequence. */
 	pkt_num = 1;
 
-	/* Select KWP2000 as default communication layer. */
-	obd_set_comm_mode(OBD_COMM_MODE_KWP2K_NORM);
+	/* Select CAN 11bit ID, 500kbit as default communication layer. */
+	obd_set_comm_mode(OBD_COMM_MODE_CAN_SID_500);
 
 	/* register and enable OBD service */
 	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);

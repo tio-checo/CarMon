@@ -186,7 +186,17 @@ extern int kwp2k_getchar(kwp2k_rx_char_t *k2p2k_ch);
 /* Returns data received from ECU */
 extern int kwp2k_ul_recv(unsigned char **, int *, int *);
 
-/* Send data to ECU via upper layer */
+/*
+ * Receives a packet and returns OBD data payload.
+ *
+ * Returns:
+ *        0 - packet received
+ *   EAGAIN - operation in progress
+ *   EIO    - ECU didn't respond
+ */
+extern int kwp2k_obd_recv(unsigned char **, int *);
+
+/* Sends data to ECU via upper layer */
 extern int kwp2k_ul_send(unsigned char *, int);
 
 /*

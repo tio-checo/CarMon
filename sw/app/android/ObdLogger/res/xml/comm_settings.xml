@@ -1,7 +1,10 @@
 <PreferenceScreen
     xmlns:android="http://schemas.android.com/apk/res/android">
-    <CheckBoxPreference
-        android:key="pref_debug_mode"
-        android:title="Debug mode"
-        android:summary="Debug with ECU simulator" />
+    <ListPreference
+        android:key="pref_ecu_protocol"
+        android:title="Protocol"
+        android:summary="Click to select ECU protocol"
+        android:entries="@array/protocol_name"
+        android:entryValues="@array/pic_encoding"
+        android:dialogTitle="Select communication protocol" />
 </PreferenceScreen>

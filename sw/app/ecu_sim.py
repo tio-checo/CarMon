@@ -332,7 +332,8 @@ def main():
 
 #    ecu_sim.comm_open('/dev/ttya', 9600)
 #    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a', 9600)
-    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
+#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
+    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.0021287e7ee5/dev/term/a', 9600)
 
     while True:
         # Wait for packet from tester.

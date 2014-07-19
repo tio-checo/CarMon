@@ -81,5 +81,24 @@ extern int can_configure(int, int, int, UINT32, UINT32, BOOL);
  */
 extern BOOL can_configuration_in_progress(void);
 
+/*
+ * Encodes OBD packet to CAN frame and sends the resulting packet to the bus.
+ *
+ * Returns:
+ *        0 - packet scheduled for transmission
+ *   EBUSY  - currently busy with sending previous packet
+ */
+extern int can_obd_send(unsigned char *, int);
+
+/*
+ * Waits for CAN frame carrying OBD packet.
+ *
+ * Returns:
+ *        0 - packet received
+ *   EAGAIN - operation in progress
+ *   EIO    - ECU did not respond
+ */
+extern int can_obd_recv(unsigned char **, int *);
+
 #endif /* __CAN_HAL_H */
 

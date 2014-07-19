@@ -140,8 +140,11 @@ class CommunicationService {
     private boolean mQuit = false;
     private int mState;
 
-    /* Runs in debug mode talking to ECU simulator. */
-    private boolean mEcuSim = false;
+    /*
+     * Underlying protocol used to communicate with ECU.
+     * Default to 'KWP2000 mixed with CAN' mode.
+     */
+    private String mEcuProtocol = Obd.ECU_COMM_MODE_KWP2K_MIXED;
 
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
@@ -310,18 +313,11 @@ class CommunicationService {
                         }
                     });
                 } else if (mState == ST_COMM_INIT_ECU_MODE) {
-                    String mode;
                     int res = -1;
 
-                    /* Set ECU communication mode. */
-                    if (mEcuSim) {
-                        mode = Obd.ECU_COMM_MODE_KWP2K_DEBUG;
-                    } else {
-                        mode = Obd.ECU_COMM_MODE_KWP2K_MIXED;
-                    }
-
+                    /* Set ECU communication protocol. */
                     try {
-                        if (mObd.setEcuCommMode(mode)) {
+                        if (mObd.setEcuCommMode(mEcuProtocol)) {
                             mState = ST_COMM_INIT_ECU;
                         } else {
                             /* Command failed, re-try. */
@@ -696,7 +692,7 @@ class CommunicationService {
                          * in the first group get processed.
                          */
                         /* TODO: Use some method for this check */
-                        if (currPid.equals("2D")) {
+                        if (currPid.equals("23")) {
                             mLog.captureProbes(mPidLogList, mObd);
                         }
                     } else {
@@ -861,17 +857,18 @@ class CommunicationService {
         /* Save reference to OBD communication object. */
         mObd = obd;
 
-        /* Initialize OBD packet seqence number. */
+        /* Initialize OBD packet sequence number. */
         mSeqNum = 1;
 
         /*
-         * Determine if we should run in debug mode talking to to ECU simulator.
-         * Default to normal mode when talking to real ECU.
+         * Determine ECU communication protocol.
+         * Default to 'KWP2000 mixed with CAN' mode.
          */
         SharedPreferences prefs = PreferenceManager
                 .getDefaultSharedPreferences(activity);
 
-        mEcuSim = prefs.getBoolean("pref_debug_mode", false);
+        mEcuProtocol = prefs.getString("pref_ecu_protocol",
+                Obd.ECU_COMM_MODE_KWP2K_MIXED);
 
         /* Create progress dialog displayed when connecting to PIC. */
         mPicConnectPd = new ProgressDialog(activity);
@@ -905,12 +902,12 @@ class CommunicationService {
         /* Create list of PID priority groups */
         mPidSpeedGroups = new PidGroups();
 
-        /* Fast - RPM, EGR, EGR error */
-        String grpF[] = {"0C", "2C", "2D"};
+        /* Fast - RPM, Rail Pressure */
+        String grpF[] = { "0C", "23"};
         mPidSpeedGroups.create(0, "fast", grpF);
 
-        /* Medium - MAF, Intake Manifold Abs. Pressure, Rail Pressure */
-        String grpM[] = {"10", "0B", "23"};
+        /* Medium - EGR, MAF, Intake Manifold Abs. Pressure */
+        String grpM[] = {"2C", "10", "0B"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*

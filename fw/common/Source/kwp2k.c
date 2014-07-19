@@ -1176,7 +1176,11 @@ kwp2k_ul_recv(unsigned char **data, int *ln, int *err)
 }
 
 /*
- * Instruct upper layer there are data to be sent to ECU.
+ * Instructs upper layer there are data to be sent to ECU.
+ *
+ * Returns:
+ *        0 - packet scheduled for transmission
+ *   EBUSY  - currently busy with sending previous packet
  */
 int
 kwp2k_ul_send(unsigned char *data, int ln)
@@ -1339,3 +1343,40 @@ kwp2k_set_mode(int new_mode)
 	return 0;
 }
 
+/*
+ * Receives a packet and returns OBD data payload.
+ *
+ * Returns:
+ *        0 - packet received
+ *   EAGAIN - operation in progress
+ *   EIO    - ECU either didn't respond or responded with invalid packet
+ */
+int
+kwp2k_obd_recv(unsigned char **data, int *ln)
+{
+	int err;	/* not used */
+	int ret, obd_ln;
+	unsigned char	*obd_data;
+
+	ret = kwp2k_ul_recv(&obd_data, &obd_ln, &err);
+
+	/*
+	 * If packet has been received, pass pointer to data payload
+	 * and its size to the caller.
+	 * Otherwise pass just return value.
+	 */
+	if (ret == 0) {
+		/*
+		 * Verify that at least some data (modulo header) have
+		 * been received.
+		 */
+		if (obd_ln < 3) {
+			return EIO;
+		}
+		
+		*data = obd_data;
+		*ln = obd_ln;
+	}
+
+	return ret;
+}
