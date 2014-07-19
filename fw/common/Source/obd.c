@@ -44,7 +44,8 @@ static BOOL obd_autoscan_stop;
 static enum {
 	OBD_ECU_ST_IDLE = 0,	/* machine idle */
 	OBD_ECU_ST_GETPID,	/* ask for pid value */
-	OBD_ECU_ST_SENDRESPONSE	/* send response to master */
+	OBD_ECU_ST_SENDRESPONSE,	/* send response to master */
+	OBD_ECU_ST_WAIT4SAMPLETIME	/* wait for sample time */
 } obd_ecu_st;
 
 /* packet to be sent to ECU */
@@ -91,6 +92,11 @@ static struct obd_can_pid_value {
 	unsigned char	data[2];	/* PID data */	
 } obd_can_pid_values[sizeof (obd_can_map_verso) /
     sizeof (struct obd_can_map)];
+
+/* Sample rate for periodic PID acquisition */
+static rtl_time_t obd_sr;
+/* Sample rate timer used during periodic PID acquisition */
+static rtl_timer_t *obd_sr_timer;
 
 /* local functions */
 
@@ -360,10 +366,23 @@ obd_comm_ecu_svc(void)
 			    obd_autoscan_num - 1 ? 0 :
 			    obd_autoscan_curr + 1;
 
-			obd_ecu_st = OBD_ECU_ST_GETPID;
+			obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
 		} else {
 			obd_ecu_st = OBD_ECU_ST_IDLE;
 		}
+
+		break;
+
+	/* Wait until there is a time to acquire another sample. */
+	case OBD_ECU_ST_WAIT4SAMPLETIME:
+		if (!rtl_timer_expired(obd_sr_timer))
+			break;
+
+		/* Re-initialize sample rate timer. */
+		rtl_timer_init(&obd_sr_timer, obd_sr);
+
+		/* Ask ECU for another PID value. */
+		obd_ecu_st = OBD_ECU_ST_GETPID;
 
 		break;
 	} /* switch */
@@ -732,15 +751,19 @@ obd_process_query(char *data, int ln)
 				break;
 			}
 
+			/* Get [ms] sample rate and convert it to [us]. */
+			obd_sr = hex2ulong(&data[2], 4) * 1000;
+
 			/*
-			 * Initialize list of scanned PIDs
+			 * Initialize list of scanned PIDs - skip first six
+			 * ASCII characters - header and sample rate.
 			 * Discard PIDs which exceed length of available buffer.
 			 */
-			obd_autoscan_num = (ln - 2) / 2;
+			obd_autoscan_num = (ln - 6) / 2;
 			if (obd_autoscan_num > OBD_PID_LIST_LN)
 				obd_autoscan_num = OBD_PID_LIST_LN;
 
-			hex2ucharbuf(&data[2], obd_autoscan_pid_list, ln - 2);
+			hex2ucharbuf(&data[6], obd_autoscan_pid_list, ln - 6);
 
 			/* Current PID */
 			obd_autoscan_curr = 0;
@@ -748,6 +771,9 @@ obd_process_query(char *data, int ln)
 			/* Activate auto-scan mode. */
 			obd_autoscan_run = TRUE;
 			obd_autoscan_stop = FALSE;
+
+			/* Initialize sample rate timer. */
+			rtl_timer_init(&obd_sr_timer, obd_sr);
 
 			obd_ecu_st = OBD_ECU_ST_GETPID;
 
@@ -807,6 +833,11 @@ obd_init(void)
 
 	/* Select CAN 11bit ID, 500kbit as default communication layer. */
 	obd_set_comm_mode(OBD_COMM_MODE_CAN_SID_500);
+
+	/* Set default sample rate during periodic PID acquisition to 50ms. */
+	obd_sr = 50 * 1000;
+	obd_sr_timer = NULL;
+	rtl_timer_init(&obd_sr_timer, 0);
 
 	/* register and enable OBD service */
 	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);

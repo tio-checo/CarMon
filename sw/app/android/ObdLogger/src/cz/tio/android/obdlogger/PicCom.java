@@ -371,15 +371,17 @@ public class PicCom {
     /**
      * Configures OBD auto-scan mode.
      *
-     * @param
+     * @param    pidList                    the list of PIDs to be scanned
+     *           sampleRate                 4 HEX ASCII characters specifying
+     *                                      sample rate in [ms]
      * @return
      * @throws   PicTimeoutExpiredException when timeout expires while
      *                                      waiting for data from PIC
      *           PicConnectionLostException when lost connection with PIC
      */
-    public int configObdAutoScan(String pidList)
+    public int configObdAutoScan(String pidList, String sampleRate)
             throws PicTimeoutExpiredException, PicConnectionLostException {
-        sendPacket("EOR" + pidList);
+        sendPacket("EOR" + sampleRate + pidList);
 
         /* Wait just for ACK */
         return waitForAckNak("E", true, false);

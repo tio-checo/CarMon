@@ -437,8 +437,9 @@ class CommunicationService {
                         try {
                             /*
                              * Configure and start OBD auto-scan mode.
+                             * Set sample rate to 50 ms.
                              */
-                            pc.configObdAutoScan(mPidAutoScanList);
+                            pc.configObdAutoScan(mPidAutoScanList, "0032");
                         } catch (PicTimeoutExpiredException e) {
                             /* Timeout expired, re-try. */
                             mLog.w("Failed to configure OBD auto-scan.");
@@ -581,7 +582,8 @@ class CommunicationService {
 
                             /* Configure and start OBD auto-scan mode */
                             try {
-                                pc.configObdAutoScan(mPidAutoScanList);
+                                /* Set sample rate to 50 ms. */
+                                pc.configObdAutoScan(mPidAutoScanList, "0032");
                             } catch (PicTimeoutExpiredException e) {
                                 /* Failed to configure auto-scan mode, retry. */
                                 mState = ST_COMM_INIT_ECU;

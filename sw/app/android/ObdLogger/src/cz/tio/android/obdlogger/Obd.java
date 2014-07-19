@@ -115,7 +115,7 @@ public class Obd {
         /* Turn off auto-scan mode. */
         if (mComEcuEstablished) {
             try {
-                mPicCom.configObdAutoScan("");
+                mPicCom.configObdAutoScan("", "");
             } catch (PicTimeoutExpiredException e) {
                 ret = false;
             } catch (PicConnectionLostException e) {
