@@ -92,7 +92,9 @@ static enum {
 /* state machine handling packets transmitted by CAN module */
 static enum {
 	CAN_TX_ST_IDLE = 0,	/* idle */
-	CAN_TX_ST_WAIT4TXDONE,	/* wait transmission to be done */
+	CAN_TX_ST_WAIT4TXDONE,	/* wait for transmission to be done */
+	/* wait for transmission to be done, send result to master */
+	CAN_TX_ST_WAIT4TXDONE_SENDRES,
 	CAN_TX_ST_CONF1,	/* apply configuration to the CAN module */
 	CAN_TX_ST_CONF2,
 	CAN_TX_ST_CONF3
@@ -262,7 +264,7 @@ can_send_frame(char *pkt, int ln)
 	CANUpdateChannel(CAN1, CAN_TX_CHANNEL);
 
 	/* Initiate the transmission. */
-	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
+	can_tx_st = CAN_TX_ST_WAIT4TXDONE_SENDRES;
 	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
 
 	return 0;
@@ -377,6 +379,7 @@ can_tx_svc(void)
 
 	/* Wait for packet to be transmitted. */
 	case CAN_TX_ST_WAIT4TXDONE:
+	case CAN_TX_ST_WAIT4TXDONE_SENDRES:
 		txc = CANGetTxChannelCondition(CAN1, CAN_TX_CHANNEL);
 
 		/* Wait until all messages are transmitted. */
@@ -384,15 +387,19 @@ can_tx_svc(void)
 			break;
 
 		/*
-		 * If error occurred during transmission, inform master via
-		 * NAK response containing error code; otherwise respond
-		 * with ACK.
+		 * If master initiated transmission, inform master about
+		 * the result.
+		 * Send NAK response containing error code in case of error;
+		 * ACK otherwise.
 		 */
-		txc &= CAN_TX_CHANNEL_ERROR | CAN_TX_CHANNEL_ARBITRATION_LOST;
-		if (txc == 0) {
-			can_send_ack_response_to_master();
-		} else {
-			can_send_nak_response_to_master(0x80 | txc);
+		if (can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES) {
+			txc &= CAN_TX_CHANNEL_ERROR |
+			    CAN_TX_CHANNEL_ARBITRATION_LOST;
+			if (txc == 0) {
+				can_send_ack_response_to_master();
+			} else {
+				can_send_nak_response_to_master(0x80 | txc);
+			}
 		}
 
 		can_tx_st = CAN_TX_ST_IDLE;
