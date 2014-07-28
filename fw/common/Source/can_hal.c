@@ -43,6 +43,8 @@
 #define	CAN_OBD_DLC		8
 /* Max size of OBD data payload */
 #define	CAN_OBD_MAX_DATA_SIZE	(CAN_OBD_DLC - 1)
+/* 200ms receive timeout  */
+#define	CAN_OBD_RX_TIMEOUT	200000
 
 /*
  * Bit timing configurations for supported speeds. Values specified
@@ -95,6 +97,12 @@ static enum {
 	CAN_TX_ST_WAIT4TXDONE,	/* wait for transmission to be done */
 	/* wait for transmission to be done, send result to master */
 	CAN_TX_ST_WAIT4TXDONE_SENDRES,
+	CAN_TX_ST_ABORT,	/* abort transmission */
+	/* abort transmission, inform master */
+	CAN_TX_ST_ABORT_SENDRES,
+	CAN_TX_ST_RESETFIFO,	/* reset FIFO */
+	/* reset FIFO, inform master */
+	CAN_TX_ST_RESETFIFO_SENDRES,
 	CAN_TX_ST_CONF1,	/* apply configuration to the CAN module */
 	CAN_TX_ST_CONF2,
 	CAN_TX_ST_CONF3
@@ -135,6 +143,9 @@ static UINT32 can_filter;
 static UINT32 can_filter_mask;
 /* If TRUE, sends ACK to master after done with configuration. */
 static BOOL can_conf_send_ack;
+
+/* OBD RX timer */
+static rtl_timer_t *can_obd_rx_timer;
 
 /* local functions */
 
@@ -371,6 +382,7 @@ static int
 can_tx_svc(void)
 {
 	CAN_TX_CHANNEL_CONDITION txc;
+	CAN_ERROR_STATE txe;
 
 	switch (can_tx_st) {
 	/* service idle */
@@ -381,10 +393,33 @@ can_tx_svc(void)
 	case CAN_TX_ST_WAIT4TXDONE:
 	case CAN_TX_ST_WAIT4TXDONE_SENDRES:
 		txc = CANGetTxChannelCondition(CAN1, CAN_TX_CHANNEL);
+		txe = CANGetErrorState(CAN1);
 
-		/* Wait until all messages are transmitted. */
-		if (txc & CAN_TX_CHANNEL_TRANSMITTING)
+		/*
+		 * Wait until all messages are transmitted. Abort transmission
+		 * if transmitter enters "Error State Bus Passive" state
+		 * due to problem encountered during packet transmission.
+		 */
+		if ((txc & CAN_TX_CHANNEL_TRANSMITTING) &&
+		    !(txe & CAN_TX_BUS_PASSIVE_STATE)) {
 			break;
+		}
+
+		/*
+		 * Transmitter entered "Error State Bus Passive" state,
+		 * abort transmission.
+		 */
+		if (txe & CAN_TX_BUS_PASSIVE_STATE) {
+			CANAbortPendingTx(CAN1, CAN_TX_CHANNEL);
+
+			if (can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES) {
+				can_tx_st = CAN_TX_ST_ABORT_SENDRES;
+			} else {
+				can_tx_st = CAN_TX_ST_ABORT;
+			}
+
+			break;
+		}
 
 		/*
 		 * If master initiated transmission, inform master about
@@ -404,6 +439,44 @@ can_tx_svc(void)
 
 		can_tx_st = CAN_TX_ST_IDLE;
 
+		break;
+
+	/* Abort transmission. */
+	case CAN_TX_ST_ABORT:
+	case CAN_TX_ST_ABORT_SENDRES:
+		/* Wait until transmission has been aborted. */
+		if (!CANIsTxAborted(CAN1, CAN_TX_CHANNEL)) {
+			break;
+		}
+
+		/* Reset TX FIFO */
+		CANResetChannel(CAN1, CAN_TX_CHANNEL);
+
+		if (can_tx_st == CAN_TX_ST_ABORT_SENDRES) {
+			can_tx_st = CAN_TX_ST_RESETFIFO_SENDRES;
+		} else {
+			can_tx_st = CAN_TX_ST_RESETFIFO;
+		}
+
+		break;
+
+	/* Reset TX FIFO. */
+	case CAN_TX_ST_RESETFIFO:
+	case CAN_TX_ST_RESETFIFO_SENDRES:
+		/* Wait until TX FIFO has been reset. */
+		if (!CANIsChannelReset(CAN1, CAN_TX_CHANNEL)) {
+			break;
+		}
+
+		/*
+		 * If master initiated transmission, inform master that
+		 * the transmission had to be aborted.
+		 */
+		if (can_tx_st == CAN_TX_ST_RESETFIFO_SENDRES) {
+			can_send_nak_response_to_master(MCOM_NAK_IO_ERROR);
+		}
+
+		can_tx_st = CAN_TX_ST_IDLE;
 		break;
 
 	/* Switch to configuration mode. */
@@ -746,6 +819,10 @@ can_init(void)
 	/* Initialize CAN analyzer. */
 	can_snoop_init();
 
+	/* Initialize CAN OBD RX timer. */
+	can_obd_rx_timer = NULL;
+	rtl_timer_init(&can_obd_rx_timer, 0);
+
 	/* Register and enable RFID service. */
 	rtl_svc_init("Can", can_svc, TRUE, FALSE);
 
@@ -945,18 +1022,19 @@ can_obd_send(unsigned char *data, int ln)
 	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
 	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
 
+	/* Arm Rx timer */
+	rtl_timer_init(&can_obd_rx_timer, CAN_OBD_RX_TIMEOUT);
+
 	return 0;
 }
 
 /*
  * Waits for CAN frame carrying OBD packet.
- * TODO: Implement timeout mechanism, so that we do not wait
- * for incoming packet forever.
  *
  * Returns:
  *        0 - packet received
  *   EAGAIN - operation in progress
- *   EIO    - invalid (non-OBD) packet received
+ *   EIO    - ECU not responded or malformed packet received
  */
 int
 can_obd_recv(unsigned char **data, int *ln)
@@ -966,6 +1044,10 @@ can_obd_recv(unsigned char **data, int *ln)
 	CANRxMessageBuffer *rxm;
 	int id;
 	int obd_ln, i;
+
+	/* If ECU has not responded in given time, abort. */
+	if (rtl_timer_expired(can_obd_rx_timer))
+		return EIO;
 
 	/* Packet not received yet. */
 	if (!can_frame_received) {
