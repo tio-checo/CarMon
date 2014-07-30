@@ -5,5 +5,10 @@
         android:summary="Communication settings">
         <extra android:name="resource" android:value="comm_settings" />
     </header>
+    <header android:fragment="cz.tio.android.obdlogger.DataLoggerPreferenceFragment"
+        android:title="Data Logger"
+        android:summary="Data logging options">
+        <extra android:name="resource" android:value="data_log_settings" />
+    </header>
 </preference-headers>
 

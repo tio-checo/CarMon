@@ -146,6 +146,9 @@ class CommunicationService {
      */
     private String mEcuProtocol = Obd.ECU_COMM_MODE_KWP2K_MIXED;
 
+    /* Flag indicating if starting voltage should be captured. */
+    private boolean mCaptureStartVoltage;
+
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
 
@@ -212,7 +215,6 @@ class CommunicationService {
             /* Currently processed PID */
             String currPid = "";
             PicCom pc = mObd.getPicCom();
-            boolean captureStartVoltage = false;
             int connRetry = 1;
 
             while (!mQuit) {
@@ -380,40 +382,40 @@ class CommunicationService {
                     currPid = mPidSpeedGroups.getNextPidToProcess();
 
                     /*
-                     * If engine is idle, capture battery voltage during
-                     * starting phase. Test by measuring battery voltage.
+                     * If desired, capture battery voltage during starting
+                     * phase. But only if engine is not already running.
+                     * Test by measuring battery voltage.
                      * If engine is running, charging is active and battery
                      * voltage is higher comparing with idle phase.
                      */
                     int[] v = new int[1];
 
-                    try {
-                        double batt;
+                    if (mCaptureStartVoltage) {
+                        try {
+                            double batt;
 
-                        v[0] = pc.getAdValue("08");
-                        batt = v[0] * 0.01837;
+                            v[0] = pc.getAdValue("08");
+                            batt = v[0] * 0.01837;
 
-                        if (batt > 13.0) {
                             /* Engine running */
-                            captureStartVoltage = false;
-                        } else {
-                            /* Engine idle, measure starting voltage. */
-                            captureStartVoltage = true;
+                            if (batt > 13.0) {
+                                mCaptureStartVoltage = false;
+                            }
+                        } catch (PicTimeoutExpiredException e) {
+                            /* Failed to obtain battery voltage, skip this phase. */
+                            mLog.w("Failed to obtain battery voltage.");
+
+                            mCaptureStartVoltage = false;
+                        } catch (PicConnectionLostException e) {
+                            /* Lost connection with PIC, try to re-connect. */
+                            mState = ST_COMM_INIT_PIC;
+
+                            continue;
                         }
-                    } catch (PicTimeoutExpiredException e) {
-                        /* Failed to obtain battery voltage, skip this phase. */
-                        mLog.w("Failed to obtain battery voltage.");
-
-                        captureStartVoltage = false;
-                    } catch (PicConnectionLostException e) {
-                        /* Lost connection with PIC, try to re-connect. */
-                        mState = ST_COMM_INIT_PIC;
-
-                        continue;
                     }
 
                     try {
-                        if (!confAcqModule(captureStartVoltage)) {
+                        if (!confAcqModule(mCaptureStartVoltage)) {
                             /* Failed to configure data acq module, re-try. */
                             continue;
                         }
@@ -433,7 +435,7 @@ class CommunicationService {
                         mDashboard.updateIndicator(battProbe);
                     }
 
-                    if (!captureStartVoltage) {
+                    if (!mCaptureStartVoltage) {
                         try {
                             /*
                              * Configure and start OBD auto-scan mode.
@@ -461,7 +463,7 @@ class CommunicationService {
                      * If capturing battery voltage during engine start,
                      * wait longer, since it may take a while.
                      */
-                    if (captureStartVoltage) {
+                    if (mCaptureStartVoltage) {
                         tout = 60;
                     } else {
                         tout = 1;
@@ -563,13 +565,13 @@ class CommunicationService {
                          * acquired data to file and switch to periodic
                          * acquisition of average battery voltage.
                          */
-                        if (captureStartVoltage) {
+                        if (mCaptureStartVoltage) {
                             mLog.i("Measuring of starting voltage done.");
 
                             /* Log acquired data to file. */
                             mLog.logStartingVoltage(p);
 
-                            captureStartVoltage = false;
+                            mCaptureStartVoltage = false;
 
                             /* Reconfigure acquisition module. */
                             try {
@@ -862,15 +864,20 @@ class CommunicationService {
         /* Initialize OBD packet sequence number. */
         mSeqNum = 1;
 
-        /*
-         * Determine ECU communication protocol.
-         * Default to 'KWP2000 mixed with CAN' mode.
-         */
+        /* Read configuration. */
         SharedPreferences prefs = PreferenceManager
                 .getDefaultSharedPreferences(activity);
 
+        /*
+         * ECU communication protocol.
+         * Default to 'KWP2000 mixed with CAN' mode.
+         */
         mEcuProtocol = prefs.getString("pref_ecu_protocol",
                 Obd.ECU_COMM_MODE_KWP2K_MIXED);
+
+        /* Flag indicating if starting voltage should be captured. */
+        mCaptureStartVoltage = prefs.getBoolean("pref_meas_start_voltage",
+            false);
 
         /* Create progress dialog displayed when connecting to PIC. */
         mPicConnectPd = new ProgressDialog(activity);
