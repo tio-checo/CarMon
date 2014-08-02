@@ -666,7 +666,7 @@ obd_can_rx_cb(CANRxMessageBuffer *rxm)
 		value /= map[i].div;
 
 		for (j = map[i].ln - 1; j >= 0; j--) {
-			obd_can_pid_values[i].data[j] = value % 255L;
+			obd_can_pid_values[i].data[j] = value % 256L;
 			value /= 256L;
 		}
 
