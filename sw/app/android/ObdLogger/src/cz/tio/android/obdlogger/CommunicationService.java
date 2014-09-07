@@ -915,8 +915,8 @@ class CommunicationService {
         String grpF[] = { "0C", "23", "49" };
         mPidSpeedGroups.create(0, "fast", grpF);
 
-        /* Medium - EGR, MAF, Intake Manifold Abs. Pressure */
-        String grpM[] = {"2C", "10", "0B"};
+        /* Medium - Calculated Load, EGR, MAF, Intake Manifold Abs. Pressure */
+        String grpM[] = {"04", "2C", "10", "0B"};
         mPidSpeedGroups.create(1, "medium", grpM);
 
         /*
