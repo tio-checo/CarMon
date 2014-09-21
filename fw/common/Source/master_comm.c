@@ -476,7 +476,8 @@ mcom_process_packet_st(void)
 
 				mcom_prepare_generic_response(&mcom_resp,
 				    MCOM_RESP_DATA, data,
-				    MCOM_DATA_TYPE_BYTE, 1);
+				    MCOM_DATA_TYPE_BYTE, 1,
+				    MCOM_DONT_FRAGMENT);
 			} else {
 				/*
 				 * Malformed character received, send also
@@ -487,7 +488,7 @@ mcom_process_packet_st(void)
 
 				mcom_prepare_generic_response(&mcom_resp,
 				    MCOM_RESP_RXERR, data, MCOM_DATA_TYPE_BYTE,
-				    2);
+				    2, MCOM_DONT_FRAGMENT);
 			}
 		} else {
 			unsigned char *d;
@@ -503,7 +504,8 @@ mcom_process_packet_st(void)
 			if (ret == 0) {
 				mcom_prepare_generic_response(&mcom_resp,
 				    MCOM_RESP_DATA, d,
-				    MCOM_DATA_TYPE_BYTE, ln);
+				    MCOM_DATA_TYPE_BYTE, ln,
+				    MCOM_DONT_FRAGMENT);
 			} else {
 				data[0] = (rx_err >> 8) & 0xff;
 				data[1] = rx_err & 0xff;
@@ -511,7 +513,8 @@ mcom_process_packet_st(void)
 				/* error occurred */
 				mcom_prepare_generic_response(&mcom_resp,
 				    MCOM_RESP_NAK, data,
-				    MCOM_DATA_TYPE_BYTE, 2);
+				    MCOM_DATA_TYPE_BYTE, 2,
+				    MCOM_DONT_FRAGMENT);
 			}
 		}
 
@@ -631,15 +634,17 @@ mcom_tx_st(void)
 		/*
 		 * Complete header has been sent, proceed with sending
 		 * data payload.
+		 * cur_pos points to start of next fragment in data buffer.
 		 */
 
-		buf_index = 0;
+		buf_index = mcom_co.resp->cur_pos;
 
 		/*
 		 * NULL data pointer or zero data length indicate there
 		 * is no data payload.
 		 */
-		if ((mcom_co.resp->data == NULL) || (mcom_co.resp->data_ln == 0)) {
+		if ((mcom_co.resp->data == NULL) ||
+		    (mcom_co.resp->data_ln == 0)) {
 			/* No data payload, proceed with checksum. */
 			item_ln = 2;
 			uint2hex(chsum, tmp_buf, 1);
@@ -680,7 +685,21 @@ mcom_tx_st(void)
 		}
 
 		item_index = 0;
-		buf_ln = mcom_co.resp->data_ln;
+
+		/*
+		 * For fragmented response, 'chunk_size' number of words
+		 * is sent at once. Last fragment may contain less than
+		 * 'chunk_size' words.
+		 */
+		if (mcom_fragment_response(mcom_co.resp)) {
+			int remains = mcom_co.resp->data_ln -
+			    mcom_co.resp->cur_pos;
+
+			buf_ln = remains >= mcom_co.resp->chunk_size ?
+				mcom_co.resp->chunk_size : remains;
+		} else {
+			buf_ln = mcom_co.resp->data_ln;
+		}
 
 		mcom_st_tx = MCOM_ST_TX_DATA;
 
@@ -754,16 +773,30 @@ mcom_tx_st(void)
 
 	/* send EOF */
 	case MCOM_ST_TX_EOF:
-		/* Save pointer to the processed response. */
+		/* Save pointer to just processed response. */
 		r = mcom_co.resp;
 
-		/*
-		 * Move to the next packet in the queue. Continue with sending
-		 * until all packets in the queue are transmitted.
-		 */
+		/* Remove processed response from the queue. */
 		mcom_co.resp = r->next;
 		r->next = NULL;
 
+		/*
+		 * If response is sent in fragments and this is not
+		 * the last fragment, prepare next fragment and put it
+		 * at the end of the list.
+		 * That guarantees that other modules can send their
+		 * responses as well.
+		 */
+		if (mcom_fragment_response(r) && !mcom_is_last_fragment(r)) {
+			r->cur_pos += r->chunk_size;
+
+			mcom_queue_response(r);
+		}
+
+		/* 
+		 * Continue with sending until all packets
+		 * in the queue are transmitted.
+		 */
 		if (mcom_co.resp == NULL) {
 			mcom_st_tx = MCOM_ST_TX_IDLE;
 		} else {
@@ -868,6 +901,36 @@ mcom_queue_response(mcom_response_t *resp)
 {
 	mcom_response_t *r;
 
+	if (mcom_fragment_response(resp)) {
+		/*
+		 * Increment fragment number. Last fragment has fragment
+		 * number set to zero.
+		 */
+		if (mcom_is_last_fragment(resp)) {
+			resp->fragment_number = 0;
+		} else {
+			resp->fragment_number++;
+
+			if (resp->fragment_number > 255) {
+				resp->fragment_number = 1;
+			}
+		}
+
+		/*
+		 * Header of fragmented message carries fragment number.
+		 * Caller is responsible for allocating necessary writable
+		 * space which can hold at least two character long
+		 * null-terminated string.
+		 */
+		snprintf(resp->header, 3, "%02X", resp->fragment_number);
+	}
+
+	/*
+	 * Response is to be put at the end of the queue, so clear pointer
+	 * to the next.
+	 */
+	resp->next = NULL;
+
 	/*
 	 * If transmitter is idle, put the response to the beginning
 	 * of the queue and kick off transmission process.
@@ -894,7 +957,7 @@ mcom_queue_response(mcom_response_t *resp)
  */
 int
 mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
-    int dtype, int dln)
+    int dtype, int dln, int chunk_size)
 {
 	/*
 	 * If structure holds data which have not yet been sent to master,
@@ -911,6 +974,14 @@ mcom_prepare_generic_response(mcom_response_t *resp, char *header, void *data,
 	resp->data_type = dtype;
 	/* data length */
 	resp->data_ln = dln;
+	/* chunk size */
+	resp->chunk_size = chunk_size;
+
+	/* Reset buffer pointer - used when sending fragmented response. */
+	resp->cur_pos = 0;
+
+	/* Reset fragment number. */
+	resp->fragment_number = 0;
 
 	return 0;
 }
@@ -922,7 +993,7 @@ int
 mcom_prepare_ack_response(mcom_response_t *resp)
 {
 	return mcom_prepare_generic_response(resp, MCOM_RESP_ACK, NULL,
-	    MCOM_DATA_TYPE_BYTE, 0);
+	    MCOM_DATA_TYPE_BYTE, 0, MCOM_DONT_FRAGMENT);
 }
 
 /*
@@ -935,7 +1006,7 @@ mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
 
 	e = err;
 	return mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
-	    MCOM_DATA_TYPE_BYTE, 1);
+	    MCOM_DATA_TYPE_BYTE, 1, MCOM_DONT_FRAGMENT);
 }
 
 /*

@@ -109,7 +109,7 @@ obd_send_data_response_to_master(char *hdr, int ln)
 	int err;
 
 	err = mcom_prepare_generic_response(&obd_resp_data, hdr,
-	    obd_resp_data_buf, MCOM_DATA_TYPE_BYTE, ln);
+	    obd_resp_data_buf, MCOM_DATA_TYPE_BYTE, ln, MCOM_DONT_FRAGMENT);
 
 	if (err == 0) {
 		mcom_queue_response(&obd_resp_data);

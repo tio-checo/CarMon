@@ -158,7 +158,7 @@ can_send_data_response_to_master(char *hdr, char *buf)
 	int err;
 
 	err = mcom_prepare_generic_response(&can_resp_data, hdr,
-	    buf, MCOM_DATA_TYPE_ASCII, strlen(buf));
+	    buf, MCOM_DATA_TYPE_ASCII, strlen(buf), MCOM_DONT_FRAGMENT);
 
 	if (err == 0) {
 		mcom_queue_response(&can_resp_data);

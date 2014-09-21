@@ -262,7 +262,7 @@ static int
 rfid_send_data_response_to_master(char *pkt_hdr, char *buf, int ln)
 {
 	mcom_prepare_generic_response(&rfid_resp_data, pkt_hdr,
-	    buf, MCOM_DATA_TYPE_ASCII, ln);
+	    buf, MCOM_DATA_TYPE_ASCII, ln, MCOM_DONT_FRAGMENT);
 
 	fl_send_data = TRUE;
 

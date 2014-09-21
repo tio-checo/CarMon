@@ -61,16 +61,42 @@
 #define MCOM_NAK_KWP2K_BUSY	0x0c	/* Communication module is busy */
 #define MCOM_NAK_ECU_UKNOWN	0xff	/* unknown error */
 
+/*
+ * Indicates that message should not be fragmented. It is intentionally
+ * defined as zero, so that newly created response is by default
+ * not fragmented.
+ */
+#define	MCOM_DONT_FRAGMENT	0
+
 /* types */
 /* Structure encapsulating response to master */
 typedef struct mcom_response {
 	char id;			/* module ID */
+/*
+ * Number of words sent in one fragment. If set to MCOM_DONT_FRAGMENT,
+ * response is not fragmented and is sent to master as one message.
+ */
+	int chunk_size;
 	char *header;			/* pointer to packet header */
 	void *data;			/* pointer to data payload */
 	unsigned int data_type;	/* data type */
 	unsigned int data_ln;		/* data length */
-	struct mcom_response *next;	/* next response to be sent to master */
+/* Points to the data in buffer used to assemble next fragment. */
+	unsigned int cur_pos;
+/* Fragment number. */
+	unsigned int fragment_number;
+/* Pointer to next response to be sent to master. */
+	struct mcom_response *next;
 } mcom_response_t;
+
+/* macros */
+/* TRUE if this is the last fragment of the response. */
+#define	mcom_is_last_fragment(r)	\
+    ((r)->cur_pos + (r)->chunk_size >= (r)->data_ln)
+
+/* TRUE if the response should be fragmented. */
+#define mcom_fragment_response(r)	\
+    ((r)->chunk_size != MCOM_DONT_FRAGMENT)
 
 /* initialize master communication module */
 extern int mcom_init(void);
@@ -86,7 +112,7 @@ extern int mcom_prepare_nak_response(mcom_response_t *, unsigned char);
 
 /* Prepare generic response to master. */
 extern int mcom_prepare_generic_response(mcom_response_t *, char *, void *,
-    int, int);
+    int, int, int);
 
 /* Returns TRUE if given response structure is in use; FALSE otherwise. */
 extern BOOL mcom_response_inuse(mcom_response_t *);

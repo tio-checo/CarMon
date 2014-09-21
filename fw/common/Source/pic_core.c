@@ -146,7 +146,7 @@ static int
 pcore_send_data_response_to_master(void *buf, int ln, int type)
 {
 	mcom_prepare_generic_response(&pcore_resp_data, "00",
-	    buf, type, ln);
+	    buf, type, ln, MCOM_DONT_FRAGMENT);
 
 	fl_send_data = TRUE;
 

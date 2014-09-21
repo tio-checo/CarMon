@@ -102,8 +102,6 @@ static BOOL fl_send_ack_nak;
 
 /* structure holding data response to master */
 static mcom_response_t daq_resp_data;
-/* If set to TRUE, send response containing data to master */
-static BOOL fl_send_data;
 
 /* Timers */
 /*
@@ -156,13 +154,19 @@ daq_sqrt(int x)
 static int
 daq_send_data_response_to_master(void)
 {
-	mcom_prepare_generic_response(&daq_resp_data, "00",
-	    daq_pp.buf, MCOM_DATA_TYPE_WORD, daq_pp.ln);
+	static char daq_resp_data_header[3];
 
-	/* Set id of module which is going to respond */
-	daq_resp_data.id = MCOMM_DAQ_ID;
+	/*
+	 * Header will carry fragment number and is populated
+	 * in mcom_queue_response(). Send response as fragments.
+	 * Each fragment will carry 25 words.
+	 */
 
-	fl_send_data = TRUE;
+	mcom_prepare_generic_response(&daq_resp_data, daq_resp_data_header,
+	    daq_pp.buf, MCOM_DATA_TYPE_WORD, daq_pp.ln, 25);
+
+	/* Queue data response for transmission. */
+	mcom_queue_response(&daq_resp_data);
 
 	return 0;
 }
@@ -509,7 +513,7 @@ daq_pp_bottom_svc()
 		return 0;
 
 	/* Wait until sending previous data to the master is completed. */
-	if (fl_send_data)
+	if (mcom_response_inuse(&daq_resp_data))
 		return 0;
 
 	/* Continuous acquisition aborted, drop the acquired data. */
@@ -523,7 +527,7 @@ daq_pp_bottom_svc()
 	 *  'auto'   - copy all acquired samples.
 	 *  'normal' - copy only pre-trigger and post-trigger samples around
 	 *             trigger. Treat zero number of pre-trigger samples
-         *             in special way. In that case, copy all acquired samples.
+	 *             in special way. In that case, copy all acquired samples.
 	 */
 	if ((daq_trigger.mode == DAQ_TRIG_AUTO) || (daq_time_base.pre == 0)) {
 		int i, j;
@@ -591,16 +595,6 @@ daq_comm_svc()
 		mcom_queue_response(&daq_resp_ack_nak);
 
 		fl_send_ack_nak = FALSE;
-	}
-
-	/*
-	 * There is data response to be sent to master,
-	 * queue it for transmission.
-	 */
-	if (fl_send_data) {
-		mcom_queue_response(&daq_resp_data);
-
-		fl_send_data = FALSE;
 	}
 
 	return 0;
@@ -1489,12 +1483,12 @@ daq_adc_process_query(char *data, int ln)
 	unsigned int res;
 
 	/* Module already sending a packet, abort */
-	if (fl_send_data)
+	if (mcom_response_inuse(&daq_resp_data))
 		return MCOM_NAK_MODULE_BUSY;
 
 	if (daq_get_adc_value(hex2ulong(data, 2), &res) == 0) {
 		mcom_prepare_generic_response(&daq_resp_ack_nak, "00",
-		    &res, MCOM_DATA_TYPE_WORD, 1);
+		    &res, MCOM_DATA_TYPE_WORD, 1, MCOM_DONT_FRAGMENT);
 	} else {
 		mcom_prepare_nak_response(&daq_resp_ack_nak, MCOM_NAK_ADC_ERR);
 	}
