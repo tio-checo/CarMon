@@ -27,6 +27,11 @@ public class LogMaster {
     private static File mFileProbe;
     private static FileWriter mFileWriterProbe;
 
+    /* Log file capturing starting voltage. */
+    private static String mFilenameSv;
+    private static File mFileSv;
+    private static FileWriter mFileWriterSv;
+
     /* Log file capturing various status messages. */
     private static String mFilenameSts;
     private static File mFileSts;
@@ -55,9 +60,14 @@ public class LogMaster {
      * Initializes log files. Returns 0 in case of success, -1 otherwise.
      */
     private static int init() {
-        /* Probe filename is in format of 'obd-YYYYMMDD-HHMMSS.txt' */
-        mFilenameProbe = String.format("obd-%1$tY%1$tm%1$td-%1$tH%1$tM%1$tS.txt",
+        String dateTime = String.format("%1$tY%1$tm%1$td-%1$tH%1$tM%1$tS",
                 Calendar.getInstance());
+
+        /* Probe filename is in form of 'obd-YYYYMMDD-HHMMSS.txt' */
+        mFilenameProbe = String.format("obd-%s.txt", dateTime);
+
+        /* Starting voltage filename is in form of 'sv-YYYYMMDD-HHMMSS.txt' */
+        mFilenameSv = String.format("sv-%s.txt", dateTime);
 
         /*
          * There is just one file used for capturing status messages.
@@ -146,9 +156,33 @@ public class LogMaster {
      * Logs data captured when measuring starting voltage.
      *
      * @param  p captured data
-     * @return   True if data was successfully logged, false otherwise.
+     * @param  sampleTime sample time in seconds
+     * @return True if data was successfully logged, false otherwise.
      */
-    public boolean logStartingVoltage(String p) {
+    public boolean logStartingVoltage(String p, double sampleTime) {
+        /* Create and open the log file */
+        mFileSv = new File(Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS), mFilenameSv);
+
+        if (!mFileSv.exists()) {
+            try {
+                mFileSv.createNewFile();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to create file " + mFilenameSv, e);
+
+                return false;
+            }
+        }
+
+        try {
+            mFileWriterSv = new FileWriter(mFileSv, true);
+        } catch (IOException e) {
+                Log.e(TAG, "Failed to create FileWriter.", e);
+
+                return false;
+        }
+
+
         /* Capture only if log file was successfully initialized. */
         if (!mLogFilesReady) {
             return false;
@@ -157,26 +191,37 @@ public class LogMaster {
         /* Write acquired data to the log file. */
         try {
             /* Header */
-            mFileWriterProbe.write("# Starting phase battery voltage\n");
+            mFileWriterSv.write("# Starting phase battery voltage\n");
+            mFileWriterSv.write("Time[s]\tVbatt[V]\n");
 
             /*
              * Data - packet is in form of
-             *  Q00aaaabbbbccccdddd...zzzz
+             *  aaaabbbbccccdddd...zzzz
              *
              * Replace decimal comma with decimal point.
              */
             for (int i = 0; i < (p.length() - 3) / 4; i++) {
-                mFileWriterProbe.write(String.format(" %.1f",
-                        0.01837 * Integer.parseInt(p.substring(3 + (4 * i),
-                        7 + (4 * i)), 16)).replace(',', '.'));
+                mFileWriterSv.write(String.format("%.3f\t%.1f\n",
+                        sampleTime * i,
+                        0.01837 * Integer.parseInt(p.substring(4 * i,
+                        4 * (i + 1)), 16)).replace(',', '.'));
             }
 
             /* Footer */
-            mFileWriterProbe.write("\n# Starting phase battery voltage\n");
+            mFileWriterSv.write(
+                    "==============================================\n");
         } catch (IOException e) {
             Log.e(TAG, "Failed to write into log file.", e);
 
             return false;
+        }
+
+        /* Close the file. */
+        try {
+            mFileWriterSv.flush();
+            mFileWriterSv.close();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to finalize Starting voltage log file.", e);
         }
 
         return true;

@@ -173,22 +173,28 @@ class CommunicationService {
     /* OBD communication module. */
     private Obd mObd;
 
-    /* OBD packet seqence number. */
-    private int mSeqNum;
+    /* OBD packet sequence number. */
+    private int mObdSeqNum;
 
-    /* Pid speed groups */
+    /* Data acquisition packet sequence number. */
+    private int mAcqSeqNum;
+
+    /* Data acquisition buffer. */
+    private String mAcqBuf;
+
+    /* Groups of probes. */
     private PidGroups mPidSpeedGroups;
 
-    /* List of all measured PIDs */
+    /* List of all measured probes. */
     private ArrayList<String> mPidLogList;
 
-    /* List of PIDs passed to PIC module for auto-scan mode */
+    /* List of probes passed to PIC module for auto-scan mode. */
     private String mPidAutoScanList;
 
-    /* Status of ECU communication */
+    /* Status of ECU communication. */
     private Button mStsEcu;
 
-    /* GPS status */
+    /* GPS status. */
     private Button mStsGps;
 
     /**
@@ -435,23 +441,21 @@ class CommunicationService {
                         mDashboard.updateIndicator(battProbe);
                     }
 
-                    if (!mCaptureStartVoltage) {
-                        try {
-                            /*
-                             * Configure and start OBD auto-scan mode.
-                             * Set sample rate to 50 ms.
-                             */
-                            pc.configObdAutoScan(mPidAutoScanList, "0032");
-                        } catch (PicTimeoutExpiredException e) {
-                            /* Timeout expired, re-try. */
-                            mLog.w("Failed to configure OBD auto-scan.");
-                            continue;
-                        } catch (PicConnectionLostException e) {
-                            /* Lost connection with PIC, try to re-connect. */
-                            mState = ST_COMM_INIT_PIC;
+                    /*
+                     * Configure and start OBD auto-scan mode.
+                     * Set sample rate to 50 ms.
+                     */
+                    try {
+                        pc.configObdAutoScan(mPidAutoScanList, "0032");
+                    } catch (PicTimeoutExpiredException e) {
+                        /* Timeout expired, re-try. */
+                        mLog.w("Failed to configure OBD auto-scan.");
+                        continue;
+                    } catch (PicConnectionLostException e) {
+                        /* Lost connection with PIC, try to re-connect. */
+                        mState = ST_COMM_INIT_PIC;
 
-                            continue;
-                        }
+                        continue;
                     }
 
                     mState = ST_ACQUIRE_PROBE_VALUE;
@@ -459,16 +463,9 @@ class CommunicationService {
                     int tout;
                     String p = null;
 
-                    /*
-                     * If capturing battery voltage during engine start,
-                     * wait longer, since it may take a while.
-                     */
-                    if (mCaptureStartVoltage) {
-                        tout = 60;
-                    } else {
-                        tout = 1;
-                    }
-      
+                    /* Set timeout to 1 second. */
+                    tout = 1;
+
                     /* Wait for packet from PIC module. */
                     boolean connLost = false;
 
@@ -557,8 +554,51 @@ class CommunicationService {
 
                         /* Try to re-establish communication with ECU. */
                         mState = ST_COMM_INIT_ECU;
-                    } else if (p.startsWith("Q00")) {
+                    } else if (p.startsWith("Q")) {
                     /* Data acquisition module */
+
+                        /*
+                         * Response from acquisition module is fragmented,
+                         * so need to re-assemble the whole message.
+                         */
+                        int currSeqNum = Integer.parseInt(
+                                p.substring(1, 3), 16);
+
+                        /*
+                         * If sequence number gets out of sync, then probably
+                         * some fragments have been lost. Discard the whole
+                         * message in such case.
+                         * Zero means "last fragment", so handle it separately.
+                         */
+                        if ((currSeqNum != 0) && (currSeqNum != mAcqSeqNum)) {
+                            mLog.w(TAG, String.format("Bad Acq sequence " +
+                                    "number (expected <%d>, got <%d>, " +
+                                    "discarding the packet...",
+                                    mAcqSeqNum, currSeqNum));
+
+                            /*
+                             * Stop processing fragments from data acquisition
+                             * module.
+                             */
+                            mAcqSeqNum = -1;
+                        } else {
+                            /* Append fragment at the end of the buffer. */
+                            mAcqBuf += p.substring(3);
+
+                            /*
+                             * If this was not the last fragment,
+                             * wait for another one.
+                             */
+                            if (currSeqNum != 0) {
+                                /* Update packet sequence number */
+                                if (++mAcqSeqNum > 255) {
+                                    mAcqSeqNum = 1;
+                                }
+
+                                /* Wait for another packet. */
+                                continue;
+                            }
+                        }
 
                         /*
                          * Phase of measuring starting voltage done, log
@@ -566,37 +606,21 @@ class CommunicationService {
                          * acquisition of average battery voltage.
                          */
                         if (mCaptureStartVoltage) {
-                            mLog.i("Measuring of starting voltage done.");
+                            if (mAcqSeqNum != -1) {
+                                mLog.i("Measuring of starting voltage done.");
 
-                            /* Log acquired data to file. */
-                            mLog.logStartingVoltage(p);
+                                /* Log acquired data with sample time 10ms. */
+                                mLog.logStartingVoltage(mAcqBuf, 0.01);
+                            } else {
+                                mLog.i("Measuring of starting voltage " +
+                                        "failed.");
+                            }
 
                             mCaptureStartVoltage = false;
 
                             /* Reconfigure acquisition module. */
                             try {
                                 confAcqModule(false);
-                            } catch (PicConnectionLostException e) {
-                                mState = ST_COMM_INIT_PIC;
-
-                                continue;
-                            }
-
-                            /* Configure and start OBD auto-scan mode */
-                            try {
-                                /* Set sample rate to 50 ms. */
-                                pc.configObdAutoScan(mPidAutoScanList, "0032");
-                            } catch (PicTimeoutExpiredException e) {
-                                /* Failed to configure auto-scan mode, retry. */
-                                mState = ST_COMM_INIT_ECU;
-
-                                /* Close ECU communication channel. */
-                                mObd.close();
-
-                                /* Try to re-establish communication with ECU. */
-                                mState = ST_COMM_INIT_ECU;
-
-                                continue;
                             } catch (PicConnectionLostException e) {
                                 mState = ST_COMM_INIT_PIC;
 
@@ -650,17 +674,17 @@ class CommunicationService {
                         int curSeqNum = Integer.parseInt(p.substring(2, 4), 16);
 
                         /* If out of sync, log the warning and resync */
-                        if (curSeqNum != mSeqNum) {
-                            mLog.w(TAG, String.format("Bad sequence number " +
-                                    "(expected <%d>, got <%d>, resyncing...",
-                                    mSeqNum, curSeqNum));
+                        if (curSeqNum != mObdSeqNum) {
+                            mLog.w(TAG, String.format("Bad PID sequence " +
+                                    "number (expected <%d>, got <%d>, " +
+                                    "resyncing...", mObdSeqNum, curSeqNum));
 
-                            mSeqNum = curSeqNum;
+                            mObdSeqNum = curSeqNum;
                         }
 
                         /* Update packet sequence number */
-                        if (++mSeqNum > 255) {
-                            mSeqNum = 1;
+                        if (++mObdSeqNum > 255) {
+                            mObdSeqNum = 1;
                         }
 
                         currPid = p.substring(4, 6);
@@ -861,8 +885,12 @@ class CommunicationService {
         /* Save reference to OBD communication object. */
         mObd = obd;
 
-        /* Initialize OBD packet sequence number. */
-        mSeqNum = 1;
+        /* Initialize packet sequence numbers. */
+        mAcqSeqNum = 1;
+        mObdSeqNum = 1;
+
+        /* Initialize acquisition buffer */
+        mAcqBuf = "";
 
         /* Read configuration. */
         SharedPreferences prefs = PreferenceManager
@@ -970,7 +998,7 @@ class CommunicationService {
 
     /**
      * Configures data acquisition module.
-     * The module is configure either for capturing battery voltage during
+     * The module is configured either for capturing battery voltage during
      * engine starting phase or for measuring charging voltage when
      * engine is running.
      *
