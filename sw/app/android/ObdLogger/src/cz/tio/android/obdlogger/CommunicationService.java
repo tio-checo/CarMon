@@ -920,7 +920,7 @@ class CommunicationService {
             /*
              * Run the service until either user decides to terminate
              * the current activity (which is signaled via mQuit)
-             * or until state machine does not reach its final state
+             * or until state machine reaches its final state
              * (e.g. when it can't connect to Bluetooth module.
              */
             while (!mQuit && mComSvcStateMachine.runStateMachine());
