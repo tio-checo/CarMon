@@ -18,6 +18,46 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 /**
+ * Represents callback routines which are called when
+ * connection to ECU is established or lost.
+ */
+interface IEcuComCallback {
+    /**
+     * Called when connection with ECU is established.
+     */
+    abstract public void onConnectionEstablished();
+
+    /**
+     * Called when connection with ECU is lost.
+     */
+    abstract public void onConnectionLost();
+}
+
+/**
+ * Null callback object used as a default if one is not provided
+ * when Obd object is instantiated.
+ */
+class NullEcuComCallback implements IEcuComCallback {
+    /**
+     * Called when connection with PIC module is established.
+     */
+    public void onConnectionEstablished() {
+    }
+
+    /**
+     * Called when connection with PIC module is lost.
+     */
+    public void onConnectionLost() {
+    }
+
+    /**
+     * Constructor
+     */
+    public NullEcuComCallback() {
+    }
+}
+
+/**
  * Implements OBD communication protocol.
  */
 public class Obd {
@@ -54,11 +94,14 @@ public class Obd {
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
 
+    /* Reference to callback routines */
+    private IEcuComCallback mEcuComCb;
+
     /* debug mode */
     private boolean mDebug = false;
 
     /* indicates if communication with ECU is established */
-    private boolean mComEcuEstablished = false;
+    private boolean mConnectionEstablished = false;
 
     /**
      * Establishes communication with ECU.
@@ -71,7 +114,7 @@ public class Obd {
         int[] p;
 
         /* If communication channel is already established, return. */
-        if (mComEcuEstablished) {
+        if (mConnectionEstablished) {
             return true;
         }
 
@@ -93,10 +136,10 @@ public class Obd {
             throw e;
         }
 
-        /* Communication established, set appropriate flag and return. */
-        mLog.i("Connection with ECU established.");
+        mConnectionEstablished = true;
 
-        mComEcuEstablished = true;
+        /* Call related callback routine. */
+        mEcuComCb.onConnectionEstablished();
 
         return true;
     }
@@ -113,7 +156,7 @@ public class Obd {
         int i = 0;
 
         /* Turn off auto-scan mode. */
-        if (mComEcuEstablished) {
+        if (mConnectionEstablished) {
             try {
                 mPicCom.configObdAutoScan("", "");
             } catch (PicTimeoutExpiredException e) {
@@ -123,7 +166,10 @@ public class Obd {
             }
         }
 
-        mComEcuEstablished = false;
+        mConnectionEstablished = false;
+
+        /* Call related callback routine. */
+        mEcuComCb.onConnectionLost();
 
         /*
          * Discard buffered packets, as these all belong to communication
@@ -147,6 +193,16 @@ public class Obd {
             ret = false;
 
         return ret;
+    }
+
+    /**
+     * Checks if connected to ECU.
+     *
+     * @return   <code>true</code> if connected to ECU;
+     *           <code>false</code> otherwise.
+     */
+    public boolean connectionEstablished() {
+        return mConnectionEstablished;
     }
 
     /**
@@ -213,11 +269,17 @@ public class Obd {
              */
             mLog.w("Timeout when waiting for ECU response.");
 
-            mComEcuEstablished = false;
+            mConnectionEstablished = false;
+
+            /* Call related callback routine. */
+            mEcuComCb.onConnectionLost();
 
             throw e;
         } catch (PicConnectionLostException e) {
-            mComEcuEstablished = false;
+            mConnectionEstablished = false;
+
+            /* Call related callback routine. */
+            mEcuComCb.onConnectionLost();
 
             throw e;
         }
@@ -275,11 +337,17 @@ public class Obd {
                  */
                 mLog.w("Timeout when waiting for ECU response.");
 
-                mComEcuEstablished = false;
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
 
                 throw e;
             } catch (PicConnectionLostException e) {
-                mComEcuEstablished = false;
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
 
                 throw e;
             }
@@ -364,12 +432,26 @@ public class Obd {
     /**
      * Constructor
      *
-     * @param picCom    reference to underlying communication object
-     * @param activity  reference to parent activity
+     * @param picCom    the reference to underlying communication object
+     * @param activity  the reference to parent activity
      */
     public Obd(PicCom picCom, Activity activity) {
+        this(picCom, activity, new NullEcuComCallback());
+    }
+
+    /**
+     * Constructor
+     *
+     * @param picCom    the reference to underlying communication object
+     * @param activity  the reference to parent activity
+     * @param ecuComCb  the callback routines
+     */
+    public Obd(PicCom picCom, Activity activity, IEcuComCallback ecuComCb) {
         /* Save reference to lower layer communication object. */
         mPicCom = picCom;
+
+        /* Save reference to callback routines. */
+        mEcuComCb = ecuComCb;
 
         /* Create pool of available probes. */
         mProbePool = new HashMap<String, Probe>();

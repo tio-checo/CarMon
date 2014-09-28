@@ -181,6 +181,16 @@ public class PicCom {
     }
 
     /**
+     * Checks if connected to PIC.
+     *
+     * @return   <code>true</code> if connected to PIC;
+     *           <code>false</code> otherwise.
+     */
+    public boolean connectionEstablished() {
+        return mConnectionEstablished;
+    }
+
+    /**
      * Wipes out packet buffer.
      */
     public void cleanBuffer() {
@@ -307,7 +317,7 @@ public class PicCom {
     /**
      * Configures PIC acquisition engine.
      *
-     * @param
+     * @param    config  the configuration string
      * @return
      * @throws   PicTimeoutExpiredException when timeout expires while
      *                                      waiting for data from PIC
@@ -369,10 +379,120 @@ public class PicCom {
     }
 
     /**
+     * Configures data acquisition module.
+     * The module is configured either for capturing battery voltage during
+     * engine starting phase or for measuring charging voltage when
+     * engine is running.
+     *
+     * @param  startingPhase <code>true</code> to configure module
+     *                       to measure voltage during starting phase.
+     *                       <code>false</code> to configure module
+     *                       to measure voltage when engine is running.
+     * @return               <code>true</code> if module was successfully
+     *                       configured; <code>false</code> otherwise.
+     * @throws PicConnectionLostException when lost connection with PIC
+     */
+    public boolean confBatteryMeasuring(boolean startingPhase)
+            throws PicConnectionLostException {
+        /*
+         * Make sure acquisition module is idle as well as turn off
+         * post-processing module.
+         */
+        try {
+            stopAcq();
+        } catch (PicTimeoutExpiredException e) {
+            /* Failed to stop data acquisition. */
+            return false;
+        }
+
+        try {
+            configPpModule("00");
+        } catch (PicTimeoutExpiredException e) {
+            /* Failed to deactivate post-processing module. */
+
+            return false;
+        }
+
+        /*
+         * Configure acquisition module for capturing battery voltage
+         * during starting phase.
+         */
+        if (startingPhase) {
+            /*
+             * Configure data acquisition module
+             *  - channel            08
+             *  - acquisition mode   Single
+             *  - trigger mode       Normal
+             *  - trigger event      Rising edge
+             *  - trigger value      735 (13.5 V)
+             *  - sample rate        10 ms
+             *  - refresh rate       0 ms (not used)
+             *  - pre-trigger size   0 (all acquired data is returned)
+             *  - post-trigger size  150 samples (1.5 second)
+             */
+            try {
+                configAcqModule("0801010102DF00A1000000000096");
+            } catch (PicTimeoutExpiredException e) {
+                /* Failed to configure data acquisition module 1. */
+
+                return false;
+            }
+        } else {
+            /*
+             * Configure data acquisition module
+             *  - channel            08
+             *  - acquisition mode   Continuous
+             *  - trigger mode       Auto
+             *  - trigger event      Rising edge (not used)
+             *  - trigger parameter  Not used
+             *  - sample rate        400 us
+             *  - refresh rate       500 ms
+             *  - pre-trigger size   128 samples
+             *  - post-trigger size  128 samples
+             */
+            try {
+                configAcqModule("08020201000019001F4100800080");
+            } catch (PicTimeoutExpiredException e) {
+                /* Failed to configure data acquisition module 2/ */
+
+                return false;
+            }
+
+            /*
+             * Activate signal identification post-processing module.
+             * Calculates following characteristics of acquired signal:
+             *  - mean value
+             *  - RMS value of AC part of signal
+             *  - minimum of AC part of signal
+             *  - maximum of AC part of signal
+             *  - five strongest frequencies of signal spectrum
+             */
+            try {
+                configPpModule("02A");
+            } catch (PicTimeoutExpiredException e) {
+                /* Failed to activate post-processing module. */
+
+                return false;
+            }
+        }
+
+        /* Start data acquisition */
+        try {
+            runAcq();
+        } catch (PicTimeoutExpiredException e) {
+            /* Failed to start data acquisition. */
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Configures OBD auto-scan mode.
      *
      * @param    pidList                    the list of PIDs to be scanned
-     *           sampleRate                 4 HEX ASCII characters specifying
+     * @param    sampleRate                 4 HEX ASCII characters specifying
      *                                      sample rate in [ms]
      * @return
      * @throws   PicTimeoutExpiredException when timeout expires while
@@ -393,18 +513,7 @@ public class PicCom {
      * @param picComPhys    the low level communication service.
      */
     public PicCom(IPicComPhys picComPhys) {
-        if (mDebug) {
-            mComTime = ObdLogger.getTime();
-        }
-
-        /* Save reference to underlying communication object. */
-        mPicComPhys = picComPhys;
-
-        /* Callback routines not provided, use null object. */
-        mPicComCb = new NullPicComCallback();
-
-        /* Instantiate packet buffer. */
-        mPacketBuffer = new ArrayList<String>();
+        this(picComPhys, new NullPicComCallback());
     }
 
     /**

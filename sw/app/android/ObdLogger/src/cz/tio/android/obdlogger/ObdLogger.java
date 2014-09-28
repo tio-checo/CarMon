@@ -47,7 +47,7 @@ public class ObdLogger extends Activity {
         mObd = new Obd(
                 new PicCom(
                 new PicComBt("OBD converter"), new PicComCallback(this)),
-                this);
+                this, new EcuComCallbackLogger(this));
 
         /* Instantiate communication service. */
         mComService = new CommunicationService(this, null, null,

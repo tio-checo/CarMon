@@ -231,6 +231,11 @@ public class ObdPids extends ListActivity {
          * it should terminate its job.
          */
         if (mComService != null && commThread != null) {
+            /* Send communication thread 'Quit' message. */
+            Bundle b = new Bundle();
+            b.putInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_QUIT);
+            mComSvcMsg.put(b);
+
             mComService.finish();
 
             /* Wait until the thread quits - set timeout to 10 seconds */

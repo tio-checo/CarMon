@@ -391,7 +391,7 @@ public class LogMaster {
     /**
      * Closes logging files.
      */
-    public static void finish() {
+    public void finish() {
         try {
             mFileWriterProbe.write("==============================================\n");
             mFileWriterProbe.write(String.format("Final time: %.3f\n",

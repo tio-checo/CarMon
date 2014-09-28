@@ -1,7 +1,5 @@
 package cz.tio.android.obdlogger;
 
-import java.util.HashMap;
-
 import cz.tio.android.obdlogger.Obd;
 import cz.tio.android.obdlogger.PicCom;
 import cz.tio.android.obdlogger.PicConnectionLostException;
