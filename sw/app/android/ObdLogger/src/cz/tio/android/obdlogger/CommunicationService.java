@@ -926,8 +926,8 @@ class CommunicationService {
             while (!mQuit && mComSvcStateMachine.runStateMachine());
 
             /*
-             * Let the UI if the decision to terminate the current activity
-             * came from the state machine.
+             * Let the UI know if the decision to terminate the current
+             * activity came from the state machine.
              */
             if (!mQuit) {
                 final Activity a = (Activity)mComSvcStateMachine.getStateData(

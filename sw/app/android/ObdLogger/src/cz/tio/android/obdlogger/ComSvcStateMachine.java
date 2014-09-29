@@ -30,9 +30,6 @@ public abstract class ComSvcStateMachine {
     /* Current state. */
     private int mCurrState;
 
-    /* Next action. */
-    private ComSvcStateAction mNextAction;
-
     /**
      * Gets state data object associated with the given key.
      *
@@ -89,9 +86,6 @@ public abstract class ComSvcStateMachine {
         /* Enter new state. */
         mCurrState = state;
         getCurrStateHandler().enter();
-
-        /* Stay in current state by default. */
-        mNextAction = ComSvcStateAction.STAY_IN_CURRENT;
     }
 
     /**
@@ -134,6 +128,9 @@ public abstract class ComSvcStateMachine {
      *          <code>false</code> state machine reached its final state
      */
     public boolean runStateMachine() {
+        /* Stay in current state by default. */
+        ComSvcStateAction nextAction = ComSvcStateAction.STAY_IN_CURRENT;
+
         /*
          * Handle current state and calculate what to do next.
          * Possibilities:
@@ -147,7 +144,7 @@ public abstract class ComSvcStateMachine {
          *                                  try to re-connect
          */
         try {
-            mNextAction = getCurrStateHandler().next();
+            nextAction = getCurrStateHandler().next();
         } catch (PicTimeoutExpiredException e) {
             /* Timeout expired, re-try. */
 
@@ -160,7 +157,7 @@ public abstract class ComSvcStateMachine {
         }
 
         /* Quitting. */
-        if (mNextAction == ComSvcStateAction.QUIT) {
+        if (nextAction == ComSvcStateAction.QUIT) {
             /* Leave the current state. */
             getCurrStateHandler().leave();
 
@@ -168,7 +165,7 @@ public abstract class ComSvcStateMachine {
         }
 
         /* Moving to the next state. */
-        if (mNextAction == ComSvcStateAction.GOTO_NEXT) {
+        if (nextAction == ComSvcStateAction.GOTO_NEXT) {
             goToNextState();
         }
 
