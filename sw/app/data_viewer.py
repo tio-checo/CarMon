@@ -4,7 +4,109 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import sys
+
+def read_starting_voltage(probe_fname):
+    ''' Reads starting voltage and returns it as a list of time-value pairs.
+    Older versions of data logger captured starting voltage at the beginning
+    of probes file. New version stores it in a separate file.
+    '''
+
+    #
+    # Resulting list contains two sub-lists - the first one containing time
+    # and the second one containing voltage.
+    #
+    sv = []
+
+    #
+    # First check if starting voltage is stored in a separate file.
+    # Starting voltage filename is in from of 'sv-YYYYMMDD-HHMMSS.txt -
+    # the same from probes filename uses, just replace 'obd-' prefix
+    # with 'sv-' one.
+    #
+    sv_fname = probe_fname.replace('obd-', 'sv-')
+
+    # If separate file exists, process it.
+    if (os.path.exists(sv_fname)):
+        # Create sub-lists for time and voltage.
+        sv.append([])
+        sv.append([])
+
+        try:
+            # Try to open and read provided file.
+            with open(sv_fname, 'r') as fdata:
+                #
+                # Process file line-by-line.
+                # Discard first two lines containing comment and labels.
+                # Measured data are terminated with '===========' line.
+                #
+                line = fdata.readline()
+                line = fdata.readline()
+                line = fdata.readline()
+
+                while line and not line.startswith('===='):
+                    split_line = line.split()
+
+                    # Ignore all lines which do not contain two values.
+                    if (len (split_line) != 2):
+                        continue
+
+                    # Add the time-voltage pair into the list.
+                    sv[0].append(split_line[0])
+                    sv[1].append(split_line[1])
+
+                    # Get next line.
+                    line = fdata.readline()
+
+        except IOError, err:
+            print 'Failed to process %s file due to following error:' % \
+                   sv_fname
+
+            print str(err)
+    else:
+        # Starting voltage captured in probe file, extract it from there.
+
+        # Create sub-list for time values
+
+        try:
+            # Try to open and read probe file.
+            with open(probe_fname, 'r') as fdata:
+                #
+                # If starting voltage is captured, the first line in the file
+                # contains following comment:
+                # '# Starting phase battery voltage'
+                #
+                line = fdata.readline()
+                if (line.startswith('# Starting phase battery voltage')):
+                    # Battery starting voltage captured, read captured data.
+                    line = fdata.readline()
+
+                    # Values are on one line - only separated by whitespace.
+                    v_list = line.strip().split()
+
+                    #
+                    # Time is not provided in older version, thus populate
+                    # time sub-list manually - assume 10ms sampling period.
+                    #
+                    t_list = []
+                    for i in range(len (v_list)):
+                        t_list.append(i * 0.010)
+                else:
+                    # Starting voltage not captured, create empty sub-list.
+                    v_list = []
+
+                # Add time and voltage sub-lists to the resulting list.
+                sv.append(t)
+                sv.append(v)
+
+        except IOError, err:
+            print 'Failed to process %s file due to following error:' % \
+                   probe_fname
+
+            print str(err)
+
+    return sv
 
 
 # Main application
@@ -34,9 +136,12 @@ def main():
 
     print 'index list:', args.index_list
 
+    # Read starting voltage data
+    starting_voltage = read_starting_voltage(args.filename);
+
     try:
-        # Try to open and read provided file.
-        with open(args.filename, 'r') as f_data:
+        # Try to open and read probe file.
+        with open(args.filename, 'r') as fdata:
             #
             # The first three lines in the file may contain battery voltage
             # captured during starting phase. The format of data is following:
@@ -45,20 +150,21 @@ def main():
             #   7.9 7.9 .... 14.1 14.2
             #  # Starting phase battery voltage
             #
-            line = f_data.readline()
-            starting_voltage = []
+            line = fdata.readline()
 
             if (line.startswith('# Starting phase battery voltage')):
-                # Battery starting voltage captured, process captured data.
-                line = f_data.readline()
-
-                starting_voltage = line.strip().split()
+                #
+                # Probe file contains battery starting voltage, 
+                # skip related lines, as they were already processed
+                # in read_starting_voltage().
+                #
+                line = fdata.readline()
 
                 # Skip footer
-                line = f_data.readline()
+                line = fdata.readline()
 
                 # Read subsequent line for further processing.
-                line = f_data.readline()
+                line = fdata.readline()
 
             # Process line with data labels.
             data_desc = line.strip().split()
@@ -69,7 +175,7 @@ def main():
             num_pars = len (data_desc)
             print 'num_pars:', num_pars
 
-            if (len (starting_voltage) != 0):
+            if (len (starting_voltage[0]) != 0):
                 print 'Starting voltage captured: Yes'
             else:
                 print 'Starting voltage captured: No'
@@ -85,19 +191,19 @@ def main():
             for i in range(num_pars):
                 obd_data.append([])
 
-            data_line = f_data.readline()
+            data_line = fdata.readline()
             while data_line and not data_line.startswith('===='):
                 split_line = data_line.strip().split()
 
                 # Discard incomplete lines.
-                if len(split_line) == num_pars:
+                if len (split_line) == num_pars:
 #                    print 'split_line:', split_line
-                    for i in range(len(split_line)):
+                    for i in range(len (split_line)):
                         obd_data[i].append(float(split_line[i]))
 #                else:
 #                    print 'Line %s incomplete, discarding.', split_line[0]
 
-                data_line = f_data.readline()
+                data_line = fdata.readline()
     except IOError, err:
         print 'Failed to process %s file due to following error:' % \
                args.filename
@@ -106,9 +212,9 @@ def main():
 
         return
 
-#    print '# of rows:', len(obd_data)
-#    print '# of entires in row [0]:', len(obd_data[0])
-#    print '# of entires in row [1]:', len(obd_data[1])
+#    print '# of rows:', len (obd_data)
+#    print '# of entires in row [0]:', len (obd_data[0])
+#    print '# of entires in row [1]:', len (obd_data[1])
 #    print 'Start of row 1:', obd_data[0][0:100]
 #    print 'Start of row 2:', obd_data[1][0:100]
 #    print 'row 2:', obd_data[1]
@@ -116,10 +222,10 @@ def main():
     # Display information about data in given file and exit.
     if args.query:
         print 'Data rows:'
-        for i in range(len(data_desc)):
+        for i in range(len (data_desc)):
             print ' Row %d: %s' % (i, data_desc[i])
 
-        if (len(starting_voltage) != 0):
+        if (len (starting_voltage[0]) != 0):
             print 'Starting voltage captured: Yes'
         else:
             print 'Starting voltage captured: No'
@@ -128,14 +234,7 @@ def main():
 
     # Display starting voltage and exit.
     if (args.show_start_voltage):
-        #
-        # Generate X axis - time in seconds. Sample rate is 10ms.
-        #
-        x_time = []
-        for i in range(len (starting_voltage)):
-            x_time.append(i * 0.010)
-
-        plt.plot(x_time, starting_voltage)
+        plt.plot(starting_voltage[0], starting_voltage[1])
         plt.grid(True)
         plt.xlabel('Time[s]')
         plt.ylabel('Vbat[V]')
@@ -145,13 +244,13 @@ def main():
 
     if args.index_list == 'all':
         index_list = '1'
-        for i in range(len(data_desc) - 2):
+        for i in range(len (data_desc) - 2):
             index_list += ',%s' % str(i + 2)
     else:
         index_list = args.index_list
 
     ilist = index_list.split(',')
-    num_rows = len(ilist)
+    num_rows = len (ilist)
 
     y = []
     for i in range(num_rows):
@@ -180,7 +279,7 @@ def main():
                 ax.append(fig.add_subplot(num_rows, 1, i + 1, sharex=ax[0]))
 
             ax[i].set_ylabel(data_desc[int(ilist[i])])
-            ax[i].plot(x, y[i], line_colors[i % len(line_colors)])
+            ax[i].plot(x, y[i], line_colors[i % len (line_colors)])
             ax[i].grid(True)
         elif args.chart_type == 'hist':
             ax.append(fig.add_subplot(1, num_rows, i + 1))
