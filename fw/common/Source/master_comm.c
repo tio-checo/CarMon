@@ -665,15 +665,15 @@ mcom_tx_st(void)
 		 * Get first character to be sent.
 		 */
 		if (mcom_co.resp->data_type == MCOM_DATA_TYPE_ASCII) {
-			ch = ((char *)mcom_co.resp->data)[0];
+			ch = ((char *)mcom_co.resp->data)[buf_index];
 
 			item_ln = 1;
 		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_BYTE) {
-			d = ((unsigned char *)mcom_co.resp->data)[0];
+			d = ((unsigned char *)mcom_co.resp->data)[buf_index];
 
 			item_ln = 2;
 		} else if (mcom_co.resp->data_type == MCOM_DATA_TYPE_WORD) {
-			d = ((unsigned int *)mcom_co.resp->data)[0];
+			d = ((unsigned int *)mcom_co.resp->data)[buf_index];
 
 			item_ln = 4;
 		}
