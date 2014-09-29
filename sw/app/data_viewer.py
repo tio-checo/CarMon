@@ -8,22 +8,22 @@ import os
 import sys
 
 def read_starting_voltage(probe_fname):
-    ''' Reads starting voltage and returns it as a list of time-value pairs.
-    Older versions of data logger captured starting voltage at the beginning
-    of probes file. New version stores it in a separate file.
+    ''' Reads starting voltage and returns it as a list of time-voltage pairs.
+    Older versions of data logger stored starting voltage at the beginning
+    of probe file. New version stores it in a separate file.
+
+    Returns list with two sub-lists - the first one containing time values,
+    the second one voltage values.
     '''
 
-    #
-    # Resulting list contains two sub-lists - the first one containing time
-    # and the second one containing voltage.
-    #
+    # Instantiates empty resulting list.
     sv = []
 
     #
-    # First check if starting voltage is stored in a separate file.
-    # Starting voltage filename is in from of 'sv-YYYYMMDD-HHMMSS.txt -
-    # the same from probes filename uses, just replace 'obd-' prefix
-    # with 'sv-' one.
+    # Determine if starting voltage is stored in a separate file.
+    # Starting voltage filename is in form of 'sv-YYYYMMDD-HHMMSS.txt -
+    # similar to the one which probe filename uses, just 'obd-' prefix
+    # is replaced with 'sv-' one.
     #
     sv_fname = probe_fname.replace('obd-', 'sv-')
 
