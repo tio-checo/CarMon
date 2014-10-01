@@ -93,12 +93,13 @@ def read_starting_voltage(probe_fname):
                     for i in range(len (v_list)):
                         t_list.append(i * 0.010)
                 else:
-                    # Starting voltage not captured, create empty sub-list.
+                    # Starting voltage not captured, create empty sub-lists.
+                    t_list = []
                     v_list = []
 
                 # Add time and voltage sub-lists to the resulting list.
-                sv.append(t)
-                sv.append(v)
+                sv.append(t_list)
+                sv.append(v_list)
 
         except IOError, err:
             print 'Failed to process %s file due to following error:' % \
