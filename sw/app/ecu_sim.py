@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2.6
 import serial
 import sys
 import time
@@ -84,9 +84,17 @@ class ECUSim(object):
                   'SC233F101331A':'<A><r83><rF1><r10><r41><r33><r00><r00>',
                   'A06':'<a0200>'}
 
-    resp_dict = {'C133F18166': ['83F110C1E98FBD'],
+    resp_dict = {
+                 # start communication
+                 'C133F18166': ['83F110C1E98FBD'],
+
+                 # 'live data' mode
                  # supported PIDs 01-20
                  'C233F10100E7': ['86F1104100983B80132E'],
+
+                 # PID 01 - MIL on, 2 DTCs logged
+                 'C233F10101E8': ['86F11041018200000000'],
+
                  'C233F10104EB': ['83F11041048000'],
                  'C233F10105EC': ['83F11041057800'],
                  'C233F1010BF2': ['83F110410B80D1'],
@@ -105,6 +113,21 @@ class ECUSim(object):
                  'C233F1014027': ['86F110414040DE000026'],
                  # Accelerator pedal position D
                  'C233F1014930': ['83F11041494000'],
+
+                 # 'freeze frame' mode
+                 # supported PIDs 01-20: 02,04,05,0B,0C,0D,0F,10,11
+                 'C333F1020000E9': ['87F110420000583B80002E'],
+                 'C333F1020200EB': ['85F110420200013000'],
+                 'C333F1020400ED': ['84F1104204006000'],
+                 'C333F1020500EE': ['84F1104205005500'],
+                 'C333F1020B00F4': ['84F110420B0065D1'],
+                 'C333F1020C00F5': ['85F110420C00030000'],
+                 'C333F1020D00F6': ['84F110420D003200'],
+                 'C333F1020F00F8': ['84F110420F007000'],
+                 'C333F1021000F9': ['85F110421000030000'],
+                 'C333F1021100FA': ['84F1104211005000'],
+                 # supported PIDs 21-40
+
                  # read stored DTCs
                  'C133F103E8': ['87F11043000000000000CB'],
                  # read pending DTCs
@@ -334,8 +357,8 @@ def main():
 
 #    ecu_sim.comm_open('/dev/ttya', 9600)
 #    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a', 9600)
-#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
-    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.0021287e7ee5/dev/term/a', 9600)
+    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
+#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.0021287e7ee5/dev/term/a', 9600)
 
     while True:
         # Wait for packet from tester.

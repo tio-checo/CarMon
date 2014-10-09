@@ -15,8 +15,13 @@
 #include "utils.h"
 #include "rt_light.h"
 
+/* local constants */
 /* max number of PIDs scanned in auto-scan mode */
 #define	OBD_PID_LIST_LN		100
+
+/* local macros */
+/* returns TRUE if "freeze frame" data are requested; FALSE otherwise */
+#define	OBD_IS_FREEZE_FRAME	(obd_freeze_frame_num != -1)
 
 /* local variables */
 /* Type of lower communication layer */
@@ -35,6 +40,8 @@ static unsigned char obd_autoscan_pid_list[OBD_PID_LIST_LN];
 static int obd_autoscan_num;
 /* index of currently scanned PID */
 static int obd_autoscan_curr;
+/* "freeze frame" number */
+static int obd_freeze_frame_num;
 /* TRUE activates auto-scan mode */
 static BOOL obd_autoscan_run;
 /* TRUE de-activates auto-scan mode */
@@ -43,7 +50,7 @@ static BOOL obd_autoscan_stop;
 /* OBD ECU state machine */
 static enum {
 	OBD_ECU_ST_IDLE = 0,	/* machine idle */
-	OBD_ECU_ST_GETPID,	/* ask for pid value */
+	OBD_ECU_ST_GETPID,	/* ask for PID value */
 	OBD_ECU_ST_SENDRESPONSE,	/* send response to master */
 	OBD_ECU_ST_WAIT4SAMPLETIME	/* wait for sample time */
 } obd_ecu_st;
@@ -211,6 +218,7 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 	static BOOL in_progress = FALSE;
 
 	int ret;
+	int lln;
 
 	/* Operation in progress, wait for data or error. */
 	if (in_progress) {
@@ -230,10 +238,12 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 		/*
 		 * Pass resulting data to the caller.
 		 * Drop the header which is in form of
-		 * [OBD_MODE_GET_PID | 0x40, pid].
+		 * [OBD_MODE_GET_CUR_PID | 0x40, pid] or
+		 * [OBD_MODE_GET_FF_PID | 0x40, ff_num, pid].
 		 */
-		*d = obd_data + 2;
-		*ln = obd_ln - 2;
+		lln = OBD_IS_FREEZE_FRAME ? 3 : 2;
+		*d = obd_data + lln;
+		*ln = obd_ln - lln;
 
 		return ret;
 	}
@@ -242,16 +252,25 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 	 * If we are operating in KWP2000/CAN mixed mode and value of given
 	 * PID is provided via CAN, do not ask ECU for the value.
 	 * Instead use the one obtained via monitoring CAN bus.
+	 * Also skip if "freeze frame" data are requested.
 	 */
-	if (obd_get_pid_from_can(pid, d, ln) == 0) {
+	if (!OBD_IS_FREEZE_FRAME && (obd_get_pid_from_can(pid, d, ln) == 0)) {
 		return 0;
 	}
 
 	/* Start new request */
-	obd_packet_ecu[0] = OBD_MODE_GET_PID;
-	obd_packet_ecu[1] = pid;
+	if (OBD_IS_FREEZE_FRAME) {
+		obd_packet_ecu[0] = OBD_MODE_GET_FF;
+		obd_packet_ecu[1] = pid;
+		obd_packet_ecu[2] = obd_freeze_frame_num;
+		lln = 3;
+	} else {
+		obd_packet_ecu[0] = OBD_MODE_GET_PID;
+		obd_packet_ecu[1] = pid;
+		lln = 2;
+	}
 
-	ret = obd_send(obd_packet_ecu, 2);
+	ret = obd_send(obd_packet_ecu, lln);
 
 	/* Packet sent out successfully, wait for ECU response */
 	if (ret == 0) {
@@ -272,7 +291,7 @@ obd_comm_ecu_svc(void)
 	static int ret;
 	static int ln;
 	static unsigned char *d;
-	static char hdr[6];
+	static char hdr[8];
 
 	int i, curr_pid;
 
@@ -281,7 +300,7 @@ obd_comm_ecu_svc(void)
 	case OBD_ECU_ST_IDLE:
 		break;
 
-	/* ask ECU for pid value */
+	/* ask ECU for either current or "freeze frame" PID value */
 	case OBD_ECU_ST_GETPID:
 		curr_pid = obd_autoscan_pid_list[obd_autoscan_curr];
 
@@ -337,8 +356,14 @@ obd_comm_ecu_svc(void)
 				if (++pkt_num > 255)
 					pkt_num = 1;
 			} else {
-				snprintf(hdr, sizeof (hdr), "P00%02X",
-				    curr_pid);
+				if (OBD_IS_FREEZE_FRAME) {
+					snprintf(hdr, sizeof (hdr),
+					    "F00%02X%02X", obd_freeze_frame_num,
+					    curr_pid);
+				} else {
+					snprintf(hdr, sizeof (hdr), "P00%02X",
+					    curr_pid);
+				}
 			}
 
 			obd_send_data_response_to_master(hdr, ln);
@@ -713,8 +738,8 @@ obd_process_query(char *data, int ln)
 
 			break;
 
-		/* Get PID value */
-		case OBD_CMD_GETPID:
+		/* Get "freeze frame" PID value */
+		case OBD_CMD_GETFFPID:
 			/* Module currently busy. */
 			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
 				err = EBUSY;
@@ -726,6 +751,31 @@ obd_process_query(char *data, int ln)
 			/* We will obtain just one PID value. */
 			obd_autoscan_num = 1;
 			obd_autoscan_curr = 0;
+			obd_freeze_frame_num = hex2ulong(&data[2], 2);
+			obd_autoscan_pid_list[0] = hex2ulong(&data[4], 2);
+
+			/* Let OBD service respond. */
+			respond_now = FALSE;
+
+			obd_ecu_st = OBD_ECU_ST_GETPID;
+
+			break;
+
+		/* Get current PID value */
+		case OBD_CMD_GETCURPID:
+			/* Module currently busy. */
+			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+				err = EBUSY;
+				respond_with_ack = FALSE;
+
+				break;
+			}
+
+			/* We will obtain just one PID value. */
+			obd_autoscan_num = 1;
+			obd_autoscan_curr = 0;
+			/* Asking for current, not "freeze frame" data. */
+			obd_freeze_frame_num = -1;
 			obd_autoscan_pid_list[0] = hex2ulong(&data[2], 2);
 
 			/* Let OBD service respond. */
@@ -736,7 +786,7 @@ obd_process_query(char *data, int ln)
 			break;
 
 		/* Activate/deactivate PID auto-scan mode */
-		case OBD_CMD_GETPIDS:
+		case OBD_CMD_GETCURPIDS:
 			/* PID list is empty. deactivate auto-scan mode */
 			if (ln == 2) {
 				obd_autoscan_stop = TRUE;
@@ -767,6 +817,9 @@ obd_process_query(char *data, int ln)
 
 			/* Current PID */
 			obd_autoscan_curr = 0;
+
+			/* Asking for current, not "freeze frame" data. */
+			obd_freeze_frame_num = -1;
 
 			/* Activate auto-scan mode. */
 			obd_autoscan_run = TRUE;
