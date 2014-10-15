@@ -347,7 +347,7 @@ class ObdProbe extends Probe {
     }
 
     /**
-     * Obtains value of OBD parameter from ECU.
+     * Obtains current value of OBD parameter from ECU.
      * Updates probe with new value.
      *
      * @return  <code>true</code> in case of success;
@@ -362,6 +362,36 @@ class ObdProbe extends Probe {
 
         try {
             ecuData = mObd.getPidValue(mId);
+        } catch (PicTimeoutExpiredException e) {
+            mCurrYValid = false;
+
+            throw e;
+        } catch (PicConnectionLostException e) {
+            mCurrYValid = false;
+
+            throw e;
+        } 
+
+        return this.update(ecuData);
+    }
+
+    /**
+     * Obtains 'freeze frame' value of OBD parameter from ECU.
+     * Updates probe with new value.
+     *
+     * @param   ffNum freeze frame number
+     * @return        <code>true</code> in case of success;
+     *                <code>false</code> otherwise.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public boolean acquire(int ffNum)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        int[] ecuData;
+
+        try {
+            ecuData = mObd.getFreezeFramePidValue(mId, ffNum);
         } catch (PicTimeoutExpiredException e) {
             mCurrYValid = false;
 

@@ -46,6 +46,19 @@
         <PhysToString>0x%08X</PhysToString>
     </Pid>
 
+    <!-- 02 - Freeze frame DTC -->
+    <Pid>
+        <Id>02</Id>
+        <Description>Frame freeze DTC</Description>
+        <Label>DTCff</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%04X</PhysToString>
+    </Pid>
+
     <!-- 04 - Calculated engine load -->
     <Pid>
         <Id>04</Id>
@@ -443,7 +456,7 @@
 
     <!--
         4F - Maximum values for equivalence ratio, oxygen sensor voltage,
-        oxygen sensor current, intake manifold aboslute pressure.
+        oxygen sensor current, intake manifold absolute pressure.
     -->
     <Pid>
         <Id>4F</Id>

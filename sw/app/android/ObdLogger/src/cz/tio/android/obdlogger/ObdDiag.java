@@ -21,7 +21,9 @@ public class ObdDiag extends Activity {
     static final String TAG = "ObdDiag";
 
     /* IDs identifying launched activities */
-    static final int OBD_PIDS_ACTIVITY_ID = 1;
+    static final int REQUEST_ENABLE_BT = 1;
+    static final int OBD_PIDS_ACTIVITY_ID = 2;
+    static final int OBD_FF_ACTIVITY_ID = 3;
 
     /* Reference to application context */
 //    private Context mContext;
@@ -29,11 +31,18 @@ public class ObdDiag extends Activity {
     /* Reference to common application logger */
     private LogMaster mLog = LogMaster.getInstance();
 
-    /** Called when Live data button is clicked. */
+    /** Called to read Live data. */
     public void launchObdPids(View view) {
         Intent i = new Intent(this, ObdPids.class);
 
         startActivityForResult(i, OBD_PIDS_ACTIVITY_ID);
+    }
+
+    /** Called to read Freeze frame data. */
+    public void launchObdFreezeFrame(View view) {
+        Intent i = new Intent(this, ObdFreezeFrame.class);
+
+        startActivityForResult(i, OBD_FF_ACTIVITY_ID);
     }
 
     /** Called when the activity is first created. */
@@ -42,12 +51,36 @@ public class ObdDiag extends Activity {
         /* Bluetooth adapter */
         BluetoothAdapter mBluetoothAdapter = null;
 
-        Log.d(TAG, "-> Od.onCreate()");
+        Log.d(TAG, "-> onCreate()");
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.obd_diag);
 
-        Log.d(TAG, "<- Od.onCreate()");
+        /*
+         * Initialize Bluetooth connection.
+         */
+       	mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+        if (mBluetoothAdapter == null) {
+            Toast.makeText(this, "Bluetooth is not available",
+                    Toast.LENGTH_LONG).show();
+
+            finish();
+            return;
+        }
+
+        /*
+         * If Bluetooth is not enabled, pop up dialog asking user
+         * to enable it.
+         */
+        if (!mBluetoothAdapter.isEnabled()) {
+            Intent enableBtIntent = new Intent(
+                    BluetoothAdapter.ACTION_REQUEST_ENABLE);
+
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+        }
+
+        Log.d(TAG, "<- onCreate()");
     }
 
     /** Called when the activity is started. */
@@ -55,8 +88,8 @@ public class ObdDiag extends Activity {
     public void onStart() {
         super.onStart();
 
-        Log.d(TAG, "-> Od.onStart()");
-        Log.d(TAG, "<- Od.onStart()");
+        Log.d(TAG, "-> onStart()");
+        Log.d(TAG, "<- onStart()");
     }
 
     /** Called when the activity is paused. */
@@ -64,8 +97,8 @@ public class ObdDiag extends Activity {
     public void onPause() {
         super.onPause();
 
-        Log.d(TAG, "-> Od.onPause()");
-        Log.d(TAG, "<- Od.onPause()");
+        Log.d(TAG, "-> onPause()");
+        Log.d(TAG, "<- onPause()");
     }
 
     /** Called when the activity is resumed. */
@@ -73,8 +106,8 @@ public class ObdDiag extends Activity {
     public void onResume() {
         super.onResume();
 
-        Log.d(TAG, "-> Od.onResume()");
-        Log.d(TAG, "<- Od.onResume()");
+        Log.d(TAG, "-> onResume()");
+        Log.d(TAG, "<- onResume()");
     }
 
     /** Called when the activity is restarted. */
@@ -82,8 +115,8 @@ public class ObdDiag extends Activity {
     public void onRestart() {
         super.onRestart();
 
-        Log.d(TAG, "-> Od.onRestart()");
-        Log.d(TAG, "<- Od.onRestart()");
+        Log.d(TAG, "-> onRestart()");
+        Log.d(TAG, "<- onRestart()");
     }
 
     /** Called when the activity is stopped. */
@@ -91,8 +124,8 @@ public class ObdDiag extends Activity {
     public void onStop() {
         super.onStop();
 
-        Log.d(TAG, "-> Od.onStop()");
-        Log.d(TAG, "<- Od.onStop()");
+        Log.d(TAG, "-> onStop()");
+        Log.d(TAG, "<- onStop()");
     }
 
     /** Called when the activity is destroyed. */
@@ -100,12 +133,12 @@ public class ObdDiag extends Activity {
     public void onDestroy() {
         super.onDestroy();
 
-        Log.d(TAG, "-> Od.onDestroy()");
+        Log.d(TAG, "-> onDestroy()");
 
         /* Close log files */
         mLog.finish();
 
-        Log.d(TAG, "<- Od.onDestroy()");
+        Log.d(TAG, "<- onDestroy()");
     }
 
     /**
@@ -113,11 +146,33 @@ public class ObdDiag extends Activity {
      * spawned by startActivityForResult() is done.
      */
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        Log.d(TAG, "-> Od.onActivityResult " + resultCode);
+        Log.d(TAG, "-> onActivityResult " + resultCode);
 
         switch (requestCode) {
-        /* OBD PIDs */
+        case REQUEST_ENABLE_BT:
+            /* Failed to enable Bluetooth, return. */
+            if (resultCode != Activity.RESULT_OK) {
+                /* User did not enable Bluetooth or an error occurred */
+                Log.d(TAG, "BT not enabled");
+
+                Toast.makeText(this, "Bluetooth not enabled",
+                        Toast.LENGTH_LONG).show();
+
+                finish();
+            }
+            break;
+
+        /* Read current PIDs. */
         case OBD_PIDS_ACTIVITY_ID:
+            if (resultCode == Activity.RESULT_OK) {
+                /* Activity succeeded. */
+            } else {
+                /* Activity failed. */
+            }
+            break;
+
+        /* Display list of logged freeze frames. */
+        case OBD_FF_ACTIVITY_ID:
             if (resultCode == Activity.RESULT_OK) {
                 /* Activity succeeded. */
             } else {
@@ -126,7 +181,6 @@ public class ObdDiag extends Activity {
             break;
         }
 
-        Log.d(TAG, "<- Od.onActivityResult");
+        Log.d(TAG, "<- onActivityResult");
     }
 }
-

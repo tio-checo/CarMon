@@ -48,5 +48,6 @@
     <string name="diagLiveDataButtonText">Live Data</string>
     <string name="diagPermDtcButtonText">Permanent DTCs</string>
     <string name="diagPendDtcButtonText">Pending DTCs</string>
+    <string name="diagClearDtcButtonText">Clear DTCs</string>
     <string name="diagFreezeFrameButtonText">Freeze frame data</string>
 </resources>

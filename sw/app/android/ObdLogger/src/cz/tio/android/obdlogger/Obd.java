@@ -73,9 +73,11 @@ public class Obd {
 
     static final String PKT_ACK = "EA";
     static final String PKT_NAK = "EN";
-    static final String PKT_GET_PID = "EOP";
-    static final String PKT_GET_PID_RESP = "EP00";
-    static final String PKT_GET_PID_AS_RESP = "ER";
+    static final String PKT_GET_CURR_PID = "EOP";
+    static final String PKT_GET_CURR_PID_RESP = "EP00";
+    static final String PKT_GET_CURR_PID_AS_RESP = "ER";
+    static final String PKT_GET_FF_PID = "EOF";
+    static final String PKT_GET_FF_PID_RESP = "EF00";
     static final String PKT_SET_COMM_MODE = "EOC";
 
     /* private attributes */
@@ -307,7 +309,7 @@ public class Obd {
     }
 
     /**
-     * Asks ECU for PID value.
+     * Asks ECU for current PID value.
      *
      * @param   pidId   the id of requested PID
      * @return          PID value in form of byte array
@@ -317,75 +319,26 @@ public class Obd {
      */
     public int[] getPidValue(String pidId)
             throws PicTimeoutExpiredException, PicConnectionLostException {
-        String sp = PKT_GET_PID + pidId;
-        String rp = null;
-
-        /* Ask ECU for PID value. */
-        mPicCom.sendPacket(sp);
-
-        /*
-         * Loop until valid packet is received or
-         * until receive buffer is emptied.
-         */
-        while (true) {
-            try {
-                /* Wait for response. */
-                rp = mPicCom.getPacket("E");
-            } catch (PicTimeoutExpiredException e) {
-                /*
-                 * Timeout expired. Communication needs to be established again.
-                 */
-                mLog.w("Timeout when waiting for ECU response.");
-
-                mConnectionEstablished = false;
-
-                /* Call related callback routine. */
-                mEcuComCb.onConnectionLost();
-
-                throw e;
-            } catch (PicConnectionLostException e) {
-                mConnectionEstablished = false;
-
-                /* Call related callback routine. */
-                mEcuComCb.onConnectionLost();
-
-                throw e;
-            }
-
-            /*
-             * NAK received, log it and wait for another packet, since
-             * it may not be our NAK.
-             */
-            if (rp.startsWith(PKT_NAK)) {
-                mLog.w(String.format(
-                        "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
-
-                continue;
-            }
-
-            /* Valid packet received. Escape from the loop. */
-            if (rp.startsWith(PKT_GET_PID_RESP + pidId)) {
-                break;
-            }
-
-            /* Invalid packet received. Log this and wait for another one. */
-            mLog.w(String.format(
-                    "Invalid ECU response, awaiting <%s>, got <%s>.",
-                    PKT_GET_PID_RESP + pidId, rp));
-        }
-
-        int[] pidData = new int[(rp.length() - 6) / 2];
-
-        for (int i = 0; i < pidData.length; i++) {
-            pidData[i] = Integer.parseInt(rp.substring(
-                    6 + (i * 2), 8 + (i * 2)), 16);
-        }
-
-        return pidData;
+        return getPidValueImpl(pidId, -1);
     }
 
     /**
-     * Asks ECU for supported PIDs.
+     * Asks ECU for freeze frame PID value.
+     *
+     * @param   pidId           the id of requested PID
+     * @param   freezeFrameNum  the freeze frame number
+     * @return                  PID value in form of byte array
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
+     */
+    public int[] getFreezeFramePidValue(String pidId, int freezeFrameNum)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        return getPidValueImpl(pidId, freezeFrameNum);
+    }
+
+    /**
+     * Asks ECU for list of PIDs supported in 'live data' mode.
      *
      * @return   list of supported PIDs; <code>null</code>in case of failure.
      * @throws   PicTimeoutExpiredException when timeout expires while
@@ -394,39 +347,110 @@ public class Obd {
      */
     public ArrayList<String> getSupportedPids()
             throws PicTimeoutExpiredException, PicConnectionLostException {
-        ArrayList<String> pidList = new ArrayList<String>();
+        return getListOfAvailablePids(-1);
+    }
 
-        /* PIDs containing bitmap of supported PIDs */
-        int[] supPidIds = {0x00, 0x20, 0x40, 0x60, 0x80};
+    /**
+     * Asks ECU for list PIDs captured for particular freeze frame.
+     *
+     * @param   freezeFrameNum  The freeze frame number. -1 indicates that
+     *                          list of PIDs supported in 'live data' mode
+     *                          should be obtained instead.
+     * @return   list of freeze frame PIDs; <code>null</code>in case of failure.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws   PicConnectionLostException when lost connection with PIC
+     */
+    public ArrayList<String> getFreezeFramePids(int freezeFrameNum)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        return getListOfAvailablePids(freezeFrameNum);
+    }
 
-        for (int i = 0; i < supPidIds.length; i++) {
-            int[] pidBitmap = getPidValue(String.format("%02X", supPidIds[i]));
+    /**
+     * Constructs list of logged freeze frames.
+     *
+     * @return   list of DTCs identifying logged freeze frames
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws   PicConnectionLostException when lost connection with PIC
+     */
+    public ArrayList<String> getFreezeFrameList()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        ArrayList<String> freezeFrameList = new ArrayList<String>();
+        int freezeFrameNum;
 
-            /* Returned array has to have exactly 4 entries. */
-            if (pidBitmap.length != 4) {
-                mLog.e(String.format("getSupportedPids: <%d> is invalid " +
-                        "length of bitmap, should be <4>", pidBitmap.length));
+        /*
+         * Try to determine DTC associated with particular freeze frame.
+         * Stop once we got invalid response.
+         * No more than 256 freeze frames are to be processed.
+         */
+        for (int i = 0; i < 256; i++) {
+            int dtc;
+            int [] v = getFreezeFramePidValue("02", i);
 
-                return null;
-            }
-
-            for (int j = 0; j < 4; j++) {
-                for (int k = 0; k < 8; k++) {
-                    /* If PID is supported, add it to the list. */
-                    if ((pidBitmap[j] & (0x80 >> k)) != 0) {
-                        pidList.add(String.format("%02X",
-                                supPidIds[i] + j * 8 + k + 1));
-                    }
-                }
-            }
-
-            /* If next PID bitmap is not available, we are done. */
-            if ((pidBitmap[3] & 0x01) == 0) {
+            /* ECU did not respond - assume that freeze frame does not exist. */
+            if (v == null) {
                 break;
             }
+
+            /* Invalid data length. */
+            if (v.length != 2) {
+                break;
+            }
+
+            dtc = v[0] * 256 + v[1];
+
+            /* Zero means "no DTC". */
+            if (dtc == 0) {
+                break;
+            }
+
+            /* Convert DTC number to String and add it to the list. */
+            freezeFrameList.add(convertDtcRawToString(dtc));
         }
 
-        return pidList;
+        return freezeFrameList;
+    }
+
+    /**
+     * Converts DTC raw data to String.
+     *
+     * @param dtc    the DTC raw data
+     * @return       string describing the DTC
+     */
+    public String convertDtcRawToString(int dtc) {
+        String dtcType;
+
+        /* Decode DTC type. */
+        switch ((dtc >> 14) & 0x03) {
+        /* Powertrain */
+        case 0:
+            dtcType = "P";
+            break;
+
+        /* Chassis */
+        case 1:
+            dtcType = "C";
+            break;
+
+        /* Body */
+        case 2:
+            dtcType = "B";
+            break;
+
+        /* Network */
+        case 3:
+            dtcType = "U";
+            break;
+
+        /* Just to satisfy the compiler. */
+        default:
+            dtcType = "x";
+            break;
+        }
+
+        /* Decode DTC number. */
+        return dtcType + String.format("%04X", dtc & 0x3fff);
     }
 
     /**
@@ -579,5 +603,165 @@ public class Obd {
          */
         mProbePool.put("Turbo", new TurboProbe());
     }
-}
 
+    /**
+     * Determines if freeze frame data are to be obtained.
+     *
+     * @param   freezeFrameNum  The freeze frame number. -1 indicates that
+     *                          current data should be obtained instead.
+     * @return  <code>true</code> if freeze frame data are requested;
+     *          <code>false</code> otherwise.
+     */
+    private boolean isFreezeFrame(int freezeFrameNum) {
+        return (freezeFrameNum != -1);
+    }
+
+    /**
+     * Asks ECU for PID value - either Freeze Frame PID value or current PID
+     * value.
+     *
+     * @param   pidId           the id of requested PID
+     * @param   freezeFrameNum  The freeze frame number. -1 indicates that
+     *                          current PID value should be obtained instead.
+     *
+     * @return                  PID value in form of byte array
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
+     */
+    private int[] getPidValueImpl(String pidId, int freezeFrameNum)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        String sp = isFreezeFrame(freezeFrameNum) ? PKT_GET_FF_PID :
+                PKT_GET_CURR_PID;
+        String rph = isFreezeFrame(freezeFrameNum) ? PKT_GET_FF_PID_RESP :
+                PKT_GET_CURR_PID_RESP;
+        String rp = null;
+
+        /*
+         * If appropriate, add freeze frame number to both command
+         * as well as response.
+         */
+        if (isFreezeFrame(freezeFrameNum)) {
+            sp += String.format("%02X", freezeFrameNum);
+            rph += String.format("%02X", freezeFrameNum);
+        }
+
+        sp += pidId;
+        rph += pidId;
+
+        /* Ask ECU for PID value. */
+        mPicCom.sendPacket(sp);
+
+        /*
+         * Loop until valid packet is received or
+         * until receive buffer is emptied.
+         */
+        while (true) {
+            try {
+                /* Wait for response. */
+                rp = mPicCom.getPacket("E");
+            } catch (PicTimeoutExpiredException e) {
+                /* Timeout expired, return. */
+                mLog.w("Timeout when waiting for ECU response.");
+
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
+
+                throw e;
+            } catch (PicConnectionLostException e) {
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
+
+                throw e;
+            }
+
+            /* NAK received, log it and return. */
+            if (rp.startsWith(PKT_NAK)) {
+                mLog.w(String.format(
+                        "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
+
+                return null;
+            }
+
+            /* Valid packet received. Escape from the loop. */
+            if (rp.startsWith(rph)) {
+                break;
+            }
+
+            /* Invalid packet received. Log this and wait for another one. */
+            mLog.w(String.format(
+                    "Invalid ECU response, awaiting <%s>, got <%s>.", rph, rp));
+        }
+
+        int offset = isFreezeFrame(freezeFrameNum) ? 8 : 6;
+        int[] pidData = new int[(rp.length() - offset) / 2];
+
+        for (int i = 0; i < pidData.length; i++) {
+            pidData[i] = Integer.parseInt(rp.substring(
+                    offset + (i * 2), offset + ((i + 1) * 2)), 16);
+        }
+
+        return pidData;
+    }
+
+    /**
+     * Asks ECU for list of PIDs supported in 'live data' mode
+     * or list of PIDs captured for particular freeze frame.
+     *
+     * @param   freezeFrameNum  The freeze frame number. -1 indicates that
+     *                          list of PIDs supported in 'live data' mode
+     *                          should be obtained instead.
+     *
+     * @return   list of PIDs; <code>null</code>in case of failure.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws   PicConnectionLostException when lost connection with PIC
+     */
+    private ArrayList<String> getListOfAvailablePids(int freezeFrameNum)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        /* PIDs containing bitmap of supported PIDs */
+        int[] supPidIds = {0x00, 0x20, 0x40, 0x60, 0x80};
+
+        ArrayList<String> pidList = new ArrayList<String>();
+
+        for (int i = 0; i < supPidIds.length; i++) {
+            int[] pidBitmap;
+
+            if (isFreezeFrame(freezeFrameNum)) {
+                pidBitmap = getFreezeFramePidValue(
+                        String.format("%02X", supPidIds[i]), freezeFrameNum);
+            } else {
+                pidBitmap = getPidValue(String.format("%02X", supPidIds[i]));
+            }
+
+            /* Returned array has to have exactly 4 entries. */
+            if (pidBitmap.length != 4) {
+                mLog.e(String.format("getSupportedPids: <%d> is invalid " +
+                        "length of bitmap, should be <4>", pidBitmap.length));
+
+                return null;
+            }
+
+            for (int j = 0; j < 4; j++) {
+                for (int k = 0; k < 8; k++) {
+                    /* If PID is supported, add it to the list. */
+                    if ((pidBitmap[j] & (0x80 >> k)) != 0) {
+                        pidList.add(String.format("%02X",
+                                supPidIds[i] + j * 8 + k + 1));
+                    }
+                }
+            }
+
+            /* If next PID bitmap is not available, we are done. */
+            if ((pidBitmap[3] & 0x01) == 0) {
+                break;
+            }
+        }
+
+        return pidList;
+    }
+}

@@ -496,7 +496,7 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
         }
 
         /* Probe value received. */
-        if (p.startsWith(Obd.PKT_GET_PID_AS_RESP)) {
+        if (p.startsWith(Obd.PKT_GET_CURR_PID_AS_RESP)) {
             /* Validate packet sequence number */
             int curSeqNum = Integer.parseInt(p.substring(2, 4), 16);
 
@@ -812,6 +812,184 @@ class ComSvcStateDiagLiveData extends ComSvcState {
 }
 
 /**
+ * Diagnostic Freeze Frame mode. Processes messages from UI, asks ECU
+ * for required data and passes responses back to UI.
+ */
+class ComSvcStateDiagFreezeFrame extends ComSvcState {
+    /* Progress dialog displayed when obtaining freeze frame. */
+    private ProgressDialog mFreezeFramePd;
+
+    /**
+     * Called when state is entered.
+     */
+    public void enter() {
+        Handler comMsgHandler = getComMsgHandler();
+        /*
+         * Let UI know that connection with ECU has been established
+         * and we are ready to receive commands.
+         */
+        if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                ComSvcMsg.RES_ECU_CONNECTED))) {
+            mLog.e("Sending message to UI failed.");
+        }
+    }
+
+    /**
+     * Called when state is left.
+     */
+    public void leave() {
+    }
+
+    /**
+     * Called to let state do its job and determine what action
+     * is to be taken in the next step.
+     *
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public ComSvcStateAction next()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        Handler comMsgHandler = getComMsgHandler();
+        ComSvcMsg uiMsgHandler = getUiMsgHandler();
+
+        Bundle msg;
+
+        /* Block until UI asks us to do something. */
+        try {
+            mLog.d("Waiting for UI message...");
+            msg = uiMsgHandler.get();
+        } catch (InterruptedException e) {
+            mLog.w("Communication thread interrupted when waiting " +
+                    "for message from UI.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        /* Data payload empty, there is nothing to process. */
+        if (msg == null) {
+            mLog.w("EMPTY.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        mLog.d("RECEIVED.");
+
+        /* Get command. */
+        int cmd = msg.getInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_INVALID);
+
+        mLog.d(String.format("UI command: %d", cmd));
+
+        /* Process the message. */
+        switch (cmd) {
+        /* Get list of logged freeze frames. */
+        case ComSvcMsg.CMD_GET_FF_LIST:
+            ArrayList<String> freezeFrameList;
+
+            mLog.d("Obtaining list logged freeze frames...");
+
+            /*
+             * Get list of logged freeze frames. It is in form of array
+             * of Strings where each String contains DTC number identifying
+             * particular freeze frame.
+             */
+            freezeFrameList = getObd().getFreezeFrameList();
+
+            /* Pass the result to the UI. */
+            if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                    ComSvcMsg.RES_GET_FF_LIST, freezeFrameList))) {
+                mLog.e("Sending list of freeze frames to UI failed.");
+            }
+
+            break;
+
+        /* Get list of PIDs along with their values for chosen freeze frame. */
+        case ComSvcMsg.CMD_GET_FF_PIDS:
+            /* Get freeze frame number. */
+            int freezeFrameId = msg.getInt(ComSvcMsg.KEY_ARG1, 0);
+
+            ArrayList<String> pidList = null;
+            ArrayList<String> pidValues = new ArrayList<String>();
+
+            /* Display progress dialog. */
+            getActivity().runOnUiThread(new Runnable() {
+                public void run() {
+                    mFreezeFramePd.show();
+                }
+            });
+
+            mLog.d("Obtaining list of freeze frame PIDs...");
+            pidList = getObd().getFreezeFramePids(freezeFrameId);
+
+            /*
+             * Obtain value for each PID, construct string containing
+             * PID label, PID value, PID units and put that string
+             * into the list.
+             */
+
+            for (int i = 0; i < pidList.size(); i++) {
+                String pidId = pidList.get(i);
+
+                ObdProbe probe = (ObdProbe) getObd().getProbe(pidId);
+
+                if (probe == null) {
+                    mLog.w("Probe for PID <" + pidId + "> not found.");
+
+                    continue;
+                }
+
+                mLog.d("Getting value of freeze frame PID <" + pidId + ">...");
+                probe.acquire(freezeFrameId);
+
+                String resStr = " " + probe.getLabel() + ": " +
+                        probe.physToText();
+
+                pidValues.add(resStr);
+            }
+
+            if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                    ComSvcMsg.RES_GET_FF_PIDS, pidValues))) {
+                mLog.e("Sending list of freeze frame PID values to UI failed.");
+            }
+
+            /* Dismiss progress dialog. */
+            getActivity().runOnUiThread(new Runnable() {
+                public void run() {
+                    mFreezeFramePd.dismiss();
+                }
+            });
+
+            break;
+
+        /* Terminate the thread. */
+        case ComSvcMsg.CMD_QUIT:
+            return ComSvcStateAction.QUIT;
+
+        case ComSvcMsg.CMD_INVALID:
+            mLog.w("Invalid command.");
+            break;
+        }
+
+        /* Continue in current state. */
+        return ComSvcStateAction.STAY_IN_CURRENT;
+    }
+
+    /**
+     * Constructor
+     */
+    public ComSvcStateDiagFreezeFrame(ComSvcStateMachine stateMachine) {
+        super(stateMachine);
+
+        /* Create progress dialog displayed when obtaining freeze frame. */
+        mFreezeFramePd = new ProgressDialog(getActivity());
+        mFreezeFramePd.setTitle("Obtaining freeze frame...");
+        mFreezeFramePd.setMessage("Please wait.");
+        mFreezeFramePd.setCancelable(false);
+        mFreezeFramePd.setIndeterminate(true);
+    }
+}
+
+/**
  * Implements state machine handling data logger screen.
  */
 class ComSvcLoggerStateMachine extends ComSvcStateMachine {
@@ -878,6 +1056,38 @@ class ComSvcDiagLiveDataStateMachine extends ComSvcStateMachine {
 }
 
 /**
+ * Implements state machine handling 'diagnostic freeze frame' mode.
+ */
+class ComSvcDiagFreezeFrameStateMachine extends ComSvcStateMachine {
+    /**
+     * Constructor
+     *
+     * @param activity  the reference to activity which spawned this service
+     * @param comMsgH   the message handler delivering messages to UI thread
+     * @param uiMsgH    the message handler delivering messages from UI thread
+     * @param obd       the OBD communication object
+     */
+    public ComSvcDiagFreezeFrameStateMachine(Activity activity,
+            Handler comMsgH,ComSvcMsg uiMsgH, Obd obd) {
+        super(activity, obd, comMsgH, uiMsgH);
+
+        /* Instantiate states and create state diagram. */
+
+        /* Initiates communication with PIC module. */
+        addState(new ComSvcStateConnectToPic(this));
+        /* Configures PIC for communication with ECU. */
+        addState(new ComSvcStateConfEcuComMode(this));
+        /* Initiates communication with ECU. */
+        addState(new ComSvcStateConnectToEcu(this));
+        /* Receives commands from UI and passes back data obtained from ECU. */
+        addState(new ComSvcStateDiagFreezeFrame(this));
+
+        /* Initialize state machine. */
+        goToFirstState();
+    }
+}
+
+/**
  * Represents communication service running as a background thread.
  */
 class CommunicationService {
@@ -886,8 +1096,10 @@ class CommunicationService {
     /* Modes of operation. */
     /* OBD data logger. */
     public static final int MODE_LOGGER = 0;
-    /* OBD diagnostic device. */
-    public static final int MODE_DIAG = 1;
+    /* OBD diagnostic tester - live data. */
+    public static final int MODE_LIVE_DATA = 1;
+    /* OBD diagnostic tester - freeze frame data. */
+    public static final int MODE_FREEZE_FRAME = 2;
 
     private boolean mDebug = false;
     private boolean mQuit = false;
@@ -986,10 +1198,13 @@ class CommunicationService {
         /* Instantiates state machine for given mode. */
         if (mode == MODE_LOGGER) {
             mComSvcStateMachine = new ComSvcLoggerStateMachine(activity, obd);
-        } else {
+        } else if (mode == MODE_LIVE_DATA) {
             mComSvcStateMachine = new ComSvcDiagLiveDataStateMachine(activity,
                     handler, uiMsg, obd);
-        }
+        } else {
+            mComSvcStateMachine = new ComSvcDiagFreezeFrameStateMachine(
+                    activity, handler, uiMsg, obd);
+	}
 
         /* Initialize reference to GPS status indicator. */
         mStsGps = (Button) activity.findViewById(R.id.gpsState);

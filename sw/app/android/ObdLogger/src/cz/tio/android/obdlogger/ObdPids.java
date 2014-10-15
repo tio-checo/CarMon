@@ -26,7 +26,6 @@ import java.util.ArrayList;
 
 public class ObdPids extends ListActivity {
     static final String TAG = "ObdPids";
-    static final int REQUEST_ENABLE_BT = 1;
 
     /* Reference to application context */
     private Context mContext;
@@ -65,7 +64,7 @@ public class ObdPids extends ListActivity {
              * Ask for list of supported PIDs.
              */
             case ComSvcMsg.RES_ECU_CONNECTED:
-                    getSupportedPids();
+                    mComSvcMsg.getSupportedPids();
                     break;
 
             /*
@@ -121,7 +120,7 @@ public class ObdPids extends ListActivity {
                 position, mPidList.get(position)));
 
         /* Ask for value of selected PID. */
-        getPidValue(mPidList.get(position));
+        mComSvcMsg.getPidValue(mPidList.get(position));
     }
 
     /** Called when the activity is first created. */
@@ -129,49 +128,19 @@ public class ObdPids extends ListActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        Log.d(TAG, "-> Op.onCreate()");
+        Log.d(TAG, "-> onCreate()");
 
         /* Save the current context. */
         mContext = getApplicationContext();
-
-        /* Bluetooth adapter */
-        BluetoothAdapter mBluetoothAdapter = null;
 
         setContentView(R.layout.obd_pids);
 
         mPidValue = (TextView)findViewById(R.id.pid);
 
-        /*
-         * Initialize Bluetooth connection.
-         */
-       	mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        /* Launch communication service. */
+        launchComService();
 
-        if (mBluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth is not available",
-                    Toast.LENGTH_LONG).show();
-
-            finish();
-            return;
-        }
-
-        /*
-         * If Bluetooth is not enabled, pop up dialog asking user
-         * to enable it.
-         */
-        if (!mBluetoothAdapter.isEnabled()) {
-            Intent enableBtIntent = new Intent(
-                    BluetoothAdapter.ACTION_REQUEST_ENABLE);
-
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-        }  else {
-            /*
-             * Bluetooth enabled, so pass the baton to communication
-             * service.
-             */
-            launchComService();
-        }
-
-        Log.d(TAG, "<- Op.onCreate()");
+        Log.d(TAG, "<- onCreate()");
     }
 
     /** Called when the activity is started. */
@@ -179,8 +148,8 @@ public class ObdPids extends ListActivity {
     public void onStart() {
         super.onStart();
 
-        Log.d(TAG, "-> Op.onStart()");
-        Log.d(TAG, "<- Op.onStart()");
+        Log.d(TAG, "-> onStart()");
+        Log.d(TAG, "<- onStart()");
     }
 
     /** Called when the activity is paused. */
@@ -188,8 +157,8 @@ public class ObdPids extends ListActivity {
     public void onPause() {
         super.onPause();
 
-        Log.d(TAG, "-> Op.onPause()");
-        Log.d(TAG, "<- Op.onPause()");
+        Log.d(TAG, "-> onPause()");
+        Log.d(TAG, "<- onPause()");
     }
 
     /** Called when the activity is resumed. */
@@ -197,8 +166,8 @@ public class ObdPids extends ListActivity {
     public void onResume() {
         super.onResume();
 
-        Log.d(TAG, "-> Op.onResume()");
-        Log.d(TAG, "<- Op.onResume()");
+        Log.d(TAG, "-> onResume()");
+        Log.d(TAG, "<- onResume()");
     }
 
     /** Called when the activity is restarted. */
@@ -206,8 +175,8 @@ public class ObdPids extends ListActivity {
     public void onRestart() {
         super.onRestart();
 
-        Log.d(TAG, "-> Op.onRestart()");
-        Log.d(TAG, "<- Op.onRestart()");
+        Log.d(TAG, "-> onRestart()");
+        Log.d(TAG, "<- onRestart()");
     }
 
     /** Called when the activity is stopped. */
@@ -215,8 +184,8 @@ public class ObdPids extends ListActivity {
     public void onStop() {
         super.onStop();
 
-        Log.d(TAG, "-> Op.onStop()");
-        Log.d(TAG, "<- Op.onStop()");
+        Log.d(TAG, "-> onStop()");
+        Log.d(TAG, "<- onStop()");
     }
 
     /** Called when the activity is destroyed. */
@@ -224,19 +193,18 @@ public class ObdPids extends ListActivity {
     public void onDestroy() {
         super.onDestroy();
 
-        Log.d(TAG, "-> Op.onDestroy()");
+        Log.d(TAG, "-> onDestroy()");
 
         /*
          * If communication thread was spawned, let it know
          * it should terminate its job.
          */
         if (mComService != null && commThread != null) {
-            /* Send communication thread 'Quit' message. */
-            Bundle b = new Bundle();
-            b.putInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_QUIT);
-            mComSvcMsg.put(b);
-
+            /* Let communication thread know that we are quitting. */
             mComService.finish();
+
+            /* Send communication thread 'Quit' message. */
+            mComSvcMsg.sendQuitMsg();
 
             /* Wait until the thread quits - set timeout to 10 seconds */
             try {
@@ -258,7 +226,7 @@ public class ObdPids extends ListActivity {
         /* Close log files */
         mLog.finish();
 
-        Log.d(TAG, "<- Op.onDestroy()");
+        Log.d(TAG, "<- onDestroy()");
     }
 
     /**
@@ -266,47 +234,30 @@ public class ObdPids extends ListActivity {
      * spawned by startActivityForResult() is done.
      */
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        Log.d(TAG, "-> Op.onActivityResult " + resultCode);
+        Log.d(TAG, "-> onActivityResult " + resultCode);
 
         switch (requestCode) {
-        case REQUEST_ENABLE_BT:
-            /* Request to enable Bluetooth returned */
-            if (resultCode == Activity.RESULT_OK) {
-                /*
-                 * Bluetooth enabled, so pass the baton to communication
-                 * service.
-                 */
-                launchComService();
-            } else {
-                /* User did not enable Bluetooth or an error occurred */
-                Log.d(TAG, "BT not enabled");
-
-                Toast.makeText(this, "Bluetooth not enabled",
-                        Toast.LENGTH_LONG).show();
-
-                finish();
-            }
         }
 
-        Log.d(TAG, "<- Op.onActivityResult");
+        Log.d(TAG, "<- onActivityResult");
     }
 
     /**
      * Launches communication service.
      */
     private void launchComService() {
-        /* Create container for delivering messages to communication thread. */
-        mComSvcMsg = new ComSvcMsg();
-
         /*
          * Instantiates OBD communication module along with all lower
          * layer communication modules.
          */
         mObd = new Obd(new PicCom(new PicComBt("OBD converter")), this);
 
+        /* Create container for delivering messages to communication thread. */
+        mComSvcMsg = new ComSvcMsg();
+
         /* Instantiate communication service. */
         mComService = new CommunicationService(this, mHandler, mComSvcMsg,
-                CommunicationService.MODE_DIAG, mObd);
+                CommunicationService.MODE_LIVE_DATA, mObd);
 
         /* Create background thread handling communication with PIC module. */
         commThread = new Thread(null, mComService.loop, "ComService");
@@ -314,28 +265,4 @@ public class ObdPids extends ListActivity {
         /* Launch the service. */
         commThread.start();
     }
-
-    /** Asks for list of OBD PIDs supported by the ECU. */
-    private void getSupportedPids() {
-        Bundle b = new Bundle();
-
-        b.putInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_GET_SUPPORTED_PIDS);
-
-        mComSvcMsg.put(b);
-    }
-
-    /**
-     * Asks for OBD PID value.
-     *
-     * @param pid   the PID
-     */
-    private void getPidValue(String pid) {
-        Bundle b = new Bundle();
-
-        b.putInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_GET_PID_VALUE);
-        b.putString(ComSvcMsg.KEY_ARG1, pid);
-
-        mComSvcMsg.put(b);
-    }
 }
-

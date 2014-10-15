@@ -26,6 +26,9 @@
         <activity android:name=".ObdPids"
                   android:label="@string/app_name">
         </activity>
+        <activity android:name=".ObdFreezeFrame"
+                  android:label="@string/app_name">
+        </activity>
         <activity android:name=".EditPreferences"
                   android:label="@string/app_name">
         </activity>

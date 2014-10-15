@@ -22,6 +22,10 @@ public class ComSvcMsg {
     public static final int CMD_GET_SUPPORTED_PIDS = 1;
     /* Get PID value. */
     public static final int CMD_GET_PID_VALUE = 2;
+    /* Get list of logged freeze frames. */
+    public static final int CMD_GET_FF_LIST = 3;
+    /* Get list of PIDs logged for given freeze frame. */
+    public static final int CMD_GET_FF_PIDS = 4;
 
     /* Results */
     /* ECU not available */
@@ -30,8 +34,12 @@ public class ComSvcMsg {
     public static final int RES_ECU_CONNECTED = 1;
     /* List of supported PIDs */
     public static final int RES_GET_SUPPORTED_PIDS = 2;
-    /* Get PID value. */
+    /* PID value. */
     public static final int RES_GET_PID_VALUE = 3;
+    /* List of logged freeze frames. */
+    public static final int RES_GET_FF_LIST = 4;
+    /* List of PIDs logged for given freeze frame. */
+    public static final int RES_GET_FF_PIDS = 5;
 
     /** Set to <code>true</code> when object contains unprocessed message. */
     private boolean mValid;
@@ -80,7 +88,66 @@ public class ComSvcMsg {
     }
 
     /**
-     * Constructor
+     * Asks for list of OBD PIDs supported by the ECU.
+     */
+    public void getSupportedPids() {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_SUPPORTED_PIDS);
+
+        put(b);
+    }
+
+    /**
+     * Asks for current PID value.
+     *
+     * @param pid   the PID
+     */
+    public void getPidValue(String pid) {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_PID_VALUE);
+        b.putString(KEY_ARG1, pid);
+
+        put(b);
+    }
+
+    /**
+     * Asks for list of logged freeze frames.
+     */
+    public void getFreezeFrameList() {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_FF_LIST);
+
+        put(b);
+    }
+
+    /**
+     * Asks for list of PIDs captured for given freeze frame.
+     *
+     * @param freezeFrameNum   the freeze frame number
+     */
+    public void getFreezeFramePids(int freezeFrameNum) {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_FF_PIDS);
+        b.putInt(KEY_ARG1, freezeFrameNum);
+
+        put(b);
+    }
+
+    /**
+     * Let underlying state machine know we want to quit.
+     */
+    public void sendQuitMsg() {
+        Bundle b = new Bundle();
+        b.putInt(KEY_CMD, CMD_QUIT);
+        put(b);
+    }
+
+    /**
+     * Constructor.
      */
     public ComSvcMsg() {
         mData = null;
