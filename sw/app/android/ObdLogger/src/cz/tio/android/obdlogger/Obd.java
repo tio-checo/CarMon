@@ -75,7 +75,8 @@ public class Obd {
     static final String PKT_NAK = "EN";
     static final String PKT_GET_CURR_PID = "EOP";
     static final String PKT_GET_CURR_PID_RESP = "EP00";
-    static final String PKT_GET_CURR_PID_AS_RESP = "ER";
+    static final String PKT_GET_CURR_PID_AS = "EOp";
+    static final String PKT_GET_CURR_PID_AS_RESP = "Ep";
     static final String PKT_GET_FF_PID = "EOF";
     static final String PKT_GET_FF_PID_RESP = "EF00";
     static final String PKT_SET_COMM_MODE = "EOC";
@@ -126,7 +127,11 @@ public class Obd {
          * Let receive state machine process a response.
          */
         try {
-            getPidValue("00");
+            if (getPidValue("00") == null) {
+                mLog.e("obd.open(): ECU not responded.");
+
+                return false;
+            }
         } catch (PicTimeoutExpiredException e) {
             mLog.e("Timeout when trying to initiate communication with ECU.");
 
@@ -160,7 +165,7 @@ public class Obd {
         /* Turn off auto-scan mode. */
         if (mConnectionEstablished) {
             try {
-                mPicCom.configObdAutoScan("", "");
+                configObdAutoScan("", "");
             } catch (PicTimeoutExpiredException e) {
                 ret = false;
             } catch (PicConnectionLostException e) {
@@ -320,6 +325,25 @@ public class Obd {
     public int[] getPidValue(String pidId)
             throws PicTimeoutExpiredException, PicConnectionLostException {
         return getPidValueImpl(pidId, -1);
+    }
+
+    /**
+     * Configures OBD PID auto-scan mode.
+     *
+     * @param    pidList                    the list of PIDs to be scanned
+     * @param    sampleRate                 4 HEX ASCII characters specifying
+     *                                      sample rate in [ms]
+     * @return
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public int configObdAutoScan(String pidList, String sampleRate)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        mPicCom.sendPacket(PKT_GET_CURR_PID_AS + sampleRate + pidList);
+
+        /* Wait just for ACK */
+        return mPicCom.waitForAckNak("E", true, false);
     }
 
     /**

@@ -396,7 +396,7 @@ class ComSvcStateConfAcqMode extends ComSvcState {
         /*
          * Configure and start OBD auto-scan mode. Set sample rate to 50 ms.
          */
-        pc.configObdAutoScan(pidAutoScanList, "0032");
+        obd.configObdAutoScan(pidAutoScanList, "0032");
 
         return ComSvcStateAction.GOTO_NEXT;
     }

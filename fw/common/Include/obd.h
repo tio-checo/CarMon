@@ -18,7 +18,7 @@
 #define	OBD_CMD_CONF		'C'	/* configure the module */
 #define	OBD_CMD_GETFFPID	'F'	/* get value of freeze frame PID */
 #define	OBD_CMD_GETCURPID	'P'	/* get value of current PID */
-#define	OBD_CMD_GETCURPIDS	'R'	/* get values of current PIDs periodically */
+#define	OBD_CMD_GETCURPIDS	'p'	/* get values of current PIDs periodically */
 
 /* OBD commands */
 #define	OBD_MODE_GET_PID	1	/* Show current data */

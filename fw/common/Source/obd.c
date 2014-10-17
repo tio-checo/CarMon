@@ -349,8 +349,8 @@ obd_comm_ecu_svc(void)
 			 */
 			curr_pid = obd_autoscan_pid_list[obd_autoscan_curr];
 			if (obd_autoscan_run) {
-				snprintf(hdr, sizeof (hdr), "R%02X%02X",
-				    pkt_num, curr_pid);
+				snprintf(hdr, sizeof (hdr), "%c%02X%02X",
+				    OBD_CMD_GETCURPIDS, pkt_num, curr_pid);
 
 				/* Increment sequence number. */
 				if (++pkt_num > 255)
@@ -358,11 +358,11 @@ obd_comm_ecu_svc(void)
 			} else {
 				if (OBD_IS_FREEZE_FRAME) {
 					snprintf(hdr, sizeof (hdr),
-					    "F00%02X%02X", obd_freeze_frame_num,
-					    curr_pid);
+					    "%c00%02X%02X", OBD_CMD_GETFFPID,
+					    obd_freeze_frame_num, curr_pid);
 				} else {
-					snprintf(hdr, sizeof (hdr), "P00%02X",
-					    curr_pid);
+					snprintf(hdr, sizeof (hdr), "%c00%02X",
+					    OBD_CMD_GETCURPID, curr_pid);
 				}
 			}
 

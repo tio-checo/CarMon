@@ -489,90 +489,6 @@ public class PicCom {
     }
 
     /**
-     * Configures OBD auto-scan mode.
-     *
-     * @param    pidList                    the list of PIDs to be scanned
-     * @param    sampleRate                 4 HEX ASCII characters specifying
-     *                                      sample rate in [ms]
-     * @return
-     * @throws   PicTimeoutExpiredException when timeout expires while
-     *                                      waiting for data from PIC
-     *           PicConnectionLostException when lost connection with PIC
-     */
-    public int configObdAutoScan(String pidList, String sampleRate)
-            throws PicTimeoutExpiredException, PicConnectionLostException {
-        sendPacket("EOR" + sampleRate + pidList);
-
-        /* Wait just for ACK */
-        return waitForAckNak("E", true, false);
-    }
-
-    /**
-     * Constructor
-     *
-     * @param picComPhys    the low level communication service.
-     */
-    public PicCom(IPicComPhys picComPhys) {
-        this(picComPhys, new NullPicComCallback());
-    }
-
-    /**
-     * Constructor
-     *
-     * @param picComPhys    the low level communication service.
-     * @param picComCb      the callback routines
-     */
-    public PicCom(IPicComPhys picComPhys, IPicComCallback picComCb) {
-        if (mDebug) {
-            mComTime = ObdLogger.getTime();
-        }
-
-        /* Save reference to underlying communication object. */
-        mPicComPhys = picComPhys;
-
-        /* Save reference to callback routines. */
-        mPicComCb = picComCb;
-
-        /* Instantiate packet buffer. */
-        mPacketBuffer = new ArrayList<String>();
-    }
-
-    /**
-     * Searches in packet buffer for packet starting with given string.
-     * If packet matching given criteria is found, it's removed from buffer
-     * and returned to caller, otherwise <code>null</code> is returned.
-     *
-     * @return  the matching packet; <code>null</code> if matching packet
-     *          is not found.
-     */
-    private String findPacket(String s) {
-        int i;
-
-        /* Buffer is empty, return */
-        if (mPacketBuffer.isEmpty())
-            return null;
-
-        for (i = 0; i < mPacketBuffer.size(); i++) {
-            /* Packet found, remove it from buffer and return it. */
-            if (mPacketBuffer.get(i).startsWith(s))
-                return mPacketBuffer.remove(i);
-        }
-
-        /* Packet not found in a buffer. */
-        return null;
-    }
-
-    /**
-     * Appends packet to the end of the buffer.
-     */
-    private boolean bufferPacket(String p) {
-            Log.w(TAG, String.format("[%.3f] Buffering packet <%s>.",
-                    ObdLogger.getRunTime(), p));
-
-            return mPacketBuffer.add(p);
-    }
-
-    /**
      * Waits either for ACK, NAK or both from specified module.
      *
      * @return   0   - ACK has been received.
@@ -581,7 +497,7 @@ public class PicCom {
      *                                      waiting for data from PIC
      *           PicConnectionLostException when lost connection with PIC
      */
-    private int waitForAckNak(String modId, boolean ack, boolean nak)
+    public int waitForAckNak(String modId, boolean ack, boolean nak)
             throws PicTimeoutExpiredException, PicConnectionLostException {
         String ackResp = modId + "A";
         String nakResp = modId + "N";
@@ -643,9 +559,44 @@ public class PicCom {
      *                                      waiting for data from PIC
      *           PicConnectionLostException when lost connection with PIC
      */
-    private int waitForAckNak(String modId)
+    public int waitForAckNak(String modId)
             throws PicTimeoutExpiredException, PicConnectionLostException {
         return waitForAckNak(modId, true, true);
+    }
+
+    /**
+     * Searches in packet buffer for packet starting with given string.
+     * If packet matching given criteria is found, it's removed from buffer
+     * and returned to caller, otherwise <code>null</code> is returned.
+     *
+     * @return  the matching packet; <code>null</code> if matching packet
+     *          is not found.
+     */
+    private String findPacket(String s) {
+        int i;
+
+        /* Buffer is empty, return */
+        if (mPacketBuffer.isEmpty())
+            return null;
+
+        for (i = 0; i < mPacketBuffer.size(); i++) {
+            /* Packet found, remove it from buffer and return it. */
+            if (mPacketBuffer.get(i).startsWith(s))
+                return mPacketBuffer.remove(i);
+        }
+
+        /* Packet not found in a buffer. */
+        return null;
+    }
+
+    /**
+     * Appends packet to the end of the buffer.
+     */
+    private boolean bufferPacket(String p) {
+            Log.w(TAG, String.format("[%.3f] Buffering packet <%s>.",
+                    ObdLogger.getRunTime(), p));
+
+            return mPacketBuffer.add(p);
     }
 
     /**
@@ -739,6 +690,36 @@ public class PicCom {
                 }
             }
         }
+    }
+
+    /**
+     * Constructor
+     *
+     * @param picComPhys    the low level communication service.
+     */
+    public PicCom(IPicComPhys picComPhys) {
+        this(picComPhys, new NullPicComCallback());
+    }
+
+    /**
+     * Constructor
+     *
+     * @param picComPhys    the low level communication service.
+     * @param picComCb      the callback routines
+     */
+    public PicCom(IPicComPhys picComPhys, IPicComCallback picComCb) {
+        if (mDebug) {
+            mComTime = ObdLogger.getTime();
+        }
+
+        /* Save reference to underlying communication object. */
+        mPicComPhys = picComPhys;
+
+        /* Save reference to callback routines. */
+        mPicComCb = picComCb;
+
+        /* Instantiate packet buffer. */
+        mPacketBuffer = new ArrayList<String>();
     }
 }
 
