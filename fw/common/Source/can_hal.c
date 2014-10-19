@@ -1076,7 +1076,7 @@ can_obd_recv(unsigned char **data, int *ln)
 	obd_ln = rxm->data[0];
 
 	/* Invalid length of OBD data payload. */
-	if ((obd_ln > CAN_OBD_MAX_DATA_SIZE) || (obd_ln < 3)) {
+	if ((obd_ln > CAN_OBD_MAX_DATA_SIZE) || (obd_ln == 0)) {
 		return EIO;
 	}
 

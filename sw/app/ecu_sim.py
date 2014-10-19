@@ -144,9 +144,12 @@ class ECUSim(object):
                  # supported PIDs 21-40
 
                  # read stored DTCs
-                 'C133F103E8': ['87F11043000000000000CB'],
+                 'C133F103E8': ['87F11043013001930108CB',
+                                '87F11043013101940000CB'],
                  # read pending DTCs
                  'C133F107EC': ['87F11047123456789ABCCF'],
+                 # clear DTCs
+                 'C133F104E9': ['81F1104400'],
                  # read calibration ID - response contains 4 packets
                  'C233F10904F3': ['87F11049040133304631B0',
                                   '87F110490402303630309D',

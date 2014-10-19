@@ -19,12 +19,14 @@
 #define	OBD_CMD_GETFFPID	'F'	/* get value of freeze frame PID */
 #define	OBD_CMD_GETCURPID	'P'	/* get value of current PID */
 #define	OBD_CMD_GETCURPIDS	'p'	/* get values of current PIDs periodically */
+#define	OBD_CMD_GETPERMDTC	'D'	/* get permanent/confirmed DTC */
+#define	OBD_CMD_RESETDTC	'R'	/* reset/clear DTCs, freeze frames... */
 
 /* OBD commands */
 #define	OBD_MODE_GET_PID	1	/* Show current data */
 #define	OBD_MODE_GET_FF		2	/* Show freeze frame data */
 #define	OBD_MODE_GET_DTC	3	/* Show Diagnostic Trouble Codes */
-#define	OBD_MODE_CLR_DTC	4	/* Clear Diagnostic Trouble Codes */
+#define	OBD_MODE_RESET_DTC	4	/* Clear Diagnostic Trouble Codes */
 
 #define	OBD_ECU_PACKET_MAXLN	256	/* Max length of ECU packet */
 

@@ -1366,11 +1366,8 @@ kwp2k_obd_recv(unsigned char **data, int *ln)
 	 * Otherwise pass just return value.
 	 */
 	if (ret == 0) {
-		/*
-		 * Verify that at least some data (modulo header) have
-		 * been received.
-		 */
-		if (obd_ln < 3) {
+		 /* Verify that at least header has been received. */
+		if (obd_ln == 0) {
 			return EIO;
 		}
 		
