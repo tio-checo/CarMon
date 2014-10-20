@@ -18,9 +18,10 @@
         android:id="@+id/diagPermDtcButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:enabled="false"
+        android:enabled="true"
         android:text="@string/diagPermDtcButtonText"
-        android:textSize="30dp" />
+        android:textSize="30dp"
+        android:onClick="launchObdPermDtc" />
 
     <Button
         android:id="@+id/diagPendDtcButton"
@@ -34,9 +35,10 @@
         android:id="@+id/diagClearDtcButton"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:enabled="false"
+        android:enabled="true"
         android:text="@string/diagClearDtcButtonText"
-        android:textSize="30dp" />
+        android:textSize="30dp"
+        android:onClick="launchObdClearDtc" />
 
     <Button
         android:id="@+id/diagFreezeFrameButton"

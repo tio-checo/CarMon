@@ -92,8 +92,8 @@ class ECUSim(object):
                  # supported PIDs 01-20
                  'C233F10100E7': ['86F1104100983B80132E'],
 
-                 # PID 01 - MIL on, 2 DTCs logged
-                 'C233F10101E8': ['86F11041018200000000'],
+                 # PID 01 - MIL on, 5 DTCs logged
+                 'C233F10101E8': ['86F11041018500000000'],
 
                  'C233F10104EB': ['83F11041048000'],
                  'C233F10105EC': ['83F11041057800'],

@@ -23,7 +23,6 @@ import cz.tio.android.obdlogger.PicConnectionLostException;
 import cz.tio.android.obdlogger.PicTimeoutExpiredException;
 import cz.tio.android.obdlogger.Probe;
 
-import java.lang.Boolean;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -886,7 +885,7 @@ class ComSvcStateDiagFreezeFrame extends ComSvcState {
         case ComSvcMsg.CMD_GET_FF_LIST:
             ArrayList<String> freezeFrameList;
 
-            mLog.d("Obtaining list logged freeze frames...");
+            mLog.d("Obtaining list of logged freeze frames...");
 
             /*
              * Get list of logged freeze frames. It is in form of array
@@ -990,6 +989,288 @@ class ComSvcStateDiagFreezeFrame extends ComSvcState {
 }
 
 /**
+ * Diagnostic 'Read permanent DTCs' mode. Processes messages from UI, asks ECU
+ * for required data and passes responses back to UI.
+ */
+class ComSvcStateDiagPermDtc extends ComSvcState {
+    /* Progress dialog displayed when reading permanent DTCs. */
+    private ProgressDialog mPermDtcPd;
+
+    /**
+     * Called when state is entered.
+     */
+    public void enter() {
+        Handler comMsgHandler = getComMsgHandler();
+        /*
+         * Let UI know that connection with ECU has been established
+         * and we are ready to receive commands.
+         */
+        if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                ComSvcMsg.RES_ECU_CONNECTED))) {
+            mLog.e("Sending message to UI failed.");
+        }
+    }
+
+    /**
+     * Called when state is left.
+     */
+    public void leave() {
+    }
+
+    /**
+     * Called to let state do its job and determine what action
+     * is to be taken in the next step.
+     *
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public ComSvcStateAction next()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        Handler comMsgHandler = getComMsgHandler();
+        ComSvcMsg uiMsgHandler = getUiMsgHandler();
+
+        Bundle msg;
+
+        /* Block until UI asks us to do something. */
+        try {
+            mLog.d("Waiting for UI message...");
+            msg = uiMsgHandler.get();
+        } catch (InterruptedException e) {
+            mLog.w("Communication thread interrupted when waiting " +
+                    "for message from UI.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        /* Data payload empty, there is nothing to process. */
+        if (msg == null) {
+            mLog.w("EMPTY.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        mLog.d("RECEIVED.");
+
+        /* Get command. */
+        int cmd = msg.getInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_INVALID);
+
+        mLog.d(String.format("UI command: %d", cmd));
+
+        /* Process the message. */
+        switch (cmd) {
+        /* Get list of logged permanent DTCs. */
+        case ComSvcMsg.CMD_GET_PDTC_LIST:
+            int dtcTotalNum;
+            ArrayList<String> dtcList = new ArrayList<String>();
+
+            mLog.d("Obtaining list of logged permanent DTCs...");
+
+            /* Get number of logged permanent DTCs. */
+            dtcTotalNum = getObd().getPermDtcNum();
+
+            /* No DTC logged, return empty list. */
+            if (dtcTotalNum == 0) {
+                /* Pass the result to the UI. */
+                if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                        ComSvcMsg.RES_GET_PDTC_LIST, dtcList))) {
+                    mLog.e("Sending list of permanent DTCs to UI failed.");
+                }
+
+                break;
+            }
+
+            /* Display progress dialog. */
+            getActivity().runOnUiThread(new Runnable() {
+                public void run() {
+                    mPermDtcPd.show();
+                }
+            });
+
+            /*
+             * Get list of logged permanent DTCs. It is in form of array
+             * of Strings where each String contains DTC number.
+             */
+            for (int i = 0; i < dtcTotalNum; i++) {
+                String dtc = getObd().getPermDtc(i);
+
+                /* Failure occurred, return empty list. */
+                if (dtc == null ) {
+                    mLog.e("Failed to construct list of permanent DTCs.");
+
+                    dtcList = new ArrayList<String>();
+
+                    break;
+                }
+
+                /* Add DTC to the list. */
+                dtcList.add(dtc);
+            }
+
+            /* Dismiss progress dialog. */
+            getActivity().runOnUiThread(new Runnable() {
+                public void run() {
+                    mPermDtcPd.dismiss();
+                }
+            });
+
+            /* Pass the result to the UI. */
+            if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                    ComSvcMsg.RES_GET_PDTC_LIST, dtcList))) {
+                mLog.e("Sending list of permanent DTCs to UI failed.");
+            }
+
+            break;
+
+        /* Terminate the thread. */
+        case ComSvcMsg.CMD_QUIT:
+            return ComSvcStateAction.QUIT;
+
+        case ComSvcMsg.CMD_INVALID:
+            mLog.w("Invalid command.");
+            break;
+        }
+
+        /* Continue in current state. */
+        return ComSvcStateAction.STAY_IN_CURRENT;
+    }
+
+    /**
+     * Constructor
+     */
+    public ComSvcStateDiagPermDtc(ComSvcStateMachine stateMachine) {
+        super(stateMachine);
+
+        /* Create progress dialog displayed when obtaining DTCs. */
+        mPermDtcPd = new ProgressDialog(getActivity());
+        mPermDtcPd.setTitle("Obtaining list of DTCs...");
+        mPermDtcPd.setMessage("Please wait.");
+        mPermDtcPd.setCancelable(false);
+        mPermDtcPd.setIndeterminate(true);
+    }
+}
+
+/**
+ * Diagnostic 'Clear DTCs' mode. Processes messages from UI, asks ECU
+ * for required data and passes responses back to UI.
+ */
+class ComSvcStateDiagClearDtc extends ComSvcState {
+    /**
+     * Called when state is entered.
+     */
+    public void enter() {
+        Handler comMsgHandler = getComMsgHandler();
+        /*
+         * Let UI know that connection with ECU has been established
+         * and we are ready to receive commands.
+         */
+        if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                ComSvcMsg.RES_ECU_CONNECTED))) {
+            mLog.e("Sending message to UI failed.");
+        }
+    }
+
+    /**
+     * Called when state is left.
+     */
+    public void leave() {
+    }
+
+    /**
+     * Called to let state do its job and determine what action
+     * is to be taken in the next step.
+     *
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public ComSvcStateAction next()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        Handler comMsgHandler = getComMsgHandler();
+        ComSvcMsg uiMsgHandler = getUiMsgHandler();
+
+        Bundle msg;
+
+        /* Block until UI asks us to do something. */
+        try {
+            mLog.d("Waiting for UI message...");
+            msg = uiMsgHandler.get();
+        } catch (InterruptedException e) {
+            mLog.w("Communication thread interrupted when waiting " +
+                    "for message from UI.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        /* Data payload empty, there is nothing to process. */
+        if (msg == null) {
+            mLog.w("EMPTY.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
+        mLog.d("RECEIVED.");
+
+        /* Get command. */
+        int cmd = msg.getInt(ComSvcMsg.KEY_CMD, ComSvcMsg.CMD_INVALID);
+
+        mLog.d(String.format("UI command: %d", cmd));
+
+        /* Process the message. */
+        switch (cmd) {
+        /* Get total number of permanent DTCs. */
+        case ComSvcMsg.CMD_GET_PDTC_NUM:
+            int dtcTotalNum;
+
+            /* Get number of logged permanent DTCs and return it to the UI. */
+            dtcTotalNum = getObd().getPermDtcNum();
+
+            if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                    ComSvcMsg.RES_GET_PDTC_NUM, dtcTotalNum, 0))) {
+                mLog.e("Sending number of permanent DTCs to UI failed.");
+            }
+
+            break;
+
+        /* Clear DTCs, freeze frame data, ... */
+        case ComSvcMsg.CMD_CLEAR_DTC:
+            boolean res = getObd().clearDtc();
+
+            /* If operation failed, log that. */
+            if (!res) {
+                mLog.e("ECU refused to clear DTCs.");
+            }
+
+            /* Pass the result to the UI. */
+            if (!comMsgHandler.sendMessage(comMsgHandler.obtainMessage(
+                    ComSvcMsg.RES_CLEAR_DTC, res ? 0 : -1))) {
+                mLog.e("Sending result of 'clear DTC' operation to UI failed.");
+            }
+
+            break;
+
+        /* Terminate the thread. */
+        case ComSvcMsg.CMD_QUIT:
+            return ComSvcStateAction.QUIT;
+
+        case ComSvcMsg.CMD_INVALID:
+            mLog.w("Invalid command.");
+            break;
+        }
+
+        /* Continue in current state. */
+        return ComSvcStateAction.STAY_IN_CURRENT;
+    }
+
+    /**
+     * Constructor
+     */
+    public ComSvcStateDiagClearDtc(ComSvcStateMachine stateMachine) {
+        super(stateMachine);
+    }
+}
+
+/**
  * Implements state machine handling data logger screen.
  */
 class ComSvcLoggerStateMachine extends ComSvcStateMachine {
@@ -1088,6 +1369,70 @@ class ComSvcDiagFreezeFrameStateMachine extends ComSvcStateMachine {
 }
 
 /**
+ * Implements state machine handling 'diagnostic permanent DTCs' mode.
+ */
+class ComSvcDiagPermDtcStateMachine extends ComSvcStateMachine {
+    /**
+     * Constructor
+     *
+     * @param activity  the reference to activity which spawned this service
+     * @param comMsgH   the message handler delivering messages to UI thread
+     * @param uiMsgH    the message handler delivering messages from UI thread
+     * @param obd       the OBD communication object
+     */
+    public ComSvcDiagPermDtcStateMachine(Activity activity,
+            Handler comMsgH,ComSvcMsg uiMsgH, Obd obd) {
+        super(activity, obd, comMsgH, uiMsgH);
+
+        /* Instantiate states and create state diagram. */
+
+        /* Initiates communication with PIC module. */
+        addState(new ComSvcStateConnectToPic(this));
+        /* Configures PIC for communication with ECU. */
+        addState(new ComSvcStateConfEcuComMode(this));
+        /* Initiates communication with ECU. */
+        addState(new ComSvcStateConnectToEcu(this));
+        /* Receives commands from UI and passes back data obtained from ECU. */
+        addState(new ComSvcStateDiagPermDtc(this));
+
+        /* Initialize state machine. */
+        goToFirstState();
+    }
+}
+
+/**
+ * Implements state machine handling 'clear DTCs' mode.
+ */
+class ComSvcDiagClearDtcStateMachine extends ComSvcStateMachine {
+    /**
+     * Constructor
+     *
+     * @param activity  the reference to activity which spawned this service
+     * @param comMsgH   the message handler delivering messages to UI thread
+     * @param uiMsgH    the message handler delivering messages from UI thread
+     * @param obd       the OBD communication object
+     */
+    public ComSvcDiagClearDtcStateMachine(Activity activity,
+            Handler comMsgH,ComSvcMsg uiMsgH, Obd obd) {
+        super(activity, obd, comMsgH, uiMsgH);
+
+        /* Instantiate states and create state diagram. */
+
+        /* Initiates communication with PIC module. */
+        addState(new ComSvcStateConnectToPic(this));
+        /* Configures PIC for communication with ECU. */
+        addState(new ComSvcStateConfEcuComMode(this));
+        /* Initiates communication with ECU. */
+        addState(new ComSvcStateConnectToEcu(this));
+        /* Receives commands from UI and passes back data obtained from ECU. */
+        addState(new ComSvcStateDiagClearDtc(this));
+
+        /* Initialize state machine. */
+        goToFirstState();
+    }
+}
+
+/**
  * Represents communication service running as a background thread.
  */
 class CommunicationService {
@@ -1100,6 +1445,10 @@ class CommunicationService {
     public static final int MODE_LIVE_DATA = 1;
     /* OBD diagnostic tester - freeze frame data. */
     public static final int MODE_FREEZE_FRAME = 2;
+    /* OBD diagnostic tester - permanent DTCs. */
+    public static final int MODE_PERM_DTC = 3;
+    /* OBD diagnostic tester - clear DTCs. */
+    public static final int MODE_CLEAR_DTC = 4;
 
     private boolean mDebug = false;
     private boolean mQuit = false;
@@ -1201,10 +1550,16 @@ class CommunicationService {
         } else if (mode == MODE_LIVE_DATA) {
             mComSvcStateMachine = new ComSvcDiagLiveDataStateMachine(activity,
                     handler, uiMsg, obd);
-        } else {
+        } else if (mode == MODE_FREEZE_FRAME) {
             mComSvcStateMachine = new ComSvcDiagFreezeFrameStateMachine(
                     activity, handler, uiMsg, obd);
-	}
+        } else if (mode == MODE_PERM_DTC) {
+            mComSvcStateMachine = new ComSvcDiagPermDtcStateMachine(
+                    activity, handler, uiMsg, obd);
+        } else {
+            mComSvcStateMachine = new ComSvcDiagClearDtcStateMachine(
+                    activity, handler, uiMsg, obd);
+        }
 
         /* Initialize reference to GPS status indicator. */
         mStsGps = (Button) activity.findViewById(R.id.gpsState);

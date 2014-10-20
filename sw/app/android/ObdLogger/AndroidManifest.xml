@@ -29,6 +29,12 @@
         <activity android:name=".ObdFreezeFrame"
                   android:label="@string/app_name">
         </activity>
+        <activity android:name=".ObdPermDtc"
+                  android:label="@string/app_name">
+        </activity>
+        <activity android:name=".ObdClearDtc"
+                  android:label="@string/app_name">
+        </activity>
         <activity android:name=".EditPreferences"
                   android:label="@string/app_name">
         </activity>

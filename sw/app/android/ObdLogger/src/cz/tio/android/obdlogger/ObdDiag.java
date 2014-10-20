@@ -24,6 +24,8 @@ public class ObdDiag extends Activity {
     static final int REQUEST_ENABLE_BT = 1;
     static final int OBD_PIDS_ACTIVITY_ID = 2;
     static final int OBD_FF_ACTIVITY_ID = 3;
+    static final int OBD_PD_ACTIVITY_ID = 4;
+    static final int OBD_CD_ACTIVITY_ID = 5;
 
     /* Reference to application context */
 //    private Context mContext;
@@ -43,6 +45,20 @@ public class ObdDiag extends Activity {
         Intent i = new Intent(this, ObdFreezeFrame.class);
 
         startActivityForResult(i, OBD_FF_ACTIVITY_ID);
+    }
+
+    /** Called to read permanent DTCs. */
+    public void launchObdPermDtc(View view) {
+        Intent i = new Intent(this, ObdPermDtc.class);
+
+        startActivityForResult(i, OBD_PD_ACTIVITY_ID);
+    }
+
+    /** Called to clear DTCs, freeze frame data, ... */
+    public void launchObdClearDtc(View view) {
+        Intent i = new Intent(this, ObdClearDtc.class);
+
+        startActivityForResult(i, OBD_CD_ACTIVITY_ID);
     }
 
     /** Called when the activity is first created. */
@@ -173,6 +189,24 @@ public class ObdDiag extends Activity {
 
         /* Display list of logged freeze frames. */
         case OBD_FF_ACTIVITY_ID:
+            if (resultCode == Activity.RESULT_OK) {
+                /* Activity succeeded. */
+            } else {
+                /* Activity failed. */
+            }
+            break;
+
+        /* Display list of logged permanent DTCs. */
+        case OBD_PD_ACTIVITY_ID:
+            if (resultCode == Activity.RESULT_OK) {
+                /* Activity succeeded. */
+            } else {
+                /* Activity failed. */
+            }
+            break;
+
+        /* Clear DTCs, freeze frame data, ... */
+        case OBD_CD_ACTIVITY_ID:
             if (resultCode == Activity.RESULT_OK) {
                 /* Activity succeeded. */
             } else {

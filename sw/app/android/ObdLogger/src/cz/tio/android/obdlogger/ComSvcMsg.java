@@ -26,6 +26,12 @@ public class ComSvcMsg {
     public static final int CMD_GET_FF_LIST = 3;
     /* Get list of PIDs logged for given freeze frame. */
     public static final int CMD_GET_FF_PIDS = 4;
+    /* Get number of logged permanent DTCs. */
+    public static final int CMD_GET_PDTC_NUM = 5;
+    /* Get list of logged permanent DTCs. */
+    public static final int CMD_GET_PDTC_LIST = 6;
+    /* Clear DTCs, freeze frame data, ... */
+    public static final int CMD_CLEAR_DTC = 7;
 
     /* Results */
     /* ECU not available */
@@ -40,6 +46,12 @@ public class ComSvcMsg {
     public static final int RES_GET_FF_LIST = 4;
     /* List of PIDs logged for given freeze frame. */
     public static final int RES_GET_FF_PIDS = 5;
+    /* Number of logged permanent DTCs. */
+    public static final int RES_GET_PDTC_NUM = 6;
+    /* List of logged permanent DTCs. */
+    public static final int RES_GET_PDTC_LIST = 7;
+    /* Result of 'clear DTC' operation. */
+    public static final int RES_CLEAR_DTC = 8;
 
     /** Set to <code>true</code> when object contains unprocessed message. */
     private boolean mValid;
@@ -133,6 +145,39 @@ public class ComSvcMsg {
 
         b.putInt(KEY_CMD, CMD_GET_FF_PIDS);
         b.putInt(KEY_ARG1, freezeFrameNum);
+
+        put(b);
+    }
+
+    /**
+     * Asks for number of logged permanent DTCs.
+     */
+    public void getPermDtcNum() {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_PDTC_NUM);
+
+        put(b);
+    }
+
+    /**
+     * Asks for list of logged permanent DTCs.
+     */
+    public void getPermDtcList() {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_GET_PDTC_LIST);
+
+        put(b);
+    }
+
+    /**
+     * Asks to clear DTCs, freeze frame data...
+     */
+    public void clearDtc() {
+        Bundle b = new Bundle();
+
+        b.putInt(KEY_CMD, CMD_CLEAR_DTC);
 
         put(b);
     }

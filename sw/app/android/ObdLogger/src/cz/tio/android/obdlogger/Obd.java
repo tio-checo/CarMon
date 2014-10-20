@@ -79,6 +79,9 @@ public class Obd {
     static final String PKT_GET_CURR_PID_AS_RESP = "Ep";
     static final String PKT_GET_FF_PID = "EOF";
     static final String PKT_GET_FF_PID_RESP = "EF00";
+    static final String PKT_GET_PERM_DTC = "EOD";
+    static final String PKT_GET_PERM_DTC_RESP = "ED00";
+    static final String PKT_CLEAR_DTC = "EOR";
     static final String PKT_SET_COMM_MODE = "EOC";
 
     /* private attributes */
@@ -434,6 +437,180 @@ public class Obd {
         }
 
         return freezeFrameList;
+    }
+
+    /**
+     * Asks ECU for total number of logged permanent DTCs.
+     *
+     * @return  number of logged permanent DTCs
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
+     */
+    public int getPermDtcNum()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        /*
+         * Number of logged permanent DTC is obtained from the first byte
+         * of PID 01.
+         */
+        int v[] = getPidValue("01");
+
+        /* Failed to obtain value of PID "01". */
+        if ((v == null) || (v.length != 4)) {
+            mLog.w("Failed to obtain number of DTCs logged.");
+
+            return 0;
+        }
+
+        /* Filter our bit 7 - it contains status of MIL indicator. */
+        return v[0] & 0x7f;
+    }
+
+    /**
+     * Asks ECU for permanent DTC.
+     *
+     * @param   dtcNum  the number of permanent DTC to be obtained
+     * @return  number of logged permanent DTCs
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
+     */
+    public String getPermDtc(int dn)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        String sp = PKT_GET_PERM_DTC + String.format("%02X", dn);
+        String rph = PKT_GET_PERM_DTC_RESP;
+        String rp = null;
+
+        /* Ask ECU for DTC value. */
+        mPicCom.sendPacket(sp);
+
+        /*
+         * Loop until valid packet is received or
+         * until receive buffer is emptied.
+         */
+        while (true) {
+            try {
+                /* Wait for response. */
+                rp = mPicCom.getPacket("E");
+            } catch (PicTimeoutExpiredException e) {
+                /* Timeout expired, return. */
+                mLog.w("Timeout when waiting for ECU response.");
+
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
+
+                throw e;
+            } catch (PicConnectionLostException e) {
+                mConnectionEstablished = false;
+
+                /* Call related callback routine. */
+                mEcuComCb.onConnectionLost();
+
+                throw e;
+            }
+
+            /* NAK received, log it and return. */
+            if (rp.startsWith(PKT_NAK)) {
+                mLog.w(String.format(
+                        "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
+
+                return null;
+            }
+
+            /* Valid packet received. Escape from the loop. */
+            if (rp.startsWith(rph)) {
+                break;
+            }
+
+            /* Invalid packet received. Log this and wait for another one. */
+            mLog.w(String.format(
+                    "Invalid ECU response, awaiting <%s>, got <%s>.", rph, rp));
+        }
+
+        /* Validate packet length. */
+        if (rp.length() != 8) {
+            mLog.w(String.format(
+                    "Invalid packet length, awaiting 8, got <%d>.",
+                    rp.length()));
+
+            return null;
+        }
+
+        int dtcRaw = 0;
+
+        for (int i = 0; i < 2; i++) {
+            dtcRaw *= 256;
+            dtcRaw += Integer.parseInt(rp.substring(4 + (i * 2),
+                    4 + ((i + 1) * 2)), 16);
+        }
+
+        return convertDtcRawToString(dtcRaw);
+    }
+
+    /**
+     * Asks ECU to clear DTCs, freeze frame data, ...
+     *
+     * @return  <code>true</code> if operation succeeded;
+     *          <code>false</code> otherwise.
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     * @throws  PicConnectionLostException when lost connection with PIC
+     */
+    public boolean clearDtc()
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        String sp = PKT_CLEAR_DTC;
+        String rp = null;
+
+        /* Instructs ECU to clear DTCs. */
+        mPicCom.sendPacket(sp);
+
+        /* Wait until ACK or NAK is received. */
+        try {
+            /* Wait for response from ECU module. */
+            rp = mPicCom.getPacket("E");
+        } catch (PicTimeoutExpiredException e) {
+            /*
+             * Timeout expired. Communication needs to be established again.
+             */
+            mLog.w("Timeout when waiting for ECU response.");
+
+            mConnectionEstablished = false;
+
+            /* Call related callback routine. */
+            mEcuComCb.onConnectionLost();
+
+            throw e;
+        } catch (PicConnectionLostException e) {
+            mConnectionEstablished = false;
+
+            /* Call related callback routine. */
+            mEcuComCb.onConnectionLost();
+
+            throw e;
+        }
+
+        /*
+         * ACK received.
+         */
+        if (rp.startsWith(PKT_ACK)) {
+            return true;
+        } else if (rp.startsWith(PKT_NAK)) {
+            /*
+             * NAK received, log it.
+             */
+            mLog.w(String.format(
+                    "ECU responded with NAK <%s> to <%s> packet.", rp, sp));
+        } else {
+            /*
+             * Unknown response received, log it.
+             */
+            mLog.w(String.format(
+                    "ECU responded with invalid <%s> to <%s> packet.", rp, sp));
+        }
+
+        return false;
     }
 
     /**
