@@ -46,19 +46,20 @@
 #define MCOM_NAK_EINVAL		0x02	/* invalid value */
 #define MCOM_NAK_MODULE_BUSY	0x03	/* underlying module busy */
 #define MCOM_NAK_IO_ERROR	0x04	/* I/O error */
+#define	MCOM_NAK_CRC_ERROR	0x05	/* CRC error */
 
 /* NAK specific to ECU - TODO move it to its own header file */
-#define MCOM_NAK_KWP2K_TX_ERR	0x05	/* Failed to send packet to ECU */
-#define MCOM_NAK_ADC_ERR	0x06	/* Failed to get data from ADC */
-#define MCOM_NAK_ECU_TOUT	0x07	/* ECU didn't respond */
-#define MCOM_NAK_ECU_BADPKT	0x08	/* bad packet received from ECU */
+#define MCOM_NAK_KWP2K_TX_ERR	0x40	/* Failed to send packet to ECU */
+#define MCOM_NAK_ADC_ERR	0x41	/* Failed to get data from ADC */
+#define MCOM_NAK_ECU_TOUT	0x42	/* ECU didn't respond */
+#define MCOM_NAK_ECU_BADPKT	0x43	/* bad packet received from ECU */
 /* Packet with invalid checksum received from ECU */
-#define MCOM_NAK_ECU_CHSUM	0x09
+#define MCOM_NAK_ECU_CHSUM	0x44
 /* Invalid response from ECU received */
-#define MCOM_NAK_ECU_INV_RESP	0x0a
+#define MCOM_NAK_ECU_INV_RESP	0x45
 /* Failed to establish communication with ECU */
-#define MCOM_NAK_ECU_INIT	0x0b
-#define MCOM_NAK_KWP2K_BUSY	0x0c	/* Communication module is busy */
+#define MCOM_NAK_ECU_INIT	0x46
+#define MCOM_NAK_KWP2K_BUSY	0x47	/* Communication module is busy */
 #define MCOM_NAK_ECU_UKNOWN	0xff	/* unknown error */
 
 /*
@@ -134,4 +135,7 @@ extern int mcom_getchar(unsigned char *);
 
 /* callback function called when character from master is received */
 extern int mcom_rx_cb(unsigned char);
+
+/* Enable/disable packet checksum. */
+void mcom_chsum_configure(BOOL);
 #endif /* __MCOMM_H */

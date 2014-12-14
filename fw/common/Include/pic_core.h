@@ -14,6 +14,8 @@
 #define	MCOMM_PCORE_CMD_SETTIME	'D'	/* set time and date */
 #define	MCOMM_PCORE_CMD_GETTIME	'd'	/* get time and date */
 #define	MCOMM_PCORE_CMD_GETTEMP	't'	/* get temperature from MCP9801 */
+#define	MCOMM_PCORE_CMD_COMCFG	'C'	/* configure communication parameters */
+#define	MCOMM_PCORE_CMD_CALCCRC	'c'	/* calculate CRC-CCITT checksum */
 
 /* types */
 

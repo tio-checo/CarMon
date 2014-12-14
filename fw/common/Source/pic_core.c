@@ -225,7 +225,9 @@ pcore_init(void)
 int
 pcore_process_query(char *data, int ln)
 {
-	int err;
+	static unsigned short temp_us;
+
+	int err, i;
 	BOOL respond_with_ack = TRUE;
 	char *tds;
 
@@ -234,6 +236,17 @@ pcore_process_query(char *data, int ln)
 
 	/* Handle particular commands */
 	switch (data[0]) {
+		/* Configure communication parameters */
+		case MCOMM_PCORE_CMD_COMCFG:
+			/* Verify packet length */
+			if (ln != 3) {
+				err = MCOM_NAK_EINVAL;
+				respond_with_ack = FALSE;
+			} else {
+				mcom_chsum_configure(hex2ulong(data + 1, 2));
+			}
+			break;
+
 		/* Set time and date */
 		case MCOMM_PCORE_CMD_SETTIME:
 			/* configure module */
@@ -255,18 +268,33 @@ pcore_process_query(char *data, int ln)
 
 #ifdef MCP9801_MODULE
 		/* Get temperature */
-		case MCOMM_PCORE_CMD_GETTEMP: {
-			static unsigned int temp;
+		case MCOMM_PCORE_CMD_GETTEMP:
+			temp_us = mcp9801_get_temperature();
 
-			temp = mcp9801_get_temperature();
-
-			pcore_send_data_response_to_master(&temp, 1,
+			pcore_send_data_response_to_master(&temp_us, 1,
 			    MCOM_DATA_TYPE_WORD);
 
 			/* Data will be sent to master instead of ACK/NAK */
 			fl_send_ack_nak = FALSE;
-		} break;
+		break;
 #endif
+
+		/* Calculate 16bit CRC-CCITT checksum for given data */
+		case MCOMM_PCORE_CMD_CALCCRC:
+			crc_init();
+
+			for (i = 1; i < ln; i++) {
+				crc_calc(data[i]);
+			}
+
+			temp_us = crc_finalize();
+
+			pcore_send_data_response_to_master(&temp_us, 1,
+			    MCOM_DATA_TYPE_WORD);
+
+			/* Data will be sent to master instead of ACK/NAK */
+			fl_send_ack_nak = FALSE;
+		break;
 
 		/* unknown command */
 		default:

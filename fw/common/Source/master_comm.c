@@ -113,6 +113,9 @@ static int mcom_st_rx;
 /* state machine taking care of transmitting packet to master */
 static int mcom_st_tx;
 
+/* TRUE indicates that packets are protected by CRC checksum */
+static BOOL mcom_use_chsum;
+
 /* local functions */
 /* Quit the application, jump to bootloader. */
 static void mcom_jump_to_bootloader(void);
@@ -230,7 +233,46 @@ mcom_decode_packet(void)
 
 	int err;
 	int ret = 0;
-	int ln = mcom_co.rx_tail - 1;
+	int ln = mcom_co.rx_tail;
+
+	/*
+	 * Validate CRC checksum. <Pc...> packet is an exception, since
+	 * it serves as a helper to calculate CRC-CCITT checksum
+	 * for specified data.
+	 */
+	if (mcom_use_chsum && !(mcom_co.rx_buf[0] == MCOMM_PIC_ID &&
+	    mcom_co.rx_buf[1] == MCOMM_PCORE_CMD_CALCCRC)) {
+		int i;
+		unsigned short chsum = hex2ulong(mcom_co.rx_buf + ln - 4, 4);
+
+		/* Verify we have at least received CRC and some data. */
+		if (ln < 5) {
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_CRC_ERROR);
+
+			return 1;
+		}
+
+		/* Calculate checksum. */
+		crc_init();
+		for (i = 0; i < ln - 4; i++) {
+			crc_calc(mcom_co.rx_buf[i]);
+		}
+
+		/* Verify checksum. */
+		if (chsum != crc_finalize()) {
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_CRC_ERROR);
+
+			return 1;
+		}
+
+		/* Checksum processed, discard it. */
+		ln -= 4;
+	}
+
+	/* Discard the first character, since it is to be processed here. */
+	ln--;
 
 	/* dispatch packet to appropriate handle routines based on module ID */
 	switch (mcom_co.rx_buf[0]) {
@@ -571,7 +613,7 @@ mcom_tx_st(void)
 {
 	static unsigned char ch;
 	static char tmp_buf[4];
-	static unsigned int item_ln, item_index, buf_ln, buf_index, chsum;
+	static unsigned int item_ln, item_index, buf_ln, buf_index;
 	unsigned int d;
 	mcom_response_t *r;
 
@@ -590,6 +632,9 @@ mcom_tx_st(void)
 		return 0;
 	} 
 
+	/* Re-calculate CRC. */
+	crc_calc(ch);
+
 	switch (mcom_st_tx) {
 	/* machine is IDLE */
 	case MCOM_ST_TX_IDLE:
@@ -597,8 +642,10 @@ mcom_tx_st(void)
 
 	/* send SOF */
 	case MCOM_ST_TX_SOF:
+		/* Initialize CRC calculator. */
+		crc_init();
+
 		buf_index = 0;
-		chsum = 0;
 
 		/*
 		 * Continue with sending module ID. Skip if there is no
@@ -645,16 +692,19 @@ mcom_tx_st(void)
 		 */
 		if ((mcom_co.resp->data == NULL) ||
 		    (mcom_co.resp->data_ln == 0)) {
-			/* No data payload, proceed with checksum. */
-			item_ln = 2;
-			uint2hex(chsum, tmp_buf, 1);
+			if (mcom_use_chsum) {
+				/* send the checksum */
+				item_index = 0;
+				item_ln = 4;
+				uint2hex(crc_finalize(), tmp_buf, 2);
 
-			/* for now skip sending the checksum */
-//			ch = tmp_buf[0];
-//			mcom_st_tx = MCOM_ST_TX_CHSUM;
-
-			ch = MCOM_PKT_EOF;
-			mcom_st_tx = MCOM_ST_TX_EOF;
+				ch = tmp_buf[0];
+				mcom_st_tx = MCOM_ST_TX_CHSUM;
+			} else {
+				/* send EOF */
+				ch = MCOM_PKT_EOF;
+				mcom_st_tx = MCOM_ST_TX_EOF;
+			}
 
 			break;
 		}
@@ -681,7 +731,7 @@ mcom_tx_st(void)
 		/* Convert data to ASCII if necessary. */
 		if (mcom_co.resp->data_type != MCOM_DATA_TYPE_ASCII) {
 			uint2hex(d, tmp_buf, item_ln / 2);
-			ch = tmp_buf[item_index];
+			ch = tmp_buf[0];
 		}
 
 		item_index = 0;
@@ -720,16 +770,19 @@ mcom_tx_st(void)
 
 		/* If all data has been sent, proceed with checksum */
 		if (buf_ln == 0) {
-			item_index = 0;
-			item_ln = 2;
-			uint2hex(chsum, tmp_buf, 1);
+			if (mcom_use_chsum) {
+				/* send the checksum */
+				item_index = 0;
+				item_ln = 4;
+				uint2hex(crc_finalize(), tmp_buf, 2);
 
-			/* for now skip sending the checksum */
-//			ch = tmp_buf[0];
-//			mcom_st_tx = MCOM_ST_TX_CHSUM;
-
-			ch = MCOM_PKT_EOF;
-			mcom_st_tx = MCOM_ST_TX_EOF;
+				ch = tmp_buf[0];
+				mcom_st_tx = MCOM_ST_TX_CHSUM;
+			} else {
+				/* send EOF */
+				ch = MCOM_PKT_EOF;
+				mcom_st_tx = MCOM_ST_TX_EOF;
+			}
 
 			break;
 		}
@@ -765,7 +818,7 @@ mcom_tx_st(void)
 			break;
 		}
 
-		/* All data has been sent, proceed with EOF */
+		/* Checksum sent, proceed with EOF */
 		ch = MCOM_PKT_EOF;
 		mcom_st_tx = MCOM_ST_TX_EOF;
 
@@ -873,6 +926,9 @@ mcom_init(void)
 
 	/* Do not suspend */
 	mcom_suspend_fl = FALSE;
+
+	/* Support for CRC checksum disabled by default. */
+	mcom_use_chsum = FALSE;
 
 	/* Register service and enable it. */
 	rtl_svc_init("MasterCom", mcom_svc, TRUE, FALSE);
@@ -1057,3 +1113,11 @@ mcom_err_translate(int err_in)
 	return err_out;
 }
 
+/*
+ * Enable/disable packet checksum.
+ */
+void
+mcom_chsum_configure(BOOL b)
+{
+	mcom_use_chsum = b;
+}

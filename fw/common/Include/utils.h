@@ -25,5 +25,13 @@ extern int hex2ucharbuf(char *, unsigned char *, int);
 /* Converts given number of ASCII decimal characters (max 10) to unsigned long */
 extern unsigned long dec2ulong(char *, int);
 
-#endif /* __UTILS_H */
+/* Initializes CRC calculation algorithm */
+extern void crc_init(void);
 
+/* Calculates 16bit CRC */
+extern void crc_calc(unsigned char);
+
+/* Returns calculated CRC */
+extern unsigned short crc_finalize(void);
+
+#endif /* __UTILS_H */
