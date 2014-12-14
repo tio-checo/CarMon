@@ -62,7 +62,11 @@ static FSFILE *write_fh;
 static enum {
 	LOG_CMD_NOOP = 0,	/* No operation currently in progress. */
 	LOG_CMD_POST,		/* write log message to the log device */
+
+#ifdef RFID_ENABLE_LOG_CLEAN
 	LOG_CMD_CLEAR,		/* delete logged records */
+#endif
+
 	LOG_CMD_GET_FIRST,	/* read the first log record from log device */
 	LOG_CMD_GET_NEXT	/* read next log record from log device */
 } log_cmd;
@@ -111,6 +115,7 @@ log_post_svc(void)
 	return 0;
 }
 
+#ifdef RFID_ENABLE_LOG_CLEAN
 /*
  * Service taking care of wiping out log device.
  */
@@ -165,6 +170,7 @@ log_clean_svc(void)
 
 	return 0;
 }
+#endif
 
 /*
  * Service taking care of reading records from log device.
@@ -295,6 +301,7 @@ log_init(void)
 	return 0;
 }
 
+#ifdef RFID_ENABLE_LOG_CLEAN
 /*
  * Clean up log file.
  */
@@ -318,6 +325,7 @@ log_clean(void)
 
 	return 0;
 }
+#endif
 
 /*
  * Returns TRUE if logging service is currently busy.
@@ -417,10 +425,12 @@ log_svc(void)
 	case LOG_CMD_NOOP:
 		break;
 
+#ifdef RFID_ENABLE_LOG_CLEAN
 	/* Clean up log file. */
 	case LOG_CMD_CLEAR:
 		err = log_clean_svc();
 		break;
+#endif
 
 	/* Write record to the log device. */
 	case LOG_CMD_POST:

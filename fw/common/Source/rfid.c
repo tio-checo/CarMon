@@ -694,7 +694,7 @@ rfid_process_query(char *data, int ln)
 			} /* switch */
 
 			break;
-
+#ifdef RFID_ENABLE_LOG_CLEAN
 		/* Delete logged records. */
 		case MCOMM_RFID_CMD_LOG_CLEAN:
 			/* Kick off clean up process. */
@@ -714,7 +714,7 @@ rfid_process_query(char *data, int ln)
 			}
 
 			break;
-
+#endif
 		/* unknown command */
 		default:
 			err = MCOM_NAK_UNKNOWN_IDCMD;

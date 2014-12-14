@@ -23,8 +23,10 @@ extern int log_post(char *);
 /* Read record from log device. */
 extern int log_get_record(BOOL, char **, int);
 
-/** Clean up log file. */
+#ifdef RFID_ENABLE_LOG_CLEAN
+/* Clean up log file. */
 extern int log_clean(void);
+#endif
 
 /* Returns TRUE if logging service is currently busy. */
 extern BOOL log_busy(void);

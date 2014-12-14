@@ -23,8 +23,11 @@
 #define	MCOMM_RFID_CMD_LOG_READ_NEXT	'N'
 /* read all records at once */
 #define	MCOMM_RFID_CMD_LOG_READ_ALL	'A'
+
+#ifdef RFID_ENABLE_LOG_CLEAN
 /* delete logged records (clean up log file) */
 #define	MCOMM_RFID_CMD_LOG_CLEAN	'C'
+#endif
 
 /* types */
 
