@@ -283,6 +283,7 @@ rfid_id20_svc(void)
 	static int index;
 
 	rfid_rx_char_t ch;
+	char *ts;
 
 	/*
 	 * If machine is idle or there is no character from ID20 received
@@ -380,13 +381,11 @@ rfid_id20_svc(void)
 		 */
 		rfid_turn_led_on = TRUE;
 
+		/* Prepend message with timestamp. */
+		ts = pcore_gettime();
+		strncpy(rfid_msg_buf, ts, RFID_TIMESTAMP_LN);
+
 		if (rfid_send2bt) {
-			char *ts;
-
-			/* Prepend message with timestamp. */
-			ts = pcore_gettime();
-			strncpy(rfid_msg_buf, ts, RFID_TIMESTAMP_LN);
-
 			/*
 			 * If another module is already sending data,
 			 * discard the packet.
