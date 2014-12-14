@@ -83,6 +83,8 @@ static enum {
 	RFID_LOG_ST_IDLE = 0,	/* state machine idle */
 	RFID_LOG_ST_GET_FIRST,	/* get the first logged record */
 	RFID_LOG_ST_GET_NEXT,	/* get next logged record */
+	RFID_LOG_ST_GET_ALL,	/* get all records at once */
+	RFID_LOG_ST_SEND_REC,	/* send one record to master */
 	RFID_LOG_ST_WAIT4CMD	/* waits for logging command complete */
 } rfid_log_st;
 
@@ -98,13 +100,9 @@ static char rfid_msg_buf[RFID_MSG_BUF_LN];
 /* communication module */
 /* structure holding ACK/NAK response to master */
 static mcom_response_t rfid_resp_ack_nak;
-/* If set to TRUE, send ack/nak response packet to master */
-static BOOL fl_send_ack_nak;
 
 /* structure holding data response to master */
 static mcom_response_t rfid_resp_data;
-/* If set to TRUE, send response containing data to master */
-static BOOL fl_send_data;
 
 /* heartbeat LED blinking mode */
 static unsigned char rfid_heartbeat_mode;
@@ -224,49 +222,56 @@ rfid_getchar(rfid_rx_char_t *rfid_ch)
 }
 
 /*
- * Takes care of sending response to master. Two responses might be scheduled
- * for transmission - ack/nak one and data one.
- * ack/nak response takes precedence over data response, since it is short,
- * thus it will occupy transmitter for shorter time.
+ * Sends data packet to master.
+ * Returns EAGAIN if previous data are still being transferred.
  */
 static int
-rfid_comm_svc(void)
+rfid_send_data_response_to_master(char *phdr, char *buf, int ln)
 {
-	/*
-	 * There is ack/nak response to be sent to master,
-	 * queue it for transmission.
-	 */
-	if (fl_send_ack_nak) {
-		mcom_queue_response(&rfid_resp_ack_nak);
+	int err;
 
-		fl_send_ack_nak = FALSE;
-	}
+	err = mcom_prepare_generic_response(&rfid_resp_data, phdr,
+	    buf, MCOM_DATA_TYPE_ASCII, ln, MCOM_DONT_FRAGMENT);
 
-	/*
-	 * There is data response to be sent to master,
-	 * queue it for transmission.
-	 */
-	if (fl_send_data) {
+	if (err == 0) {
 		mcom_queue_response(&rfid_resp_data);
-
-		fl_send_data = FALSE;
 	}
 
-	return 0;
+	return err;
 }
 
 /*
- * Sends data packet to master.
+ * Sends ACK to master.
  */
 static int
-rfid_send_data_response_to_master(char *pkt_hdr, char *buf, int ln)
+rfid_send_ack_response_to_master(void)
 {
-	mcom_prepare_generic_response(&rfid_resp_data, pkt_hdr,
-	    buf, MCOM_DATA_TYPE_ASCII, ln, MCOM_DONT_FRAGMENT);
+	int err;
 
-	fl_send_data = TRUE;
+	err = mcom_prepare_ack_response(&rfid_resp_ack_nak);
 
-	return 0;
+	if (err == 0) {
+		mcom_queue_response(&rfid_resp_ack_nak);
+	}
+
+	return err;
+}
+
+/*
+ * Sends NAK to master.
+ */
+static int
+rfid_send_nak_response_to_master(unsigned char e)
+{
+	int err;
+
+	err = mcom_prepare_nak_response(&rfid_resp_ack_nak, e);
+
+	if (err == 0) {
+		mcom_queue_response(&rfid_resp_ack_nak);
+	}
+
+	return err;
 }
 
 /*
@@ -363,7 +368,7 @@ rfid_id20_svc(void)
 
 	/* waits for ETX */
 	case RFID_ID20_ST_WAIT4ETX:
-		/* If LF not received, restart the whole receive process. */
+		/* If ETX not received, restart the whole receive process. */
 		if (ch.ch != RFID_PKT_ETX) {
 			rfid_id20_st = RFID_ID20_ST_WAIT4STX;
 			break;
@@ -371,7 +376,7 @@ rfid_id20_svc(void)
 
 		/*
 		 * Valid packet received. Turn on heartbeat LED for a while
-		 * and pass the packet to master if applicable.
+		 * and pass the packet to the master if enabled.
 		 */
 		rfid_turn_led_on = TRUE;
 
@@ -382,16 +387,24 @@ rfid_id20_svc(void)
 			ts = pcore_gettime();
 			strncpy(rfid_msg_buf, ts, RFID_TIMESTAMP_LN);
 
-			/* Convert sequence number to ASCII HEX string. */
-			snprintf(pkt_hdr, sizeof (pkt_hdr), "%02X", pkt_num);
+			/*
+			 * If another module is already sending data,
+			 * discard the packet.
+			 */
+			if (!mcom_response_inuse(&rfid_resp_data)) {
+				/* Prepare header containing sequence number. */
+				snprintf(pkt_hdr, sizeof (pkt_hdr),
+				    "%02X", pkt_num);
+
+				rfid_send_data_response_to_master(
+				    pkt_hdr, rfid_msg_buf,
+				    RFID_TIMESTAMP_LN + RFID_MSG_LN);
+			}
 
 			/* Increment sequence number. */
-			if (++pkt_num > 255)
+			if (++pkt_num > 255) {
 				pkt_num = 1;
-			
-			/* Send the message to the master. */
-			rfid_send_data_response_to_master(pkt_hdr, rfid_msg_buf,
-			    RFID_TIMESTAMP_LN + RFID_MSG_LN);
+			}
 		}
 
 		/* Log the record to the permanent storage. */
@@ -412,8 +425,19 @@ rfid_id20_svc(void)
 static int
 rfid_log_svc(void)
 {
+	/*
+	 * If set to TRUE, all log records are read at once.
+	 * Reset to FALSE in RFID_LOG_ST_GET_FIRST state,
+	 * set to TRUE in RFID_LOG_ST_GET_ALL state,
+	 * left unchanged in other states.
+	 */
+	static BOOL get_all_records;
+	/* Current log record. */
+	static char *rec;
+	/* Sequence number. */
+	static int sn;
+
 	int err = 0;
-	char *rec;
 
 	switch (rfid_log_st) {
 	/* state machine idle */
@@ -428,17 +452,33 @@ rfid_log_svc(void)
 		if (log_busy())
 			break;
 
-		mcom_prepare_ack_response(&rfid_resp_ack_nak);
-		fl_send_ack_nak = TRUE;
+		rfid_send_ack_response_to_master();
 
 		rfid_log_st = RFID_LOG_ST_IDLE;
 		break;
 
 	/* Get the first logged record */
 	case RFID_LOG_ST_GET_FIRST:
+		/* Reset flag indicating that all records should be read. */
+		get_all_records = FALSE;
+		/* FALLTHROUGH */
+
+	/*
+	 * Get all records at once. In this state
+	 *  - the first log record is read,
+	 *  - sequence number is initialized,
+	 *  - get_all_records flag is set to TRUE.
+	 * Subsequent records are obtained in RFID_LOG_ST_GET_NEXT state.
+	 */
+	case RFID_LOG_ST_GET_ALL:
+		sn = 1;
+		/* FALLTHROUGH */
+
 	/* Get next logged record */
 	case RFID_LOG_ST_GET_NEXT:
-		err = log_get_record(rfid_log_st == RFID_LOG_ST_GET_FIRST,
+		err = log_get_record(
+		    rfid_log_st == RFID_LOG_ST_GET_FIRST ||
+		    rfid_log_st == RFID_LOG_ST_GET_ALL,
 		    &rec, RFID_LOG_RECORD_SIZE);
 
 		/* The record is not available yet - try again later. */
@@ -447,27 +487,58 @@ rfid_log_svc(void)
 
 		/* module BUSY, abort the process */
 		if (err == EBUSY) {
-			mcom_prepare_nak_response(&rfid_resp_ack_nak, err);
-			fl_send_ack_nak = TRUE;
+			rfid_send_nak_response_to_master(err);
 
 			rfid_log_st = RFID_LOG_ST_IDLE;
 			break;
 		}
 
+		/* Set flag if all records are to be read. */
+		if (rfid_log_st == RFID_LOG_ST_GET_ALL) {
+			get_all_records = TRUE;
+		}
+
 		/* All records read, send the terminating packet. */
 		if (rec == NULL) {
-			/* Send the message to the master. */
+			/* Send terminating record to the master. */
 			rfid_send_data_response_to_master("00", rec, 0);
 		} else {
+			/*
+			 * Prepare sequence number.
+			 * Used only if all records are to be read.
+			 */
+			snprintf(pkt_hdr, sizeof (pkt_hdr), "%02X",
+			    get_all_records ? sn : 0);
+
+			/* Increment sequence number. */
+			if (++sn > 255) {
+				sn = 1;
+			}
+
 			/*
 			 * Send the record to the master - discard \r\n
 			 * terminating characters.
 			 */
-			rfid_send_data_response_to_master("00", rec,
+			rfid_send_data_response_to_master(pkt_hdr, rec,
 			    strlen(rec) - 2);
 		}
+		/* Wait until the current record is sent to the master. */
+		rfid_log_st = RFID_LOG_ST_SEND_REC;
 
-		rfid_log_st = RFID_LOG_ST_IDLE;
+		/* FALLTHROUGH */
+
+	/* Wait until log record is sent to master. */
+	case RFID_LOG_ST_SEND_REC:
+		if (mcom_response_inuse(&rfid_resp_data)) {
+			break;
+		}
+
+		/* Determine if more records are to be sent. */
+		if (get_all_records && rec != NULL) {
+			rfid_log_st = RFID_LOG_ST_GET_NEXT;
+		} else {
+			rfid_log_st = RFID_LOG_ST_IDLE;
+		}
 
 		break;
 	} /* switch */
@@ -489,9 +560,6 @@ rfid_svc(void)
 
 	/* Handle communication with logging service */
 	rfid_log_svc();
-
-	/* Handle communication with master */
-	rfid_comm_svc();
 
 	return 0;
 }
@@ -563,10 +631,9 @@ int
 rfid_process_query(char *data, int ln)
 {
 	int err = 0;
+	/* Assume ACK will be sent to master */
+	BOOL fl_send_ack_nak = TRUE;
 	BOOL respond_with_ack = TRUE;
-
-	/* Assume ACK/NAK will be sent to master */
-	fl_send_ack_nak = TRUE;
 
 	/* Handle particular commands */
 	switch (data[0]) {
@@ -606,6 +673,15 @@ rfid_process_query(char *data, int ln)
 				rfid_log_st = RFID_LOG_ST_GET_NEXT;
 
 				/* Don't send ACK - data packet will follow. */
+				fl_send_ack_nak = FALSE;
+
+				break;
+
+			/* Get the whole log at once. */
+			case MCOMM_RFID_CMD_LOG_READ_ALL:
+				rfid_log_st = RFID_LOG_ST_GET_ALL;
+
+				/* Don't send ACK - data will follow. */
 				fl_send_ack_nak = FALSE;
 
 				break;
@@ -656,9 +732,9 @@ rfid_process_query(char *data, int ln)
 	 * Send response to master indicating that command was processed.
 	 */
 	if (respond_with_ack) {
-		mcom_prepare_ack_response(&rfid_resp_ack_nak);
+		rfid_send_ack_response_to_master();
 	} else {
-		mcom_prepare_nak_response(&rfid_resp_ack_nak, err);
+		rfid_send_nak_response_to_master(err);
 	}
 
 	return 0;
