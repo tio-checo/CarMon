@@ -103,16 +103,35 @@ class ECUSim(object):
                  'C233F1010FF6': ['83F110410F6400'],
                  'C233F10110F7': ['84F1104110020000'],
                  'C233F10111F8': ['83F11041117000'],
+                 'C233F1011C03': ['83F110411C0600'],
+                 'C233F1011F06': ['84F110411F100000'],
+
                  # supported PIDs 21-40
                  'C233F1012007': ['86F1104120A019A00142'],
+                 'C233F1012108': ['84F1104121200000'], 
                  'C233F101230A': ['84F1104123020000'],
                  'C233F1012C13': ['83F110412C8000'],
                  'C233F1012D14': ['83F110412D9000'],
+                 'C233F1013017': ['83F11041301400'],
+                 'C233F1013118': ['84F1104131300000'],
                  'C233F101331A': ['83F11041336400'],
                  # supported PIDs 41-60
                  'C233F1014027': ['86F110414040DE000026'],
+
+                 'C233F1014229': ['84F11041422E7C00'],
                  # Accelerator pedal position D
                  'C233F1014930': ['83F11041494000'],
+                 # Accelerator pedal position E
+                 'C233F1014A31': ['83F110414A8000'],
+                 # Commanded Throttle Actuator Control
+                 'C233F1014C33': ['83F110414C1A00'],
+                 # Time run with MIL ON
+                 'C233F1014D34': ['84F110414D010000'],
+                 # Time since DTCs cleared
+                 'C233F1014E35': ['84F110414E020000'],
+
+                 # PID 4F
+                 'C233F1014F36': ['86F110414F0000002000'],
 
                  # 'freeze frame' mode - freeze frame 00
                  # supported PIDs 01-20: 02,04,05,0B,0C,0D,0F,10,11
@@ -375,8 +394,8 @@ def main():
 
 #    ecu_sim.comm_open('/dev/ttya', 9600)
 #    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.00144f916844/dev/term/a', 9600)
-    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
-#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.0021287e7ee5/dev/term/a', 9600)
+#    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.002128de936c/dev/term/a', 9600)
+    ecu_sim.comm_open('/tmp/SUNWut/units/IEEE802.0021287e7ee5/dev/term/a', 9600)
 
     while True:
         # Wait for packet from tester.

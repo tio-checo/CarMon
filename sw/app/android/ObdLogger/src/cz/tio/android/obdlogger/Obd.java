@@ -103,11 +103,14 @@ public class Obd {
     /* Reference to callback routines */
     private IEcuComCallback mEcuComCb;
 
-    /* debug mode */
+    /* Debug mode */
     private boolean mDebug = false;
 
-    /* indicates if communication with ECU is established */
+    /* Indicates if communication with ECU is established */
     private boolean mConnectionEstablished = false;
+
+    /* Caches list of supported PIDs */
+    private ArrayList<String> mSupportedPids = null;
 
     /**
      * Establishes communication with ECU.
@@ -117,8 +120,6 @@ public class Obd {
      * @throws  PicConnectionLostException when lost connection with PIC
      */
     public boolean open() throws PicConnectionLostException {
-        int[] p;
-
         /* If communication channel is already established, return. */
         if (mConnectionEstablished) {
             return true;
@@ -135,6 +136,23 @@ public class Obd {
 
                 return false;
             }
+
+            /*
+             * Scaling per bit for PID 0B (Intake Manifold Absolute Pressure)
+             * can be adjusted by 4.byte of PID 4F. Handle that here.
+             * Should it turn out in future that there are more PIDs which need
+             * to be handled, more generic approach should be introduced.
+             */
+            if (isPidSupported("4F")) {
+                int v[] = getPidValue("4F");
+
+                if ((v != null) && (v.length == 4) && (v[3] != 0)) {
+                    ObdProbe p = (ObdProbe) getProbe("0B");
+
+                    p.adjustRawToPhysMul(10.0 * v[3] / 255.0);
+                }
+            }
+
         } catch (PicTimeoutExpiredException e) {
             mLog.e("Timeout when trying to initiate communication with ECU.");
 
@@ -366,6 +384,7 @@ public class Obd {
 
     /**
      * Asks ECU for list of PIDs supported in 'live data' mode.
+     * Result is cached.
      *
      * @return   list of supported PIDs; <code>null</code>in case of failure.
      * @throws   PicTimeoutExpiredException when timeout expires while
@@ -374,7 +393,28 @@ public class Obd {
      */
     public ArrayList<String> getSupportedPids()
             throws PicTimeoutExpiredException, PicConnectionLostException {
-        return getListOfAvailablePids(-1);
+        if (mSupportedPids == null) {
+            mSupportedPids = getListOfAvailablePids(-1);
+        }
+
+        return mSupportedPids;
+    }
+
+    /**
+     * Checks if ECU supports particular PID.
+     *
+     * @param    pidId the id of checked PID
+     * @return   <code>true</code> if PID is supported;
+     *           <code>false</code> otherwise.
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     * @throws   PicConnectionLostException when lost connection with PIC
+     */
+    public boolean isPidSupported(String pidId)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        ArrayList<String> suppPids = getSupportedPids();
+
+        return suppPids.contains(pidId);
     }
 
     /**

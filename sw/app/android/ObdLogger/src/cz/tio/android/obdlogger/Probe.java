@@ -7,7 +7,9 @@ import cz.tio.android.obdlogger.PicTimeoutExpiredException;
 
 /**
  * Abstract model of measurement probe as a source of measured
- * or calculated physical quantity. The class carries following attributes:
+ * or calculated physical quantity.
+ *
+ * The class carries following attributes:
  *
  *   mId - unique probe ID
  *   mLabel - short label (displayed on dashboard and in log file)
@@ -16,7 +18,7 @@ import cz.tio.android.obdlogger.PicTimeoutExpiredException;
  *                   which can be displayed
  *   mPhysToPbAdd, mPhysToPbMul   - additive and multiplicative constant used
  *                                  when converting physical value
-                                    to progress bar fraction
+ *                                  to progress bar fraction
  *   mUnits - string holding physical units
  *   mCurrY - last acquired value
  *   mCurrYValid - true if last acquired value is valid
@@ -71,8 +73,10 @@ public abstract class Probe {
     }
 
     /**
-     * Updates probe value. Returns true in case of success. Otherwise
-     * returns false.
+     * Updates probe value.
+     *
+     * @return  <code>true</code> in case of success;
+     *          <code>false</code> otherwise.
      */
     public boolean update(int[] value) {
         return true;
@@ -83,9 +87,9 @@ public abstract class Probe {
      *
      * @return  <code>true</code> in case of success;
      *          <code>false</code> otherwise.
-     * @throws   PicTimeoutExpiredException when timeout expires while
-     *                                      waiting for data from PIC
-     *           PicConnectionLostException when lost connection with PIC
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     *          PicConnectionLostException when lost connection with PIC
      */
     public boolean acquire()
             throws PicTimeoutExpiredException, PicConnectionLostException {
@@ -180,8 +184,8 @@ public abstract class Probe {
     }
 
     /**
-     * Converts PID value to text which is to be logged to file. Replaces
-     * decimal comma with decimal point.
+     * Converts PID value to text which is to be logged to file.
+     * Replaces decimal comma with decimal point.
      *
      * @return text to be logged into file
      */
@@ -216,6 +220,7 @@ public abstract class Probe {
 
 /**
  * Represents PIC probe acquired directly by PIC module. Extends Probe class.
+ *
  * Adds following attributes:
  *
  *   mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
@@ -245,8 +250,10 @@ class PicProbe extends Probe {
     }
 
     /**
-     * Updates probe value. Returns true in case of success. Otherwise
-     * returns false.
+     * Updates probe value.
+     *
+     * @return  <code>true</code> in case of success;
+     *          <code>false</code> otherwise.
      */
     public boolean update(int[] value) {
         mCurrY = (value[0] + mRawToPhysAdd) * mRawToPhysMul;
@@ -261,9 +268,9 @@ class PicProbe extends Probe {
      *
      * @return  <code>true</code> in case of success;
      *          <code>false</code> otherwise.
-     * @throws   PicTimeoutExpiredException when timeout expires while
-     *                                      waiting for data from PIC
-     *           PicConnectionLostException when lost connection with PIC
+     * @throws  PicTimeoutExpiredException when timeout expires while
+     *                                     waiting for data from PIC
+     *          PicConnectionLostException when lost connection with PIC
      */
     public boolean acquire()
             throws PicTimeoutExpiredException, PicConnectionLostException {
@@ -287,7 +294,9 @@ class PicProbe extends Probe {
 
 /**
  * Represents OBD probe measured by ECU and obtained via diagnostic
- * communication protocol. Extends Probe class. Adds following attributes:
+ * communication protocol. Extends Probe class.
+ *
+ * Adds following attributes:
  *
  *   mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
  *                                  when converting raw value to physical one
@@ -316,8 +325,10 @@ class ObdProbe extends Probe {
     }
 
     /**
-     * Updates probe value. Returns true in case of success. Otherwise
-     * returns false.
+     * Updates probe value.
+     *
+     * @return  <code>true</code> in case of success;
+     *          <code>false</code> otherwise.
      */
     public boolean update(int[] value) {
         /**
@@ -379,9 +390,9 @@ class ObdProbe extends Probe {
      * Obtains 'freeze frame' value of OBD parameter from ECU.
      * Updates probe with new value.
      *
-     * @param   ffNum freeze frame number
-     * @return        <code>true</code> in case of success;
-     *                <code>false</code> otherwise.
+     * @param    ffNum freeze frame number
+     * @return   <code>true</code> in case of success;
+     *           <code>false</code> otherwise.
      * @throws   PicTimeoutExpiredException when timeout expires while
      *                                      waiting for data from PIC
      *           PicConnectionLostException when lost connection with PIC
@@ -403,6 +414,15 @@ class ObdProbe extends Probe {
         } 
 
         return this.update(ecuData);
+    }
+
+    /**
+     * Applies correction to mRawToPhysMul multiplicative constant.
+     *
+     * @param   mulCorr the correction value
+     */
+    public void adjustRawToPhysMul(double mulCorr) {
+        mRawToPhysMul *= mulCorr;
     }
 }
 
