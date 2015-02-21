@@ -1059,12 +1059,12 @@ can_obd_recv(unsigned char **data, int *ln)
 	can_frame_received = FALSE;
 
 	/*
-	 * It's not message from ECU. That is suspicious, as we should have
-	 * acceptance mask set appropriately.
+	 * Acceptance mask allows packets within ID range 0x7c0 - 0x7ff.
+	 * Thus, filter out packets not coming from ECU.
 	 */
 	id = CAN_GET_ID(rxm);
 	if ((id & CAN_OBD_ECU_SID_MSK) != CAN_OBD_ECU_SID) {
-		return EIO;
+		return EAGAIN;
 	}
 
 	/* Verify size of data payload - must be always 8 per standard. */
