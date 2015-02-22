@@ -39,12 +39,51 @@
 #define	CAN_OBD_ECU_SID_MSK	0x7f8
 /* tester EID */
 #define	CAN_OBD_TESTER_EID	0x18db33f1
-/* Size of CAN frame data payload - always 8 per standard */
-#define	CAN_OBD_DLC		8
-/* Max size of OBD data payload */
-#define	CAN_OBD_MAX_DATA_SIZE	(CAN_OBD_DLC - 1)
 /* 200ms receive timeout  */
 #define	CAN_OBD_RX_TIMEOUT	200000
+
+/* USDT specific definitions */
+/*
+ * Max size of USDT data payload.
+ * USDT mechanism supports up to 4096 bytes,
+ * though we currently enforce lower limit.
+ */
+#define	CAN_USDT_MAX_DATA_SIZE	128
+/* Size of CAN frame data payload - always 8 per standard */
+#define	CAN_USDT_DLC		8
+/* Max size of USDT Single Frame data payload */
+#define	CAN_USDT_SF_MAX_DATA_SIZE	0x07
+/* Protocol Control Information (PCI) */
+#define	CAN_USDT_PCI_FRAME_TYPE_MSK	0xf0
+#define	CAN_USDT_PCI_DATA_MSK	0x0f
+/* Single Frame */
+#define	CAN_USDT_PCI_SF		0x00
+/* First Frame */
+#define	CAN_USDT_PCI_FF		0x10
+/* Consecutive Frame */
+#define	CAN_USDT_PCI_CF		0x20
+/* Flow Control Frame */
+#define	CAN_USDT_PCI_FC		0x30
+/* TRUE if the frame is Single Frame */
+#define	CAN_USDT_IS_SF(x)	\
+    (((x)->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK) == CAN_USDT_PCI_SF)
+/* TRUE if the frame is First Frame */
+#define CAN_USDT_IS_FF(x)	\
+    (((x)->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK) == CAN_USDT_PCI_FF)
+/* TRUE if the frame is Consecutive Frame */
+#define CAN_USDT_IS_CF(x)	\
+    (((x)->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK) == CAN_USDT_PCI_CF)
+/* Extracts data length from USDT frame */
+#define	CAN_USDT_GET_DL(x)	\
+    (CAN_USDT_IS_SF(x) ? (x)->data[0] & CAN_USDT_PCI_DATA_MSK : \
+    ((x)->data[0] & CAN_USDT_PCI_DATA_MSK) + (x)->data[1])
+
+/* State machine handling re-assemling OBD message from USDT frames. */
+static enum {
+	CAN_USDT_RX_ST_IDLE = 0,	/* idle */
+	CAN_USDT_RX_ST_SF_FF,		/* waits for SF or FF */
+	CAN_USDT_RX_ST_CF		/* receives CFs */
+} can_usdt_rx_st;
 
 /*
  * Bit timing configurations for supported speeds. Values specified
@@ -812,6 +851,9 @@ can_init(void)
 	/* Initialize state machine for transmitting CAN frames. */
 	can_tx_st = CAN_TX_ST_IDLE;
 
+	/* Initialize state machine for receiveing USDT frames. */
+	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
 	/* Set module ID for purposes of communication with master. */
 	mcom_response_init(&can_resp_ack_nak, MCOMM_CAN_ID);
 	mcom_response_init(&can_resp_data, MCOMM_CAN_ID);
@@ -962,17 +1004,24 @@ can_process_query(char *data, int ln)
 }
 
 /*
- * Encodes OBD packet to CAN frame and sends the resulting packet to the bus.
+ * Sends USDT frame to the bus.
  *
  * Returns:
  *        0 - packet scheduled for transmission
  *   EBUSY  - currently busy with sending previous packets
+ *   EINVAL - unsupported type of frame
  */
 int
-can_obd_send(unsigned char *data, int ln)
+can_usdt_send_frame(int frame_type, unsigned char *data, int ln)
 {
 	CANTxMessageBuffer *txm;
 	int i;
+
+	/* Validate frame type. */
+	if ((frame_type != CAN_USDT_PCI_SF) &&
+	    (frame_type != CAN_USDT_PCI_FC)) {
+		return EINVAL;
+	}
 
 	if ((can_tx_st != CAN_TX_ST_IDLE) ||
 	    ((txm = CANGetTxMessageBuffer(CAN1, CAN_TX_CHANNEL)) == NULL)) {
@@ -992,7 +1041,7 @@ can_obd_send(unsigned char *data, int ln)
 	txm->msgEID.EID = 0;
 
 	/* DLC - always 8 bytes are sent per standard */
-	txm->msgEID.DLC = CAN_OBD_DLC;
+	txm->msgEID.DLC = CAN_USDT_DLC;
 
 	/* RTR */
 	txm->msgEID.RTR = 0;
@@ -1003,16 +1052,24 @@ can_obd_send(unsigned char *data, int ln)
 	 */
 	txm->msgEID.IDE = 0;
 
-	/* Add data payload. Make sure we don't write past buffer. */
-	if (ln > CAN_OBD_MAX_DATA_SIZE) {
-		ln = CAN_OBD_MAX_DATA_SIZE;
-	}
+	/* Fill in data payload according to frame type. */
+	if (frame_type == CAN_USDT_PCI_SF) {
+	/* Single Frame */
+		/* Make sure we don't write past buffer. */
+		if (ln > CAN_USDT_SF_MAX_DATA_SIZE) {
+			ln = CAN_USDT_SF_MAX_DATA_SIZE;
+		}
 
-	/* First data byte carries size of OBD payload. */
-	txm->data[0] = ln;
+		/* Fill in PCI byte - frame type and size of data payload. */
+		txm->data[0] = CAN_USDT_PCI_SF | ln;
 
-	for (i = 0; i < ln; i++) {
-		txm->data[i + 1] = data[i];
+		for (i = 0; i < ln; i++) {
+			txm->data[i + 1] = data[i];
+		}
+	} else if (frame_type == CAN_USDT_PCI_FC) {
+	/* Flow Control Frame */
+		/* Fill in PCI byte. */
+		txm->data[0] = CAN_USDT_PCI_FC;
 	}
 
 	/* Move pointer to the next free message buffer. */
@@ -1022,14 +1079,51 @@ can_obd_send(unsigned char *data, int ln)
 	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
 	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
 
-	/* Arm Rx timer */
-	rtl_timer_init(&can_obd_rx_timer, CAN_OBD_RX_TIMEOUT);
-
 	return 0;
 }
 
 /*
- * Waits for CAN frame carrying OBD packet.
+ * Encodes OBD packet to USDT Single Frame and sends the resulting packet
+ * to the bus.
+ *
+ * Returns:
+ *        0 - packet scheduled for transmission
+ *   EBUSY  - currently busy with sending previous packets
+ *   EINVAL - unsupported type of frame
+ */
+int
+can_obd_send(unsigned char *data, int ln)
+{
+	int ret = can_usdt_send_frame(CAN_USDT_PCI_SF, data, ln);
+
+	/* Packet sent out successfully, wait for response. */
+	if (ret == 0) {
+		/* Arm Rx timer */
+		rtl_timer_init(&can_obd_rx_timer, CAN_OBD_RX_TIMEOUT);
+
+		can_usdt_rx_st = CAN_USDT_RX_ST_SF_FF;
+	}
+
+	return ret;
+}
+
+/*
+ * Receives and re-assembles OBD packet.
+ * Implements "Unacknowledged Segmented Data Transfer" (USDT)
+ * mechanism used to support multiple consecutive frame responses
+ * to a single frame request.
+ *
+ * The following unique CAN message types are supported by the network
+ * USDT protocol layer:
+ *
+ *  - Single Frame (SF) - supports a maximum length of seven (7) data bytes
+ *  - First Frame (FF)  - the first frame CAN message of a diagnostic
+ *    communication sequence
+ *  - Consecutive Frame (CF) - the second to n frame CAN message
+ *    of a diagnostic communication sequence
+ *  - Flow Control (FC) - the receiving node diagnostic communication
+ *    handshake used to adjust the sender node to the network layer
+ *    capabilities of the receiver
  *
  * Returns:
  *        0 - packet received
@@ -1039,15 +1133,20 @@ can_obd_send(unsigned char *data, int ln)
 int
 can_obd_recv(unsigned char **data, int *ln)
 {
-	static unsigned char obd_data[CAN_OBD_MAX_DATA_SIZE];
+	static unsigned char usdt_data[CAN_USDT_MAX_DATA_SIZE];
+	static int rln, tail;
 
 	CANRxMessageBuffer *rxm;
-	int id;
-	int obd_ln, i;
+	int id, ft;
+	int dln, i;
 
 	/* If ECU has not responded in given time, abort. */
-	if (rtl_timer_expired(can_obd_rx_timer))
+	if (rtl_timer_expired(can_obd_rx_timer)) {
+		/* Reset re-assembly state machine. */
+		can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
 		return EIO;
+	}
 
 	/* Packet not received yet. */
 	if (!can_frame_received) {
@@ -1068,26 +1167,159 @@ can_obd_recv(unsigned char **data, int *ln)
 	}
 
 	/* Verify size of data payload - must be always 8 per standard. */
-	if (rxm->msgEID.DLC != CAN_OBD_DLC) {
+	if (rxm->msgEID.DLC != CAN_USDT_DLC) {
 		return EIO;
 	}
 
-	/* The first data byte contains size of OBD data payload. */
-	obd_ln = rxm->data[0];
+	/* Decode frame type. */
+	ft = rxm->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK;
 
-	/* Invalid length of OBD data payload. */
-	if ((obd_ln > CAN_OBD_MAX_DATA_SIZE) || (obd_ln == 0)) {
-		return EIO;
+	/* USDT re-assembly state machine */
+	switch (can_usdt_rx_st) {
+	/* idle */
+	case CAN_USDT_RX_ST_IDLE:
+		break;
+
+	/* Waits for SF or FF. */
+	case CAN_USDT_RX_ST_SF_FF:
+		/* Validate packet type */
+		if ((ft != CAN_USDT_PCI_SF) && (ft != CAN_USDT_PCI_FF)) {
+			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+			return EIO;
+		}
+
+		/* Extract size of data payload. */
+		dln = CAN_USDT_GET_DL(rxm);
+
+		/* Single Frame */
+		if (ft == CAN_USDT_PCI_SF) {
+			/* Invalid length of data payload. */
+			if ((dln > CAN_USDT_SF_MAX_DATA_SIZE) || (dln == 0)) {
+				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+				return EIO;
+			}
+
+			/* Extract data payload. Skip PCI byte. */
+			for (i = 0; i < dln; i++) {
+				usdt_data[i] = rxm->data[i + 1];
+			}
+
+			/*
+			 * We are done, pass pointer to local storage
+			 * and its size to the caller.
+			 */
+			*data = usdt_data;
+			*ln = dln;
+
+			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+			return 0;
+		}
+
+		/* First Frame */
+		if (ft == CAN_USDT_PCI_FF) {
+			/*
+			 * Invalid length of data payload.
+			 * 7 and less data bytes should be always delivered
+			 * in form of Single Frames.
+			 */
+			if ((dln > CAN_USDT_MAX_DATA_SIZE) || (dln < 8)) {
+				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+				return EIO;
+			}
+
+			/*
+			 * Extract data payload. Skip PCI and DL bytes.
+			 * First Frame always carries 6 bytes of data payload.
+			 */
+			for (i = 0; i < 6; i++) {
+				usdt_data[i] = rxm->data[i + 2];
+			}
+
+			/*
+			 * Save pointer to free position in buffer
+			 * and remaining number of bytes to be received.
+			 */
+			rln = dln - 6;
+			tail = 6;
+
+			/*
+			 * According to the standard, Flow Control Frame
+			 * has to be sent to the sender within 5ms
+			 * after FF is received to indicate we are ready
+			 * to receive CFs.
+			 * FS, BSmax and STmin have to be zero for OBD
+			 * communication, so no data to be passed down.
+			 * Abort if FC can't be sent.
+			 */
+			if (can_usdt_send_frame(CAN_USDT_PCI_FC, NULL, 0)
+			    != 0) {
+				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+				return EIO;
+			}
+
+			/* Wait for subsequent CFs. */
+			can_usdt_rx_st = CAN_USDT_RX_ST_CF;
+
+			return EAGAIN;
+		}
+
+		break;
+
+	/* Receives CFs */
+	case CAN_USDT_RX_ST_CF:
+		/* Validate packet type */
+		if (ft != CAN_USDT_PCI_CF) {
+			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+			return EIO;
+		}
+
+		/* TODO: Validate Sequence Number */
+
+		/* All CFs except of the last one carry full data payload. */
+		dln = rln >= CAN_USDT_SF_MAX_DATA_SIZE ?
+		    CAN_USDT_SF_MAX_DATA_SIZE : rln;
+
+		/*
+		 * Extract data payload. Skip PCI byte.
+		 */
+		for (i = 0; i < dln; i++) {
+			usdt_data[tail + i] = rxm->data[i + 1];
+		}
+
+		/* Update "number of remaining bytes" and buffer pointer. */
+		rln -= dln;
+		tail += dln;
+
+		/* There are still data to be received. */
+		if (rln > 0) {
+			return EAGAIN;
+		} else {
+			/*
+			 * We are done, pass pointer to local storage
+			 * and its size to the caller.
+			 */
+			*data = usdt_data;
+			*ln = tail;
+
+			/* Switch to IDLE mode. */
+			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+			return 0;
+		}
+
+		break;
+
+	/* Not reached */
+	default:
+		break;
 	}
 
-	/* CAN frame seems sane, so extract OBD data to local storage. */
-	for (i = 0; i < obd_ln; i++) {
-		obd_data[i] = rxm->data[i + 1];
-	}
-
-	/* Pass pointer to local storage and its size to the caller. */
-	*data = obd_data;
-	*ln = obd_ln;
-
+	/* Report success by default. */
 	return 0;
 }
