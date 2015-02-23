@@ -306,22 +306,76 @@ class ComSvcStateConfAcqMode extends ComSvcState {
         setStateDataBoolean("captureStartVoltage", prefs.getBoolean(
                 "pref_meas_start_voltage", false));
 
-        /* Create list of PID priority groups */
+        /*
+         * Create list of PID priority groups based on selected logging profile.
+         * Default to 'RAIL' profile.
+         * TODO: Deliver definition of logging profiles via XML file.
+         */
+        String logProfile = prefs.getString("pref_logging_profile", "RAIL");
+
         PidGroups pidSpeedGroups = new PidGroups();
 
-        /* Fast - RPM, Rail Pressure, Accelerator pedal position D */
-        String grpF[] = { "0C", "23", "49" };
-        pidSpeedGroups.create(0, "fast", grpF);
+        if (logProfile.equals("RAIL")) {
+            /* Fast - RPM, Rail Pressure, Accelerator pedal position D */
+            String grpF[] = { "0C", "23", "49" };
 
-        /* Medium - Calculated Load, EGR, MAF, Intake Manifold Abs. Pressure */
-        String grpM[] = {"04", "2C", "10", "0B"};
-        pidSpeedGroups.create(1, "medium", grpM);
+            /*
+             * Medium - Calculated Load, EGR, MAF,
+             *          Intake Manifold Absolute Pressure
+             */
+            String grpM[] = {"04", "2C", "10", "0B"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
+        } else if (logProfile.equals("EGR")) {
+            /* Fast - RPM, EGR, Accelerator pedal position D, EGR error */
+            String grpF[] = { "0C", "2C", "49", "2D" };
+
+            /*
+             * Medium - Calculated Load, Rail Pressure, MAF,
+             *          Intake Manifold Abs. Pressure
+             */
+            String grpM[] = {"04", "23", "10", "0B"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
+        } else if (logProfile.equals("THROTTLE")) {
+            /*
+             * Fast - RPM, Absolute Throttle Position,
+             *        Accelerator pedal position D, Commanded Throttle Actuator
+             */
+            String grpF[] = { "0C", "11", "49", "4C" };
+
+            /*
+             * Medium - Calculated Load, Rail Pressure, MAF,
+             *          Intake Manifold Abs. Pressure
+             */
+            String grpM[] = {"04", "23", "10", "0B"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
+        } else {
+        /* 'TURBO' profile */
+            /*
+             * Fast - RPM, Intake Manifold Absolute Pressure,
+             *        Accelerator pedal position D
+             */
+            String grpF[] = { "0C", "0B", "49" };
+
+            /* Medium - Calculated Load, Rail Pressure, MAF, EGR */
+            String grpM[] = {"04", "23", "10", "2C"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
+        }
 
         /*
-         * Slow - Water & Air Temperature, Vehicle Speed, Barometric Pressure,
+         * Slow - common to all profiles
+         *        Water & Air Temperature, Vehicle Speed, Barometric Pressure,
          *        Battery Voltage
          */
         String grpS[] = {"05", "0D", "0F", "33"};
+
         pidSpeedGroups.create(2, "slow", grpS);
 
         /* Save created, so that other states can use it as well. */
@@ -418,6 +472,9 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
     /* List of all measured probes. */
     private ArrayList<String> mPidLogList;
 
+    /* PID which triggers logging. */
+    private String mTriggerLogPid;
+
     /* OBD packet sequence number. */
     private int mObdSeqNum;
 
@@ -431,11 +488,15 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
      * Called when state is entered.
      */
     public void enter() {
+        PidGroups pidSpeedGroups = (PidGroups)getStateData("pidSpeedGroups");
         /*
          * Generate list of all PIDs to be processed. Start with the highest
          * priority. The list is used for logging purposes.
          */
-        mPidLogList = ((PidGroups)getStateData("pidSpeedGroups")).getAllPids();
+        mPidLogList = pidSpeedGroups.getAllPids();
+
+        /* Initialize PID triggering log operation. */
+        mTriggerLogPid = pidSpeedGroups.getTriggerLogPid();
 
         /*
          * Add calculated 'Turbo' to the list, so that it gets logged.
@@ -544,7 +605,7 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
              * in the first group get processed.
              */
             /* TODO: Use some method for this check */
-            if (currPid.equals("49")) {
+            if (currPid.equals(mTriggerLogPid)) {
                 mLog.captureProbes(mPidLogList, obd);
             }
         } else if (p.startsWith("Q")) {
@@ -1975,6 +2036,15 @@ class PidGroups {
         }
 
         return pidList;
+    }
+
+    /**
+     * Returns PID which triggers generating log record (last PID
+     * in "fast" PID group).
+     */
+    public String getTriggerLogPid() {
+        ArrayList<String> pidList = mPidGroups.get(0).getAllPids();
+        return pidList.get(pidList.size() - 1);
     }
 
     /**

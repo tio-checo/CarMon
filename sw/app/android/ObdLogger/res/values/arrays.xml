@@ -18,4 +18,16 @@
         <item>06</item>
         <item>07</item>
     </string-array>
+    <string-array name="log_profile_name">
+        <item>Rail pressure</item>
+        <item>EGR</item>
+        <item>Throttle</item>
+        <item>Turbo</item>
+    </string-array>
+    <string-array name="log_profile_value">
+        <item>RAIL</item>
+        <item>EGR</item>
+        <item>THROTTLE</item>
+        <item>TURBO</item>
+    </string-array>
 </resources>
