@@ -116,7 +116,7 @@ class ECUSim(object):
                  'C233F1013118': ['84F1104131300000'],
                  'C233F101331A': ['83F11041336400'],
                  # supported PIDs 41-60
-                 'C233F1014027': ['86F110414040DE000026'],
+                 'C233F1014027': ['86F110414040DE000100'],
 
                  'C233F1014229': ['84F11041422E7C00'],
                  # Accelerator pedal position D
@@ -132,6 +132,12 @@ class ECUSim(object):
 
                  # PID 4F
                  'C233F1014F36': ['86F110414F0000002000'],
+
+                 # supported PIDs 61-80
+                 'C233F1016047': ['86F11041600000010000'],
+
+                 # PID 78 - EGT Bank 1
+                 'C233F101785F': ['87F11041780303AF02EE00'],
 
                  # 'freeze frame' mode - freeze frame 00
                  # supported PIDs 01-20: 02,04,05,0B,0C,0D,0F,10,11

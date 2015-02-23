@@ -317,25 +317,40 @@ class ComSvcStateConfAcqMode extends ComSvcState {
 
         if (logProfile.equals("RAIL")) {
             /* Fast - RPM, Rail Pressure, Accelerator pedal position D */
-            String grpF[] = { "0C", "23", "49" };
+            String grpF[] = {"0C", "23", "49"};
 
             /*
              * Medium - Calculated Load, EGR, MAF,
-             *          Intake Manifold Absolute Pressure
+             *          Intake Manifold Abs. Pressure, Vehicle Speed
              */
-            String grpM[] = {"04", "2C", "10", "0B"};
+            String grpM[] = {"04", "2C", "10", "0B", "0D"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
+        } else if (logProfile.equals("EGT")) {
+            /*
+             * Fast - RPM, Rail Pressure, EGT Bank1,
+             * Accelerator pedal position D
+             */
+            String grpF[] = {"0C", "23", "78", "49"};
+
+            /*
+             * Medium - Calculated Load, EGR, MAF,
+             *          Intake Manifold Abs. Pressure, Vehicle Speed
+             */
+            String grpM[] = {"04", "2C", "10", "0B", "0D"};
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
         } else if (logProfile.equals("EGR")) {
             /* Fast - RPM, EGR, Accelerator pedal position D, EGR error */
-            String grpF[] = { "0C", "2C", "49", "2D" };
+            String grpF[] = {"0C", "2C", "49", "2D"};
 
             /*
              * Medium - Calculated Load, Rail Pressure, MAF,
-             *          Intake Manifold Abs. Pressure
+             *          Intake Manifold Abs. Pressure, Vehicle Speed
              */
-            String grpM[] = {"04", "23", "10", "0B"};
+            String grpM[] = {"04", "23", "10", "0B", "0D"};
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
@@ -344,13 +359,13 @@ class ComSvcStateConfAcqMode extends ComSvcState {
              * Fast - RPM, Absolute Throttle Position,
              *        Accelerator pedal position D, Commanded Throttle Actuator
              */
-            String grpF[] = { "0C", "11", "49", "4C" };
+            String grpF[] = {"0C", "11", "49", "4C"};
 
             /*
              * Medium - Calculated Load, Rail Pressure, MAF,
-             *          Intake Manifold Abs. Pressure
+             *          Intake Manifold Abs. Pressure, Vehicle Speed
              */
-            String grpM[] = {"04", "23", "10", "0B"};
+            String grpM[] = {"04", "23", "10", "0B", "0D"};
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
@@ -360,10 +375,13 @@ class ComSvcStateConfAcqMode extends ComSvcState {
              * Fast - RPM, Intake Manifold Absolute Pressure,
              *        Accelerator pedal position D
              */
-            String grpF[] = { "0C", "0B", "49" };
+            String grpF[] = {"0C", "0B", "49"};
 
-            /* Medium - Calculated Load, Rail Pressure, MAF, EGR */
-            String grpM[] = {"04", "23", "10", "2C"};
+            /*
+             * Medium - Calculated Load, Rail Pressure, MAF, EGR,
+             *          Vehicle Speed
+             */
+            String grpM[] = {"04", "23", "10", "2C", "0D"};
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
@@ -371,10 +389,9 @@ class ComSvcStateConfAcqMode extends ComSvcState {
 
         /*
          * Slow - common to all profiles
-         *        Water & Air Temperature, Vehicle Speed, Barometric Pressure,
-         *        Battery Voltage
+         *        Water & Air Temperature, Barometric Pressure
          */
-        String grpS[] = {"05", "0D", "0F", "33"};
+        String grpS[] = {"05", "0F", "33"};
 
         pidSpeedGroups.create(2, "slow", grpS);
 
@@ -503,6 +520,17 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
          */
         mPidLogList.add("Turbo");
 
+	/*
+         * If EGT sensors are to be logged, log converted values 
+         * instead of raw OBD data.
+         */
+        if (mPidLogList.contains("78")) {
+            mPidLogList.remove("78");
+
+            mPidLogList.add("EGT11");
+            mPidLogList.add("EGT12");
+        }
+
         /*
          * Add battery voltage probe to the list, so that it gets logged.
          */
@@ -598,6 +626,17 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
 
             if (turboPar.update(currPid, obd)) {
                 mDashboard.updateIndicator(turboPar);
+            }
+
+            /* Recalculate and update EGT indicatiors if applicable. */
+            EgtProbe egtPar = (EgtProbe) obd.getProbe("EGT11");
+            if (egtPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(egtPar);
+            }
+
+            egtPar = (EgtProbe) obd.getProbe("EGT12");
+            if (egtPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(egtPar);
             }
 
             /*
@@ -1833,7 +1872,7 @@ class Dashboard {
      */
     public Dashboard(Activity activity) {
         /* Instantiate indicators and associate them with OBD PIDs.*/
-        mDashboardIndicators = new DashboardIndicator[7];
+        mDashboardIndicators = new DashboardIndicator[8];
         /* RPM */
         mDashboardIndicators[0] = new DashboardIndicator(activity,
                 R.id.indicator1Label, R.id.indicator1Value, 0, "0C");
@@ -1850,12 +1889,15 @@ class Dashboard {
         /* RAIL */
         mDashboardIndicators[4] = new DashboardIndicator(activity,
                 R.id.indicator5Label, R.id.indicator5Value, 0, "23");
-        /* EGR */
+        /* EGT11 */
         mDashboardIndicators[5] = new DashboardIndicator(activity,
-                R.id.indicator6Label, R.id.indicator6Value, 0, "2C");
-        /* Batt */
+                R.id.indicator6Label, R.id.indicator6Value, 0, "EGT11");
+        /* EGT12 */
         mDashboardIndicators[6] = new DashboardIndicator(activity,
-                R.id.indicator7Label, R.id.indicator7Value, 0, "Vst");
+                R.id.indicator7Label, R.id.indicator7Value, 0, "EGT12");
+        /* Batt */
+        mDashboardIndicators[7] = new DashboardIndicator(activity,
+                R.id.indicator8Label, R.id.indicator8Value, 0, "Vst");
     }
 
     /**

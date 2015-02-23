@@ -20,12 +20,16 @@ import cz.tio.android.obdlogger.PicTimeoutExpiredException;
  *                                  when converting physical value
  *                                  to progress bar fraction
  *   mUnits - string holding physical units
+ *   mRawData - last acquired raw data
  *   mCurrY - last acquired value
  *   mCurrYValid - true if last acquired value is valid
  */
 public abstract class Probe {
     /* Probe unique ID */
     String mId;
+
+    /* last acquired raw data */
+    int[] mRawData;
 
     /* last acquired value */
     double mCurrY = 0.0;
@@ -73,12 +77,24 @@ public abstract class Probe {
     }
 
     /**
+     * Returns raw probe data.
+     *
+     * @return  raw data
+     *
+     */
+    public int[] getRawData() {
+        return mRawData;
+    }
+
+    /**
      * Updates probe value.
      *
      * @return  <code>true</code> in case of success;
      *          <code>false</code> otherwise.
      */
     public boolean update(int[] value) {
+        mRawData = value;
+
         return true;
     }
 
@@ -331,6 +347,8 @@ class ObdProbe extends Probe {
      *          <code>false</code> otherwise.
      */
     public boolean update(int[] value) {
+        super.update(value);
+
         /**
          * Converts PID data returned by ECU in form of an array of bytes
          * to physical value using following formula:
@@ -427,7 +445,7 @@ class ObdProbe extends Probe {
 }
 
 /**
- * Represents Turbo Indicator, extends Probe class . It is calculated
+ * Represents Turbo Indicator, extends Probe class. It is calculated
  * as Intake Pressure/Barometric Pressure ratio. It adds following attributes:
  *
  *   mProbeList - list of probes used to calculate the value.
@@ -480,3 +498,74 @@ class TurboProbe extends Probe {
     }
 }
 
+/**
+ * Represents EGT probe, extends Probe class.
+ * Adds following attributes:
+ *
+ *   mObdPid - OBD pid carrying information about particular EGT sensor.
+ *   mEgtNum - EGT sensor number (one OBD PID can carry information about
+ *             up to 4 EGT sensors).
+ *   mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
+ *                                  when converting raw value to physical one
+ */
+class EgtProbe extends Probe {
+    private String mObdPid;
+    private int mEgtNum;
+    private double mRawToPhysAdd = 0.0;
+    private double mRawToPhysMul = 1.0;
+
+    /**
+     * Constructor
+     */
+    public EgtProbe(String egtName, String obdPid, int egtNum) {
+        /* Initialize attributes of parent class */
+        super(egtName, "stC", egtName, egtName, "%.0f", 0.0, 1.0);
+
+        mObdPid = obdPid;
+        mEgtNum = egtNum;
+
+        mRawToPhysAdd = -400.0;
+        mRawToPhysMul = 0.1;
+    }
+
+    /**
+     * Recalculates value if given PID contributes to the formula.
+     *
+     * @param   pid     OBD PID
+     * @param   obd     reference to Obd object
+     * @return          <code>true</code> if value has been recalculated;
+     *                  <code>false</code> otherwise.
+     */
+    public boolean update(String pid, Obd obd) {
+        if (pid.equals(mObdPid)) {
+            if (obd.getProbe(pid).currYIsValid()) {
+		int[] raw = obd.getProbe(pid).getRawData();
+
+                /* Malformed data - do not check for now. */
+                /*
+                 * if (raw.length != 9) {
+                 *   return false;
+                 * }
+                 */
+
+                /* Specified EGT sensor not supported. */
+                if ((raw[0] & (1 << mEgtNum)) == 0) {
+                    return false;
+                }
+
+                mCurrY = 256.0 * raw[mEgtNum * 2 + 1] +
+                        raw[(mEgtNum + 1) * 2];
+
+                mCurrY += mRawToPhysAdd;
+                mCurrY *= mRawToPhysMul;
+
+                mCurrYValid = true;
+
+                return true;
+            }
+
+            return false;
+        }
+        return false;
+    }
+}

@@ -469,6 +469,45 @@
         <PhysToPbMul>1.0</PhysToPbMul>
         <PhysToString>0x%08X</PhysToString>
     </Pid>
+
+    <!-- 60 - PIDs supported [61 - 80] -->
+    <Pid>
+        <Id>60</Id>
+        <Description>PIDs supported [61 - 80]</Description>
+        <Label>SUP4</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
+    <!-- 78 - Exhaust Gas temperature (EGT) Bank 1 -->
+    <Pid>
+        <Id>78</Id>
+        <Description>EGT Bank 1</Description>
+        <Label>EGTB1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
+    <!-- 79 - Exhaust Gas temperature (EGT) Bank 2 -->
+    <Pid>
+        <Id>79</Id>
+        <Description>EGT Bank 2</Description>
+        <Label>EGTB2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
 </ObdProbes>
 <PicProbes>
     <!-- Vst - Battery voltage -->

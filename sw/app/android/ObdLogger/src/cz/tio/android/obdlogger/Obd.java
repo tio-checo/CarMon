@@ -839,10 +839,14 @@ public class Obd {
         }
 
         /*
-         * 'Turbo' indicator. Calculated as Intake pressure/Barometric pressure
+         * 'Turbo' probe. Calculated as Intake pressure/Barometric pressure
          * ratio.
          */
         mProbePool.put("Turbo", new TurboProbe());
+
+        /* EGT probes. */
+        mProbePool.put("EGT11", new EgtProbe("EGT11", "78", 0));
+        mProbePool.put("EGT12", new EgtProbe("EGT12", "78", 1));
     }
 
     /**
