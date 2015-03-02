@@ -73,7 +73,7 @@ public class Obd {
 
     static final String PKT_ACK = "EA";
     static final String PKT_NAK = "EN";
-    static final String PKT_GET_CURR_PID = "EOP";
+    static final String PKT_GET_CURR_PID = "EOP01";
     static final String PKT_GET_CURR_PID_RESP = "EP00";
     static final String PKT_GET_CURR_PID_AS = "EOp";
     static final String PKT_GET_CURR_PID_AS_RESP = "Ep";

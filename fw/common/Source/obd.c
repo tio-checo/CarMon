@@ -62,6 +62,12 @@ static unsigned char obd_autoscan_pid_list[OBD_PID_LIST_LN];
 static int obd_autoscan_num;
 /* index of currently scanned PID */
 static int obd_autoscan_curr;
+/*
+ * OBD mode used when obtaining PID value
+ * - 01 - standard OBD
+ * - 21 - Toyota specific PIDs
+ */
+static int obd_mode;
 /* "freeze frame" number */
 static int obd_freeze_frame_num;
 /* TRUE activates auto-scan mode */
@@ -254,7 +260,7 @@ obd_get_pid_from_can(int pid, unsigned char **value, int *ln)
  *   EIO    - ECU did not respond or invalid response received
  */
 static int
-obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
+obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 {
 	static BOOL in_progress = FALSE;
 
@@ -293,6 +299,8 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 	 * If we are operating in KWP2000/CAN mixed mode and value of given
 	 * PID is provided via CAN, do not ask ECU for the value.
 	 * Instead use the one obtained via monitoring CAN bus.
+	 * We do not check for OBD mode, since manufacturer specific
+	 * PIDs are always provided on request.
 	 * Also skip if "freeze frame" data are requested.
 	 */
 	if (!OBD_IS_FREEZE_FRAME && (obd_get_pid_from_can(pid, d, ln) == 0)) {
@@ -306,7 +314,7 @@ obd_ecu_get_pid(int pid, unsigned char **d, int *ln)
 		obd_packet_ecu[2] = obd_freeze_frame_num;
 		lln = 3;
 	} else {
-		obd_packet_ecu[0] = OBD_MODE_GET_PID;
+		obd_packet_ecu[0] = mode;
 		obd_packet_ecu[1] = pid;
 		lln = 2;
 	}
@@ -529,7 +537,7 @@ obd_comm_ecu_svc(void)
 		curr_pid = obd_autoscan_pid_list[obd_autoscan_curr];
 
 		/* Wait until pid value is received or error occurs. */
-		ret = obd_ecu_get_pid(curr_pid, &d, &ln);
+		ret = obd_ecu_get_pid(obd_mode, curr_pid, &d, &ln);
 
 		/* Operation still in progress, try again later. */
 		if (ret == EAGAIN) {
@@ -1104,7 +1112,8 @@ obd_process_query(char *data, int ln)
 			obd_autoscan_curr = 0;
 			/* Asking for current, not "freeze frame" data. */
 			obd_freeze_frame_num = -1;
-			obd_autoscan_pid_list[0] = hex2ulong(&data[2], 2);
+			obd_mode = hex2ulong(&data[2], 2);
+			obd_autoscan_pid_list[0] = hex2ulong(&data[4], 2);
 
 			/* Let OBD service respond. */
 			respond_now = FALSE;
@@ -1128,6 +1137,9 @@ obd_process_query(char *data, int ln)
 
 				break;
 			}
+
+			/* Supported only for standard OBD PIDs. */
+			obd_mode = OBD_MODE_GET_PID;
 
 			/* Get [ms] sample rate and convert it to [us]. */
 			obd_sr = hex2ulong(&data[2], 4) * 1000;
@@ -1222,9 +1234,12 @@ obd_init(void)
 	/* Initialize state machine sending response to master. */
 	obd_comm_st = OBD_COMM_ST_IDLE;
 
-	/* Set id of module in response structure */
+	/* Set id of module in response structure. */
 	mcom_response_init(&obd_resp_ack_nak, MCOMM_ECU_ID);
 	mcom_response_init(&obd_resp_data, MCOMM_ECU_ID);
+
+	/* Default to standard OBD mode. */
+	obd_mode = OBD_MODE_GET_PID;
 
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;

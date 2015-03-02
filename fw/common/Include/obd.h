@@ -22,11 +22,12 @@
 #define	OBD_CMD_GETPERMDTC	'D'	/* get permanent/confirmed DTC */
 #define	OBD_CMD_RESETDTC	'R'	/* reset/clear DTCs, freeze frames... */
 
-/* OBD commands */
+/* OBD modes */
 #define	OBD_MODE_GET_PID	1	/* Show current data */
 #define	OBD_MODE_GET_FF		2	/* Show freeze frame data */
 #define	OBD_MODE_GET_DTC	3	/* Show Diagnostic Trouble Codes */
 #define	OBD_MODE_RESET_DTC	4	/* Clear Diagnostic Trouble Codes */
+#define	OBD_MODE_GET_PID_TOYOTA	0x21	/* Get value of Toyota specific PID */
 
 #define	OBD_ECU_PACKET_MAXLN	256	/* Max length of ECU packet */
 
