@@ -144,12 +144,19 @@ bt_suspend(void)
 
 /*
  * Send character to BT module.
+ * Discard characters if we are not connected to the master,
+ * so that we inadvertently do not modify module configuration.
  * Do not block if there is no space in transmit buffer, return EAGAIN
  * in that case. If character can be put into transmit buffer return 0.
  */
 int
 bt_putchar(unsigned char ch)
 {
+	/* Not connected to the master, discard character. */
+	if (!bt_is_paired()) {
+		return 0;
+	}
+
 	/* busy with sending previous character, return */
 	if (bt_st != BT_ST_IDLE)
 		return EAGAIN;
