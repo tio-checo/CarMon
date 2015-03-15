@@ -102,6 +102,14 @@ main(int argc, char **argv)
         rtl_init();
 	bt_init();
 	kwp2k_init();
+
+	/*
+	 * CAN module
+	 * Must be called before obd_init(), since obd_init() asks
+	 * CAN module to initialize default ECU communication mode. 
+	 */
+	can_init();
+
 	obd_init();
 	daq_init();
 
@@ -119,8 +127,6 @@ main(int argc, char **argv)
 	/* USB module */
 	uapp_init();
 
-	/* CAN module */
-	can_init();
 
 	/* All services are initialized, thus enable main service handler. */
 	rtl_svc_handler_enable();
