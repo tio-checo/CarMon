@@ -11,11 +11,9 @@
 #define HB_MODE_TICKS		1
 #define HB_MODE_ON		2
 
-/* various time constants */
-#define RTL_TIME_175_MSEC	(175000 / RTL_SERVICE_PERIOD)	/* 175 ms */
-#define RTL_TIME_200_MSEC	(200000 / RTL_SERVICE_PERIOD)	/* 200 ms */
-#define RTL_TIME_250_MSEC	(250000 / RTL_SERVICE_PERIOD)	/* 250 ms */
-#define RTL_TIME_1_SEC		(1000000 / RTL_SERVICE_PERIOD)	/* 1 second */
+/* macros */
+/* Converts time in [ms] to RTL ticks. */
+#define	RTL_TIME_MS2RTICKS(x)	(((x) * 1000) / RTL_SERVICE_PERIOD)
 
 /* types */
 /* time */
@@ -63,5 +61,7 @@ extern int rtl_svc_handler_enable(void);
 extern int rtl_svc_handler_disable(void);
 /* Display service table for debugging purposes. */
 extern int rtl_svc_display_table(int (*)(const char *));
+/* Configure heartbeat LED. */
+extern int rtl_hb_mode(int, int, int);
 
 #endif /* __RTL_H */

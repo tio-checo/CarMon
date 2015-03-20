@@ -44,9 +44,21 @@ typedef struct rtl_svc {
 	BOOL		run_in_diag;	/* service enabled in diagnostic mode */
 } rtl_svc_t;
 
+/* macros */
+/* turn heartbeat LED on */
+#define	HB_LED_ON	LATBCLR = 1 << 13
+/* turn heartbeat LED off */
+#define	HB_LED_OFF	LATBSET = 1 << 13
+/* toggle heartbeat LED */
+#define	HB_LED_TOGGLE	LATBINV = 1 << 13
+
 /* local variables */
 /* heartbeat LED blinking mode */
-static unsigned char heartbeat_mode = HB_MODE_TICKS;
+static unsigned char hb_mode;
+/* heartbeat LED period */
+static int hb_period;
+/* number of flashes during HB_MODE_TICKS mode */  
+static int hb_num_ticks;
 
 /* pool of timers */
 static rtl_timer_t rtl_pool_timers[RTL_TIMER_POOL_SIZE];
@@ -93,33 +105,19 @@ rtl_timer_svc(void)
 static void
 rtl_heartbeat_svc(void)
 {
-	static int hb_counter = RTL_TIME_250_MSEC;
-	static int hb_num_ticks = 1;
+	static int hb_counter = RTL_TIME_MS2RTICKS(250);
 	static int hb_curr_tick = 1;
 
-	/* indicate if BT module is currently paired */
-	if (bt_is_paired()) {
-		heartbeat_mode = HB_MODE_TICKS;
+	switch (hb_mode) {
+	/* Led always ON. */
+	case HB_MODE_ON:
+		HB_LED_ON;
+		break;
 
-#ifdef KWP2K_MODULE
-		/*
-		 * Add one more tick if communication with ECU has been
-		 * established.
-		 */
-		if (kwp2k_comm_is_established())
-			hb_num_ticks = 2;
-		else
-#endif
-			hb_num_ticks = 1;
-	} else {
-		heartbeat_mode = HB_MODE_FIFTY_FIFTY;
-	}
-
-	switch (heartbeat_mode) {
 	case HB_MODE_FIFTY_FIFTY:
 		if (--hb_counter <= 0) {
-			hb_counter = RTL_TIME_250_MSEC;
-			LATBINV = 1 << 13;
+			hb_counter = hb_period / 2;
+			HB_LED_TOGGLE;
 		}
 		break;
 
@@ -128,21 +126,33 @@ rtl_heartbeat_svc(void)
 			hb_counter--;
 			if (hb_counter <= 0) {
 				hb_curr_tick--;
-				if (hb_curr_tick > 0)
-					hb_counter = RTL_TIME_200_MSEC;
-				else
-					hb_counter = RTL_TIME_1_SEC;
-			} else if (hb_counter <= RTL_TIME_175_MSEC) {
-				LATBSET = 1 << 13;
-			} else {
-				LATBCLR = 1 << 13;
+				if (hb_curr_tick > 0) {
+					/* Another flash to be commenced. */
+					hb_counter = RTL_TIME_MS2RTICKS(200);
+
+					HB_LED_ON;
+				} else {
+					/*
+					 * Done with flashes for this burst.
+					 * Now remain silent for a while.
+					 */
+					hb_counter = hb_period;
+				}
+			} else if (hb_counter <= RTL_TIME_MS2RTICKS(175)) {
+				/* Flash ended, turn the LED off. */
+				HB_LED_OFF;
 			}
 		} else {
-			/* silent period */
+			/* Period of silence */
 			if (--hb_counter <= 0) {
-				hb_counter = RTL_TIME_200_MSEC;
+				/*
+				 * Silent period ended,
+				 * kick off new burst.
+				 */
+				hb_counter = RTL_TIME_MS2RTICKS(200);
 				hb_curr_tick = hb_num_ticks;
-				LATBCLR = 1 << 13;
+
+				HB_LED_ON;
 			}
 		}
 		break;
@@ -150,6 +160,31 @@ rtl_heartbeat_svc(void)
 }
 
 /* public functions */
+/*
+ * Configure heartbeat LED.
+ */
+int
+rtl_hb_mode(int mode, int arg1, int arg2)
+{
+	hb_mode = mode;
+
+	switch (mode) {
+	case HB_MODE_FIFTY_FIFTY:
+		hb_period = RTL_TIME_MS2RTICKS(arg1);
+		break;
+
+	case HB_MODE_TICKS:
+		hb_period = RTL_TIME_MS2RTICKS(arg1);
+		hb_num_ticks = arg2;
+		break;
+
+	case HB_MODE_ON:
+		break;
+	}
+
+	return 0;
+}
+
 /*
  * Allocate timer from pool and initialize it.
  * If timer has not been allocated yet (*ptimer is NULL), then try to allocate
@@ -308,6 +343,9 @@ rtl_init(void)
 		rtl_pool_svcs[i].enabled = FALSE;
 		rtl_pool_svcs[i].run_in_diag = FALSE;
 	}
+
+	/* Initialize heartbeat LED */
+	rtl_hb_mode(HB_MODE_FIFTY_FIFTY, 500, 0);
 
 	/* Initialize interrupt statistics */
 	rtl_istat[RTL_ISTAT_TIMER1].name = "Timer1";

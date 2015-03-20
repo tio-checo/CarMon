@@ -211,8 +211,14 @@ bt_getchar(unsigned char *ch)
 	} else if (rx_bt_message) {
 		if (*ch == 'C') {
 			bt_paired = TRUE;
+
+			/* Let heartbeat LED flash. */
+			rtl_hb_mode(HB_MODE_TICKS, 1000, 1);
 		} else if (*ch == 'D') {
 			bt_paired = FALSE;
+
+			/* Let heartbeat LED blink. */
+			rtl_hb_mode(HB_MODE_FIFTY_FIFTY, 500, 0);
 		}
 
 		rx_bt_message = FALSE;
