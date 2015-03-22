@@ -109,7 +109,12 @@ rtl_heartbeat_svc(void)
 	static int hb_curr_tick = 1;
 
 	switch (hb_mode) {
-	/* Led always ON. */
+	/* LED OFF. */
+	case HB_MODE_OFF:
+		HB_LED_OFF;
+		break;
+
+	/* LED always ON. */
 	case HB_MODE_ON:
 		HB_LED_ON;
 		break;

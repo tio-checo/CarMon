@@ -7,9 +7,10 @@
 #define RTL_SERVICE_PERIOD	100
 
 /* heartbeat modes */
-#define HB_MODE_FIFTY_FIFTY	0
-#define HB_MODE_TICKS		1
-#define HB_MODE_ON		2
+#define HB_MODE_OFF		0
+#define HB_MODE_ON		1
+#define HB_MODE_FIFTY_FIFTY	2
+#define HB_MODE_TICKS		3
 
 /* macros */
 /* Converts time in [ms] to RTL ticks. */

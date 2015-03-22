@@ -137,7 +137,13 @@ class ECUSim(object):
                  'C233F1016047': ['86F11041600000010000'],
 
                  # PID 78 - EGT Bank 1
-                 'C233F101785F': ['87F11041780303AF02EE00'],
+                 # 105E - 379st
+                 # 113A - 401st
+                 # 1446 - 479st
+                 # 1522 - 501st
+                 # 163A - 529st
+                 # 1716 - 551st
+                 'C233F101785F': ['87F11041780303AF113A00'],
 
                  # 'freeze frame' mode - freeze frame 00
                  # supported PIDs 01-20: 02,04,05,0B,0C,0D,0F,10,11

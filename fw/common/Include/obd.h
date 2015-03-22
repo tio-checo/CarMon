@@ -31,6 +31,45 @@
 
 #define	OBD_ECU_PACKET_MAXLN	256	/* Max length of ECU packet */
 
+/* OBD PIDs - used by alarms */
+/*
+ * Exhaust Gas temperature (EGT) Bank 1
+ * A request for this PID will return 9 bytes of data.
+ * The first byte is a bit encoded field indicating
+ * which EGT sensors are supported:
+ *
+ * byte     description
+ * ------------------------
+ *  A    supported EGT sensors
+ * B-C   temperature EGT11
+ * D-E   temperature EGT12
+ * F-G   temperature EGT13
+ * H-I   temperature EGT14
+ *
+ * The first byte is bit-encoded as follows:
+ *
+ *  bit      description
+ * ------------------------
+ * A7-A4     reserved
+ *  A3    EGT14 sensor supported
+ *  A2    EGT13 sensor supported
+ *  A1    EGT12 sensor supported
+ *  A0    EGT11 sensor supported
+ *
+ * The remaining bytes are 16 bit integers indicating the temperature
+ * in degrees Celsius in the range -40 to 6513.5 (scale 0.1),
+ * using the usual (A * 256 + B) / 10 - 40 formula (MSB is A, LSB is B).
+ * Only values for which the corresponding sensor is supported are meaningful.
+ */
+#define	OBD_PID_EGT1		0x78
+/*
+ * Given raw packet received from ECU, the macro extracts value
+ * for 'n'th EGT sensor and converts the raw value to Celsius degrees.
+ * For simplicity, macro does not check if particular sensor is supported.
+ */
+#define OBD_GET_EGT_VALUE(er, n)	\
+    ((256 * ((er)[2 * (n) - 2]) + ((er)[2 * (n) - 1])) / 10 - 40)
+
 /* Underlying communication layer. */
 typedef enum {
     OBD_COMM_MODE_AUTO = 0,		/* Determined automatically */

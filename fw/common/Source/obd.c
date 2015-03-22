@@ -154,6 +154,8 @@ static struct obd_dtc_cache_t {
 
 /* local functions */
 
+static void obd_alarm_process(unsigned char *, int);
+
 /*
  * Sends data packet to master.
  */
@@ -291,6 +293,14 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 		lln = OBD_IS_FREEZE_FRAME ? 3 : 2;
 		*d = obd_data + lln;
 		*ln = obd_ln - lln;
+
+		/*
+		 * Let current PID value to be processed
+		 * by alarm framework. Pass PID number as well.
+		 */
+		if (!OBD_IS_FREEZE_FRAME) {
+			obd_alarm_process(obd_data + 1, obd_ln - 1);
+		}
 
 		return ret;
 	}
@@ -984,6 +994,111 @@ obd_conf(char *data, int ln)
 	err = obd_set_comm_mode(mode);
 
 	return err;
+}
+
+/*
+ * Alarm service.
+ * Every time OBD layer receives current PID value,
+ * that value is passed to alarm framework which
+ * detects events interesting to user and indicates
+ * (e.g. via heartbeat LED) such event occurred.
+ */
+static void
+obd_alarm_process(unsigned char *d, int ln)
+{
+	static int warn_phase = 0;
+	int egt12;
+
+	/* Take desired action based on PID value received. */
+	switch (d[0]) {
+	/*
+	 * EGT bank 1
+	 * Inform user if there is an active DPF regeneration
+	 * currently in progress.
+	 */
+	case OBD_PID_EGT1:
+		/*
+		 * Extract value of EGT12 sensor from raw ECU data.
+		 * Skip PID number and byte containing mask
+		 * of supported EGT sensors.
+		 * Result is in degree Celsius.
+		 */
+		egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
+
+		/*
+		 * State machine.
+		 * Indicate EGT12 temperature on heartbeat LED.
+		 * egt12 > 400 - LED blinking slowly
+		 * egt12 > 500 - LED blinking quickly
+		 * egt12 > 550 - LED permanently ON
+		 */
+		switch (warn_phase) {
+		/* Initialization phase. */
+		case 0:
+			rtl_hb_mode(HB_MODE_OFF, 0, 0);
+			warn_phase = 1;
+			break;
+
+		/* Warning off. */
+		case 1:
+			if (egt12 > 400) {
+				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
+
+				warn_phase = 2;
+			}
+			break;
+
+		/* Warning phase 1 - LED slowly blinking. */
+		case 2:
+			if (egt12 < 380) {
+				rtl_hb_mode(HB_MODE_OFF, 0, 0);
+
+				warn_phase = 1;
+			}
+
+			if (egt12 > 500) {
+				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
+
+				warn_phase = 3;
+			}
+			break;
+
+		/* Warning phase 2 - LED blinking quickly. */
+		case 3:
+			if (egt12 < 480) {
+				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
+
+				warn_phase = 2;
+			}
+
+			if (egt12 > 550) {
+				rtl_hb_mode(HB_MODE_ON, 0, 0);
+
+				warn_phase = 4;
+			}
+			break;
+
+		/* Warning phase 3 - LED permanently ON. */
+		case 4:
+			if (egt12 < 530) {
+				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
+
+				warn_phase = 3;
+			}
+			break;
+
+		/* Something went wrong - start from the scratch. */
+		default:
+			warn_phase = 0;
+			break;
+		} /* switch */
+
+		break;
+
+	/* No action is to be taken for provided PID. */
+	default:
+		break;
+	}
 }
 
 /* global functions */
