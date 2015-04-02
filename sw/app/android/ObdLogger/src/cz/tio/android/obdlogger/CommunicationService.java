@@ -461,7 +461,7 @@ class ComSvcStateConfAcqMode extends ComSvcState {
          * Generate list of probes to be auto-scanned by PIC module.
          */
         String pidAutoScanList = ((PidGroups)getStateData("pidSpeedGroups")).
-                createAutoScanPidList(-1);
+                createAutoScanPidList();
 
         /*
          * Configure and start OBD auto-scan mode. Set sample rate to 50 ms.
@@ -1937,7 +1937,7 @@ class Dashboard {
 }
 
 /**
- * Represents groups of probes which are refreshed with the same priority.
+ * Represents group of probes which are refreshed with the same priority.
  */
 class PidGroup {
     /* group ID */
@@ -2006,6 +2006,13 @@ class PidGroup {
     public boolean allPidsProcessed() {
         return (mPidIndex >= mPidList.size());
     }
+
+    /**
+     * Returns number of PIDs in a group.
+     */
+    public int getSize() {
+        return (mPidList.size());
+    }
 }
 
 /**
@@ -2042,42 +2049,28 @@ class PidGroups {
 
     /**
      * Constructs list of PID which will be sent to PIC when initiating
-     * auto-scan mode. This is one of the examples where using recursion
-     * is reasonable thing to do, since it simplifies implementation
-     * and improves readability of the code.
+     * auto-scan mode.
      */
-    public String createAutoScanPidList(int grpIndex) {
-        PidGroup grp;
-        String pidList = new String();
+    public String createAutoScanPidList() {
+        int i;
+        ArrayList<String> pidList = new ArrayList<String>();
+        String autoScanList = new String();
 
-        /* Init phase */
-        if (grpIndex == -1) {
-            grpIndex = mPidGroups.size() - 1;
+        /*
+         * Autoscan PID list starts with information about number
+         * of PIDs in each group.
+         */
+        for (i = 0; i < mPidGroups.size(); i++) {
+            autoScanList += String.format("%02X", mPidGroups.get(i).getSize()); 
         }
 
-        grp = mPidGroups.get(grpIndex);
-        /* Make sure we start from the first PID. */
-        grp.reset();
-
-        /* Enumerate through all PIDs in current group */
-        while (!grp.allPidsProcessed()) {
-            int i;
-
-            /*
-             * First process all PIDs in groups with higher priority (if there
-             * is one). In check we take advantage of the fact that highest
-             * priority group is the first one in the group list -
-             * it has index 0.
-             */
-            for (i = grpIndex - 1; i >= 0; i--) {
-                pidList += this.createAutoScanPidList(i);
-            }
-
-            /* Now add to the list PID in currently processed group */
-            pidList += grp.getNext();
+        /* Now append list of PIDs */
+        pidList = this.getAllPids();
+        for (i = 0; i < pidList.size(); i++) {
+            autoScanList += pidList.get(i);
         }
 
-        return pidList;
+        return autoScanList;
     }
 
     /**
