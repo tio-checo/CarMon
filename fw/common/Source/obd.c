@@ -284,6 +284,11 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 		/* Operation finished. */
 		in_progress = FALSE;
 
+		/* Error occurred, abort further processing. */
+		if (ret != 0) {
+			return ret;
+		}
+
 		/*
 		 * Pass resulting data to the caller.
 		 * Drop the header which is in form of
@@ -302,7 +307,7 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 			obd_alarm_process(obd_data + 1, obd_ln - 1);
 		}
 
-		return ret;
+		return 0;
 	}
 
 	/*
