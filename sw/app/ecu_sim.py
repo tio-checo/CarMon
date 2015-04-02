@@ -145,6 +145,14 @@ class ECUSim(object):
                  # 1716 - 551st
                  'C233F101785F': ['87F11041780303AF113A00'],
 
+                 # Toyota PIDs - mode 21
+                 # PID AD - Injector Feedback Value #1, #2, #3, #4
+                 'C233F121ADB4': ['87F11061AD3E4042440000'],
+                 # PID DD - PM Accumulation Ratio
+                 'C233F121DDE4': ['87F11061DD020408182800'],
+                 # PID EF - DPF diferential pressure
+                 'C233F121EFF6': ['84F11061EF054D00'],
+
                  # 'freeze frame' mode - freeze frame 00
                  # supported PIDs 01-20: 02,04,05,0B,0C,0D,0F,10,11
                  'C333F1020000E9': ['87F110420000583B80002E'],

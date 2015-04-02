@@ -70,6 +70,18 @@
 #define OBD_GET_EGT_VALUE(er, n)	\
     ((256 * ((er)[2 * (n) - 2]) + ((er)[2 * (n) - 1])) / 10 - 40)
 
+/* max number of PIDs scanned in auto-scan mode */
+#define	OBD_PID_LIST_LN		50
+/* number of PID groups */
+#define	OBD_PID_GROUP_NUM	3
+
+/*
+ * Determines mode (standard OBD, Toyota) from PID number.
+ * PIDs above 0x80 are reserved for Toyota
+ */
+#define	OBD_GET_MODE_FROM_PID(pn)	\
+    ((pn) < 0x80 ? OBD_MODE_GET_PID : OBD_MODE_GET_PID_TOYOTA)
+
 /* Underlying communication layer. */
 typedef enum {
     OBD_COMM_MODE_AUTO = 0,		/* Determined automatically */
@@ -83,6 +95,62 @@ typedef enum {
     OBD_COMM_MODE_NUMBER_OF_MODES
 } OBD_COMM_MODE;
 
+/*
+ * Definitions related to concept of PID groups.
+ *
+ * Concept of PID groups was originaly introduced in order to address
+ * limited data bandwith between ECU and tester. When sending data
+ * over K-line via KWP2000 protocol, it is possible to obtain data
+ * with refresh rate approximately 100ms. When more PID values are being
+ * acquired at the same time, overall refresh time decreases significantly.
+ * To mitigate that problem, PIDs are divided into several groups
+ * taking into account their real time characteristics.
+ * In general, PIDs which change frequently (RPM, rail pressure, ...) are
+ * sampled more frequently than PIDs which change only slowly over the time
+ * (water coolant temperature, atmospheric pressure, ...).
+ * This concept is applicable even if using CAN as a transport media,
+ * as it lowers total amount of transferred data.
+ *
+ * Currently, three groups are defined: 'fast', 'medium', 'slow',
+ * 'fast' having higher priority than 'medium' and 'medium' having higher
+ * priority than 'slow'.
+ * As a rule of thumb, all PIDs in higher priority group are processed
+ * first, then one PID from group with lower priority is processed.
+ * There are two attributes associated with each group:
+ *   curr - relative index, points to currently processed PID in a group
+ *   num - number of PIDs in a group
+ *
+ * PIDs in all groups are stored in linear list from 'fast' to 'slow' group.
+ *
+ * |          fast         ||         medium        ||      slow     |
+ * -------------------------------------------------------------------
+ * | PIDf1 | PIDf2 | PIDf3 || PIDm1 | PIDm2 | PIDm3 || PIDs1 | PIDs2 |
+ * -------------------------------------------------------------------
+ *
+ * In the example above, PIDs would be scanned in following order:
+ * f1f2f3m1f1f2f3m2f1f2f3m3f1f2f3s1f1f2f3m1f1f2f3m2f1f2f3m3f1f2f3s2
+ */
+typedef struct _obd_pid_group_t {
+	/* Number of PIDs in a group. */
+	int	num;
+	/*
+	 * Index of currently processed PID - relative
+	 * to the beginning of the group.
+	 */
+	int	curr;
+} obd_pid_group_t;
+
+/* Autoscan PID groups */
+typedef struct _obd_pid_groups_t {
+	/* Index of currently processed PID within PID list. */
+	int		curr;
+	/* Total number of PIDs in PID list. */
+	int		num;
+	/* linear list of PIDs */
+	unsigned char	list[OBD_PID_LIST_LN];
+	/* group state */
+	obd_pid_group_t	group[OBD_PID_GROUP_NUM];
+} obd_pid_groups_t;
 
 /* Initialization routine */
 extern int obd_init(void);
