@@ -508,6 +508,49 @@
         <PhysToPbMul>1.0</PhysToPbMul>
         <PhysToString>0x%08X</PhysToString>
     </Pid>
+
+<!-- PIDs > 80 are Toyota ones -->
+
+    <!-- AD - Injector feedback value #1, #2, #3, #4 -->
+    <Pid>
+        <Id>AD</Id>
+        <Description>Inj. Feedback Value</Description>
+        <Label>InjFB</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
+    <!-- DD - DPF PM Accumulation Ratio -->
+    <Pid>
+        <Id>DD</Id>
+        <Description>DPF PM Accumulation Ratio</Description>
+        <Label>DPFar</Label>
+        <Units>%</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>0x%08X</PhysToString>
+    </Pid>
+
+    <!-- EF - DPF Differential Pressure -->
+    <Pid>
+        <Id>EF</Id>
+        <Description>DPF Differential Pressure</Description>
+        <Label>DPFdp</Label>
+        <Units>kPa</Units>
+        <!-- -5.0 * 256 -->
+        <RawToPhysAdd>-1280.0</RawToPhysAdd>
+        <!-- 1/256 -->
+        <RawToPhysMul>0.00390625</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
 </ObdProbes>
 <PicProbes>
     <!-- Vst - Battery voltage -->

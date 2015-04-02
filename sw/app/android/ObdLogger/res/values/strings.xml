@@ -5,7 +5,7 @@
     <string name="indicator2Label">Turbo</string>
     <string name="indicator3Label">MAF</string>
     <string name="indicator4Label">Water</string>
-    <string name="indicator5Label">Rail</string>
+    <string name="indicator5Label">DPFdp</string>
     <string name="indicator6Label">EGT11</string>
     <string name="indicator7Label">EGT12</string>
     <string name="indicator8Label">Batt</string>
@@ -14,7 +14,7 @@
     <string name="indicator2Value">-</string>
     <string name="indicator3Value">- g/s</string>
     <string name="indicator4Value">- stC</string>
-    <string name="indicator5Value">- MPa</string>
+    <string name="indicator5Value">- kPa</string>
     <string name="indicator6Value">- stC</string>
     <string name="indicator7Value">- stC</string>
     <string name="indicator8Value">- V</string>

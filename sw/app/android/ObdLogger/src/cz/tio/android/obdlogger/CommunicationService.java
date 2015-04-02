@@ -342,6 +342,21 @@ class ComSvcStateConfAcqMode extends ComSvcState {
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
+        } else if (logProfile.equals("DPF")) {
+            /*
+             * Fast - RPM, EGT Bank1, Accelerator pedal position D,
+             * DPF differential pressure
+             */
+            String grpF[] = {"0C", "78", "49", "EF"};
+
+            /*
+             * Medium - Calculated Load, EGR, MAF,
+             *          Intake Manifold Abs. Pressure, Vehicle Speed
+             */
+            String grpM[] = {"04", "2C", "10", "0B", "0D"};
+
+            pidSpeedGroups.create(0, "fast", grpF);
+            pidSpeedGroups.create(1, "medium", grpM);
         } else if (logProfile.equals("EGR")) {
             /* Fast - RPM, EGR, Accelerator pedal position D, EGR error */
             String grpF[] = {"0C", "2C", "49", "2D"};
@@ -462,6 +477,8 @@ class ComSvcStateConfAcqMode extends ComSvcState {
          */
         String pidAutoScanList = ((PidGroups)getStateData("pidSpeedGroups")).
                 createAutoScanPidList();
+
+        mLog.i(String.format("Autoscan PID list: <%s>", pidAutoScanList));
 
         /*
          * Configure and start OBD auto-scan mode. Set sample rate to 50 ms.
@@ -1886,9 +1903,9 @@ class Dashboard {
         /* WATER */
         mDashboardIndicators[3] = new DashboardIndicator(activity,
                 R.id.indicator4Label, R.id.indicator4Value, 0, "05");
-        /* RAIL */
+        /* DPF Differential Pressure */
         mDashboardIndicators[4] = new DashboardIndicator(activity,
-                R.id.indicator5Label, R.id.indicator5Value, 0, "23");
+                R.id.indicator5Label, R.id.indicator5Value, 0, "EF");
         /* EGT11 */
         mDashboardIndicators[5] = new DashboardIndicator(activity,
                 R.id.indicator6Label, R.id.indicator6Value, 0, "EGT11");
