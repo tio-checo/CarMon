@@ -327,33 +327,20 @@ class ComSvcStateConfAcqMode extends ComSvcState {
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
-        } else if (logProfile.equals("EGT")) {
-            /*
-             * Fast - RPM, Rail Pressure, EGT Bank1,
-             * Accelerator pedal position D
-             */
-            String grpF[] = {"0C", "23", "78", "49"};
-
-            /*
-             * Medium - Calculated Load, EGR, MAF,
-             *          Intake Manifold Abs. Pressure, Vehicle Speed
-             */
-            String grpM[] = {"04", "2C", "10", "0B", "0D"};
-
-            pidSpeedGroups.create(0, "fast", grpF);
-            pidSpeedGroups.create(1, "medium", grpM);
         } else if (logProfile.equals("DPF")) {
             /*
-             * Fast - RPM, EGT Bank1, Accelerator pedal position D,
-             * DPF differential pressure
+             * Fast - RPM, Rail Pressure, EGT Bank1,
+             *        Accelerator pedal position D,
+             *        DPF differential pressure
              */
-            String grpF[] = {"0C", "78", "49", "EF"};
+            String grpF[] = {"0C", "23", "78", "49", "EF"};
 
             /*
              * Medium - Calculated Load, EGR, MAF,
              *          Intake Manifold Abs. Pressure, Vehicle Speed
+             *          DPF PM Accumulation Ratio
              */
-            String grpM[] = {"04", "2C", "10", "0B", "0D"};
+            String grpM[] = {"04", "2C", "10", "0B", "0D", "DD"};
 
             pidSpeedGroups.create(0, "fast", grpF);
             pidSpeedGroups.create(1, "medium", grpM);
@@ -478,12 +465,10 @@ class ComSvcStateConfAcqMode extends ComSvcState {
         String pidAutoScanList = ((PidGroups)getStateData("pidSpeedGroups")).
                 createAutoScanPidList();
 
-        mLog.i(String.format("Autoscan PID list: <%s>", pidAutoScanList));
-
         /*
-         * Configure and start OBD auto-scan mode. Set sample rate to 50 ms.
+         * Configure and start OBD auto-scan mode. Set sample rate to 25ms.
          */
-        obd.configObdAutoScan(pidAutoScanList, "0032");
+        obd.configObdAutoScan(pidAutoScanList, "0019");
 
         return ComSvcStateAction.GOTO_NEXT;
     }
@@ -546,6 +531,16 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
 
             mPidLogList.add("EGT11");
             mPidLogList.add("EGT12");
+        }
+
+	/*
+         * If DPF PM Accumulation Ratio is to be logged,
+         * log converted value instead of raw OBD data.
+         */
+        if (mPidLogList.contains("DD")) {
+            mPidLogList.remove("DD");
+
+            mPidLogList.add("DPFar");
         }
 
         /*
@@ -645,7 +640,7 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
                 mDashboard.updateIndicator(turboPar);
             }
 
-            /* Recalculate and update EGT indicatiors if applicable. */
+            /* Recalculate and update EGT indicators if applicable. */
             EgtProbe egtPar = (EgtProbe) obd.getProbe("EGT11");
             if (egtPar.update(currPid, obd)) {
                 mDashboard.updateIndicator(egtPar);
@@ -654,6 +649,12 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
             egtPar = (EgtProbe) obd.getProbe("EGT12");
             if (egtPar.update(currPid, obd)) {
                 mDashboard.updateIndicator(egtPar);
+            }
+
+            /* Recalculate and update DPFar indicator if applicable. */
+            CompoundProbe dpfPar = (CompoundProbe) obd.getProbe("DPFar");
+            if (dpfPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(dpfPar);
             }
 
             /*
@@ -1888,30 +1889,34 @@ class Dashboard {
      * Constructor
      */
     public Dashboard(Activity activity) {
-        /* Instantiate indicators and associate them with OBD PIDs.*/
+        /*
+         * Instantiate indicators and associate them with OBD PIDs.
+         * Currently hardcoded for DPF profile.
+         * TODO: Provide for possiblity to customize dashboard
+         *       according to selected logging profile.
+         */
         mDashboardIndicators = new DashboardIndicator[8];
         /* RPM */
         mDashboardIndicators[0] = new DashboardIndicator(activity,
                 R.id.indicator1Label, R.id.indicator1Value, 0, "0C");
-        /* Calculated Engine Load */
-        mDashboardIndicators[1] = new DashboardIndicator(activity,
-                R.id.indicator2Label, R.id.indicator2Value, 0, "Turbo");
-//                R.id.indicator2Label, R.id.indicator2Value, 0, "04");
-        /* MAF */
-        mDashboardIndicators[2] = new DashboardIndicator(activity,
-                R.id.indicator3Label, R.id.indicator3Value, 0, "10");
         /* WATER */
-        mDashboardIndicators[3] = new DashboardIndicator(activity,
-                R.id.indicator4Label, R.id.indicator4Value, 0, "05");
+        mDashboardIndicators[1] = new DashboardIndicator(activity,
+                R.id.indicator2Label, R.id.indicator2Value, 0, "05");
+        /* DPF PM Accumulation Ratio */
+        mDashboardIndicators[2] = new DashboardIndicator(activity,
+                R.id.indicator3Label, R.id.indicator3Value, 0, "DPFar");
         /* DPF Differential Pressure */
-        mDashboardIndicators[4] = new DashboardIndicator(activity,
-                R.id.indicator5Label, R.id.indicator5Value, 0, "EF");
+        mDashboardIndicators[3] = new DashboardIndicator(activity,
+                R.id.indicator4Label, R.id.indicator4Value, 0, "EF");
         /* EGT11 */
-        mDashboardIndicators[5] = new DashboardIndicator(activity,
-                R.id.indicator6Label, R.id.indicator6Value, 0, "EGT11");
+        mDashboardIndicators[4] = new DashboardIndicator(activity,
+                R.id.indicator5Label, R.id.indicator5Value, 0, "EGT11");
         /* EGT12 */
+        mDashboardIndicators[5] = new DashboardIndicator(activity,
+                R.id.indicator6Label, R.id.indicator6Value, 0, "EGT12");
+        /* Turbo */
         mDashboardIndicators[6] = new DashboardIndicator(activity,
-                R.id.indicator7Label, R.id.indicator7Value, 0, "EGT12");
+                R.id.indicator7Label, R.id.indicator7Value, 0, "Turbo");
         /* Batt */
         mDashboardIndicators[7] = new DashboardIndicator(activity,
                 R.id.indicator8Label, R.id.indicator8Value, 0, "Vst");
@@ -2108,4 +2113,3 @@ class PidGroups {
         mGroupIndex = 0;
     }
 }
-

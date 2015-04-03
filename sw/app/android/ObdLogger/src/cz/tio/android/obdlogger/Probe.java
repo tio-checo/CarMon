@@ -569,3 +569,78 @@ class EgtProbe extends Probe {
         return false;
     }
 }
+
+/**
+ * Represents 'compound probe', extends Probe class.
+ * Compound probes handle cases when more logical probes are delivered
+ * within one physical ECU probe.
+ * The design is still work in progress.
+ * Currently it is used to extract information about
+ * DPF PM Accumulation Ratio from Toyota PID 'DD'
+ *
+ * CompoundProbe Adds following attributes:
+ *
+ *   mObdPid - OBD pid carrying information about compound probe.
+ *   mPos    - beginning of compound probe
+ *   mSize   - size of compound probe
+ *   mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
+ *                                  when converting raw value to physical one
+ */
+class CompoundProbe extends Probe {
+    private String mObdPid;
+    private int mPos, mSize;
+    private double mRawToPhysAdd = 0.0;
+    private double mRawToPhysMul = 1.0;
+
+    /**
+     * Constructor
+     */
+    public CompoundProbe(String probeName, String obdPid, int pos, int size) {
+        /* Initialize attributes of parent class */
+        super(probeName, "%", probeName, probeName, "%.0f", 0.0, 1.0);
+
+        mObdPid = obdPid;
+        mPos = pos;
+        mSize = size;
+
+        mRawToPhysAdd = 0.0;
+        mRawToPhysMul = 2.0;
+    }
+
+    /**
+     * Recalculates value if given PID contributes to the formula.
+     *
+     * @param   pid     OBD PID
+     * @param   obd     reference to Obd object
+     * @return          <code>true</code> if value has been recalculated;
+     *                  <code>false</code> otherwise.
+     */
+    public boolean update(String pid, Obd obd) {
+        if (pid.equals(mObdPid)) {
+            if (obd.getProbe(pid).currYIsValid()) {
+		int[] raw = obd.getProbe(pid).getRawData();
+
+                /* Malformed data - do not check for now. */
+                /*
+                 * if (raw.length != 22) {
+                 *   return false;
+                 * }
+                 */
+
+                /*
+                 * Re-calculate current value.
+                 * Hardcoded for now for DPF PMar PID - last byte
+                 * of ECU PID carries that information.
+                 */
+                mCurrY = raw[raw.length - 1] * 2.0;
+
+                mCurrYValid = true;
+
+                return true;
+            }
+
+            return false;
+        }
+        return false;
+    }
+}

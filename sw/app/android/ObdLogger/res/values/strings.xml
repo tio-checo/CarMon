@@ -2,21 +2,21 @@
 <resources>
     <string name="app_name">ObdLogger</string>
     <string name="indicator1Label">RPM</string>
-    <string name="indicator2Label">Turbo</string>
-    <string name="indicator3Label">MAF</string>
-    <string name="indicator4Label">Water</string>
-    <string name="indicator5Label">DPFdp</string>
-    <string name="indicator6Label">EGT11</string>
-    <string name="indicator7Label">EGT12</string>
+    <string name="indicator2Label">Water</string>
+    <string name="indicator3Label">DPFar</string>
+    <string name="indicator4Label">DPFdp</string>
+    <string name="indicator5Label">EGT11</string>
+    <string name="indicator6Label">EGT12</string>
+    <string name="indicator7Label">Turbo</string>
     <string name="indicator8Label">Batt</string>
 
     <string name="indicator1Value">-</string>
-    <string name="indicator2Value">-</string>
-    <string name="indicator3Value">- g/s</string>
-    <string name="indicator4Value">- stC</string>
-    <string name="indicator5Value">- kPa</string>
+    <string name="indicator2Value">- stC</string>
+    <string name="indicator3Value">- %</string>
+    <string name="indicator4Value">- kPa</string>
+    <string name="indicator5Value">- stC</string>
     <string name="indicator6Value">- stC</string>
-    <string name="indicator7Value">- stC</string>
+    <string name="indicator7Value">-</string>
     <string name="indicator8Value">- V</string>
 
 <!--

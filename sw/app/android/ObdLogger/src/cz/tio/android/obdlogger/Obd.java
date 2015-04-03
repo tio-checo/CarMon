@@ -847,6 +847,9 @@ public class Obd {
         /* EGT probes. */
         mProbePool.put("EGT11", new EgtProbe("EGT11", "78", 0));
         mProbePool.put("EGT12", new EgtProbe("EGT12", "78", 1));
+
+        /* DPF PM Accumulation Ratio probe. */
+        mProbePool.put("DPFar", new CompoundProbe("DPFar", "DD", 21, 1));
     }
 
     /**

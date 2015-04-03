@@ -149,7 +149,7 @@ class ECUSim(object):
                  # PID AD - Injector Feedback Value #1, #2, #3, #4
                  'C233F121ADB4': ['87F11061AD3E4042440000'],
                  # PID DD - PM Accumulation Ratio
-                 'C233F121DDE4': ['87F11061DD020408182800'],
+                 'C233F121DDE4': ['87F11061DD020408182900'],
                  # PID EF - DPF diferential pressure
                  'C233F121EFF6': ['84F11061EF054D00'],
 
