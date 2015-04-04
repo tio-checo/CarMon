@@ -848,6 +848,12 @@ public class Obd {
         mProbePool.put("EGT11", new EgtProbe("EGT11", "78", 0));
         mProbePool.put("EGT12", new EgtProbe("EGT12", "78", 1));
 
+        /* Injector Feedback Values */
+        mProbePool.put("Inj1", new InjFbProbe("Inj1", "AD", 0));
+        mProbePool.put("Inj2", new InjFbProbe("Inj2", "AD", 1));
+        mProbePool.put("Inj3", new InjFbProbe("Inj3", "AD", 2));
+        mProbePool.put("Inj4", new InjFbProbe("Inj4", "AD", 3));
+
         /* DPF PM Accumulation Ratio probe. */
         mProbePool.put("DPFar", new CompoundProbe("DPFar", "DD", 21, 1));
     }

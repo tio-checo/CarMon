@@ -571,6 +571,72 @@ class EgtProbe extends Probe {
 }
 
 /**
+ * Represents 'Injector Feedback Value' Toyota  probe, extends Probe class.
+ * Adds following attributes:
+ *
+ *   mObdPid   - OBD pid carrying information about particular Injector FB.
+ *   mInjNum   - injector num (0..3)- PID carries information about 4 injectors.
+ *   mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
+ *                                  when converting raw value to physical one
+ */
+class InjFbProbe extends Probe {
+    private String mObdPid;
+    private int mInjNum;
+    private double mRawToPhysAdd = 0.0;
+    private double mRawToPhysMul = 1.0;
+
+    /**
+     * Constructor
+     */
+    public InjFbProbe(String injName, String obdPid, int injNum) {
+        /* Initialize attributes of parent class */
+        super(injName, "-", injName, injName, "%.0f", 0.0, 1.0);
+
+        mObdPid = obdPid;
+        mInjNum = injNum;
+
+        mRawToPhysAdd = -64.0;
+        mRawToPhysMul = 1.0;
+    }
+
+    /**
+     * Recalculates value if given PID contributes to the formula.
+     *
+     * @param   pid     OBD PID
+     * @param   obd     reference to Obd object
+     * @return          <code>true</code> if value has been recalculated;
+     *                  <code>false</code> otherwise.
+     */
+    public boolean update(String pid, Obd obd) {
+        if (pid.equals(mObdPid)) {
+            if (obd.getProbe(pid).currYIsValid()) {
+                int[] raw = obd.getProbe(pid).getRawData();
+
+                /* Malformed data - do not check for now. */
+                /*
+                 * if (raw.length != 29) {
+                 *   return false;
+                 * }
+                 */
+                /* debug only */
+                /* mCurrY = raw[0 + mInjNum]; */
+                mCurrY = raw[17 + mInjNum];
+
+                mCurrY += mRawToPhysAdd;
+                mCurrY *= mRawToPhysMul;
+
+                mCurrYValid = true;
+
+                return true;
+            }
+
+            return false;
+        }
+        return false;
+    }
+}
+
+/**
  * Represents 'compound probe', extends Probe class.
  * Compound probes handle cases when more logical probes are delivered
  * within one physical ECU probe.

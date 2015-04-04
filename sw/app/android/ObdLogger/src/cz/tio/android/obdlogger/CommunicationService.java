@@ -331,9 +331,10 @@ class ComSvcStateConfAcqMode extends ComSvcState {
             /*
              * Fast - RPM, Rail Pressure, EGT Bank1,
              *        Accelerator pedal position D,
-             *        DPF differential pressure
+             *        DPF differential pressure,
+             *        Injector Feedback Values
              */
-            String grpF[] = {"0C", "23", "78", "49", "EF"};
+            String grpF[] = {"0C", "23", "78", "49", "EF", "AD"};
 
             /*
              * Medium - Calculated Load, EGR, MAF,
@@ -544,6 +545,19 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
         }
 
         /*
+         * If Injector Feedback Values are to be logger,
+         * log converted values instead of raw OBD data.
+         */
+        if (mPidLogList.contains("AD")) {
+            mPidLogList.remove("AD");
+
+            mPidLogList.add("Inj1");
+            mPidLogList.add("Inj2");
+            mPidLogList.add("Inj3");
+            mPidLogList.add("Inj4");
+        }
+
+        /*
          * Add battery voltage probe to the list, so that it gets logged.
          */
         mPidLogList.add("Vst");
@@ -655,6 +669,24 @@ class ComSvcStateAcquireProbeValue extends ComSvcState {
             CompoundProbe dpfPar = (CompoundProbe) obd.getProbe("DPFar");
             if (dpfPar.update(currPid, obd)) {
                 mDashboard.updateIndicator(dpfPar);
+            }
+
+            /* Recalculate and update InjFb indicators if applicable. */
+            InjFbProbe injPar = (InjFbProbe) obd.getProbe("Inj1");
+            if (injPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(injPar);
+            }
+            injPar = (InjFbProbe) obd.getProbe("Inj2");
+            if (injPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(injPar);
+            }
+            injPar = (InjFbProbe) obd.getProbe("Inj3");
+            if (injPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(injPar);
+            }
+            injPar = (InjFbProbe) obd.getProbe("Inj4");
+            if (injPar.update(currPid, obd)) {
+                mDashboard.updateIndicator(injPar);
             }
 
             /*
