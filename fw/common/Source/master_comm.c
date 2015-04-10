@@ -27,6 +27,10 @@
 #include "can_hal.h"
 #endif
 
+#ifdef CARMON_MODULE
+#include "carmon.h"
+#endif
+
 #ifdef KWP2K_MODULE
 #include "kwp2k.h"
 #endif
@@ -291,6 +295,19 @@ mcom_decode_packet(void)
 	/* CAN module */
 	case MCOMM_CAN_ID:
 		err = can_process_query(&mcom_co.rx_buf[1], ln);
+
+		if (err != 0) {
+			mcom_prepare_nak_response(&mcom_resp, err);
+			ret = 1;
+		}
+
+		break;
+#endif
+
+#ifdef CARMON_MODULE
+	/* Carmon logger */
+	case MCOMM_CM_ID:
+		err = cm_process_query(&mcom_co.rx_buf[1], ln);
 
 		if (err != 0) {
 			mcom_prepare_nak_response(&mcom_resp, err);

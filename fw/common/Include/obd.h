@@ -161,4 +161,18 @@ extern int obd_process_query(char *, int);
 /* Callback routine processing received CAN frames */
 extern int obd_can_rx_cb(CANRxMessageBuffer *);
 
+/* Activates or deactivates PID autoscan mode. */
+extern int obd_autoscan_conf_mode(BOOL);
+
+/* Configures PID groups for autoscan mode. */
+extern int obd_autoscan_conf_pid_groups(char *, int);
+
+/* Configures sample rate for PID autoscan mode. */
+extern int obd_autoscan_conf_sample_rate(char *);
+
+/* Instructs OBD module to enter idle mode. */
+extern int obd_goto_idle(void);
+
+/* Returns TRUE if OBD module is currently IDLE. FALSE otherwise. */
+extern BOOL obd_is_idle(void);
 #endif /* __OBD_H */

@@ -9,6 +9,11 @@
 
 #include "bt.h"
 #include "can_hal.h"
+
+#ifdef CARMON_MODULE
+#include "carmon.h"
+#endif
+
 #include "data_acq.h"
 #include "kwp2k.h"
 #include "master_comm.h"
@@ -127,6 +132,10 @@ main(int argc, char **argv)
 	/* USB module */
 	uapp_init();
 
+#ifdef CARMON_MODULE
+	/* CarMon service */
+	cm_init();
+#endif
 
 	/* All services are initialized, thus enable main service handler. */
 	rtl_svc_handler_enable();

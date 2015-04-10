@@ -20,6 +20,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
+-DCARMON_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -51,7 +52,8 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/CANReceiveFunctions.o \
     $(BUILD_DIR)/CANTransmitFunctions.o \
     $(BUILD_DIR)/can_hal.o \
-    $(BUILD_DIR)/can_snoop.o
+    $(BUILD_DIR)/can_snoop.o \
+    $(BUILD_DIR)/carmon.o
 
 APPNAME= main
 
@@ -113,6 +115,9 @@ $(BUILD_DIR)/can_hal.o: ../common/Source/can_hal.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/can_snoop.o: ../common/Source/can_snoop.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/carmon.o: ../common/Source/carmon.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c

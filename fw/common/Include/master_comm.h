@@ -5,6 +5,7 @@
 
 /* module IDs and commands */
 #define	MCOMM_CAN_ID		'C'	/* CAN module ID */
+#define	MCOMM_CM_ID		'L'	/* Carmon logger module ID */
 #define	MCOMM_COMM_ID		'M'	/* communication module ID */
 #define	MCOMM_PIC_ID		'P'	/* PIC module ID */
 #define MCOMM_RFID_ID		'R'	/* RFID module ID */

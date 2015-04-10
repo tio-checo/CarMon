@@ -9,6 +9,7 @@
 
 #include "bt.h"
 #include "can_hal.h"
+#include "carmon.h"
 #include "kwp2k.h"
 #include "master_comm.h"
 #include "obd.h"
@@ -59,14 +60,17 @@ static obd_pid_groups_t	obd_pid_groups;
 static int obd_freeze_frame_num;
 /* TRUE activates auto-scan mode */
 static BOOL obd_autoscan_run;
-/* TRUE de-activates auto-scan mode */
-static BOOL obd_autoscan_stop;
+/* TRUE instructs OBD module to enter idle mode. */
+static BOOL obd_goto_idle_flag;
+/* If TRUE, ACK is sent to master after idle mode si entered. */
+static BOOL obd_send_ack_when_idle;
 
 /* OBD ECU state machine */
 static enum {
 	OBD_ECU_ST_IDLE = 0,	/* machine idle */
 	OBD_ECU_ST_GETPID,	/* ask for PID value */
 	OBD_ECU_ST_SENDPID,	/* send PID value to master */
+	OBD_ECU_ST_NEXTPID,	/* move to the next PID */
 	OBD_ECU_ST_WAIT4SAMPLETIME,	/* wait for sample time */
 	OBD_ECU_ST_GETPERMDTC,	/* get confirmed DTC */
 	OBD_ECU_ST_SENDDTC,	/* send DTC to master */
@@ -167,7 +171,6 @@ obd_send_data_response_to_master(char *hdr, int ln)
 static int
 obd_send_ack_response_to_master(void)
 {
-	
 	int err;
 
 	err = mcom_prepare_ack_response(&obd_resp_ack_nak);
@@ -590,6 +593,17 @@ obd_comm_ecu_svc(void)
 	switch (obd_ecu_st) {
 	/* machine idle */
 	case OBD_ECU_ST_IDLE:
+		/*
+		 * If asked by master to enter idle mode, then let it
+		 * know idle mode has just been entered.
+		 */
+		obd_goto_idle_flag = FALSE;
+
+		if (obd_send_ack_when_idle) {
+			obd_send_ack_when_idle = FALSE;
+			obd_send_ack_response_to_master();
+		}
+
 		break;
 
 	/* ask ECU for either current or "freeze frame" PID value */
@@ -608,15 +622,12 @@ obd_comm_ecu_svc(void)
 		/* Operation finished, process the result. */
 
 		/*
-		 * Connection with master lost - discard obtained data
-		 * and disable auto-scan mode.
+		 * Move to the next PID if operating in autonomous mode.
+		 * Otherwise send result to the master first.
 		 */
-		if (!bt_is_paired()) {
-			obd_autoscan_run = FALSE;
-
-			obd_ecu_st = OBD_ECU_ST_IDLE;
+		if (cm_get_mode() == CM_MODE_AUTONOMOUS) {
+			obd_ecu_st = OBD_ECU_ST_NEXTPID;
 		} else {
-			/* Send result to master. */
 			obd_ecu_st = OBD_ECU_ST_SENDPID;
 		}
 
@@ -632,15 +643,8 @@ obd_comm_ecu_svc(void)
 			break;
 		}
 
-		/* Operation finished, process the result. */
-
-		/* Discard obtained data if connection with master lost. */
-		if (!bt_is_paired()) {
-			obd_ecu_st = OBD_ECU_ST_IDLE;
-		} else {
-			/* Send result to master. */
-			obd_ecu_st = OBD_ECU_ST_SENDDTC;
-		}
+		/* Operation finished, send result to master. */
+		obd_ecu_st = OBD_ECU_ST_SENDDTC;
 
 		break;
 
@@ -654,15 +658,8 @@ obd_comm_ecu_svc(void)
 			break;
 		}
 
-		/* Operation finished, process the result. */
-
-		/* Discard obtained data if connection with master lost. */
-		if (!bt_is_paired()) {
-			obd_ecu_st = OBD_ECU_ST_IDLE;
-		} else {
-			/* Send result to master. */
-			obd_ecu_st = OBD_ECU_ST_SENDRESETDTCRES;
-		}
+		/* Operation finished, send result to master. */
+		obd_ecu_st = OBD_ECU_ST_SENDRESETDTCRES;
 
 		break;
 
@@ -717,13 +714,11 @@ obd_comm_ecu_svc(void)
 			obd_send_data_response_to_master(MCOM_RESP_NAK, 1);
 		}
 
-		/* Upper layer de-activated auto-scan mode. */
-		if (obd_autoscan_stop) {
-			obd_autoscan_stop = FALSE;
-			obd_autoscan_run = FALSE;
-		}
-
-		/* If operating in auto-scan mode, process next PID. */
+		obd_ecu_st = OBD_ECU_ST_NEXTPID;
+		/* FALLTHROUGH */
+	
+	/* If operating in auto-scan mode, process next PID. */
+	case OBD_ECU_ST_NEXTPID:
 		if (obd_autoscan_run) {
 			obd_autoscan_move_to_next_pid();
 
@@ -794,8 +789,26 @@ obd_comm_ecu_svc(void)
 
 		break;
 
-	/* Wait until there is a time to acquire another sample. */
+	/*
+	 * Wait until there is a time to acquire another sample.
+	 * If meanwhile connection to master has been lost
+	 * while operating in 'assisted mode' or if master decided
+	 * to leave autoscan mode, now is the safe point to handle
+	 * that transition.
+	 */
 	case OBD_ECU_ST_WAIT4SAMPLETIME:
+		/*
+		 * Stop auto-scan mode if either connection with master
+		 * has been lost or if master expressed desire to leave
+		 * auto-scan mode.
+		 */
+		if ((!bt_is_paired() && (cm_get_mode() == CM_MODE_ASSISTED))
+		    || obd_goto_idle_flag) {
+			obd_autoscan_conf_mode(FALSE);
+
+			break;
+		}
+
 		if (!rtl_timer_expired(obd_timer))
 			break;
 
@@ -1204,6 +1217,140 @@ obd_can_rx_cb(CANRxMessageBuffer *rxm)
 }
 
 /*
+ * Configures sample rate for PID autoscan mode.
+ * Returns:
+ *        0 - configuration succeeded
+ *   EINVAL - input data invalid
+ */
+int
+obd_autoscan_conf_sample_rate(char *data)
+{
+	/* Get [ms] sample rate and convert it to [us]. */
+	obd_sr = hex2ulong(data, 4) * 1000;
+
+	return 0;
+}
+
+/*
+ * Configures PID groups for autoscan mode.
+ * Returns:
+ *        0 - configuration succeeded
+ *   EINVAL - input data invalid
+ */
+int
+obd_autoscan_conf_pid_groups(char *data, int ln)
+{
+	int i;
+
+	/*
+	 * Populate group information and list of scanned PIDs.
+	 * As part of that process, calculate total number
+	 * of scanned PIDs.
+	 */
+	obd_pid_groups.num = 0;
+	for (i = 0; i < OBD_PID_GROUP_NUM; i++) {
+		/* Get number of PIDs in a group. */
+		obd_pid_groups.group[i].num =
+		    hex2ulong(&data[2 * i], 2);
+
+		obd_pid_groups.num +=
+		    obd_pid_groups.group[i].num;
+
+		/* Initialize index of current PID */
+		obd_pid_groups.group[i].curr = -1;
+	}
+
+	/* Start scan from the first PID in 'fast' group. */
+	obd_autoscan_move_to_next_pid();
+
+	/*
+	 * The highest priority group must be never empty.
+	 * Gaps are not supported either.
+	 */
+	if ((obd_pid_groups.group[0].num == 0) ||
+	    ((obd_pid_groups.group[1].num == 0) &&
+	    (obd_pid_groups.group[2].num != 0))) {
+		return EINVAL;
+	}
+
+	/* Too many PIDs, abort. */
+	if (obd_pid_groups.num > OBD_PID_LIST_LN) {
+		return EINVAL;
+	}
+
+	/*
+	 * Total number of PIDs does not match summ
+	 * of PIDs in particular groups, abort.
+	 */
+	if (obd_pid_groups.num != (ln - 6) / 2) {
+		return EINVAL;
+	}
+
+	hex2ucharbuf(&data[6], obd_pid_groups.list, ln - 6);
+
+	/* Asking for current, not "freeze frame" data. */
+	obd_freeze_frame_num = -1;
+
+	return 0;
+}
+
+/*
+ * Activates or deactivates PID autoscan mode.
+ * returns: 0
+ */
+int
+obd_autoscan_conf_mode(BOOL mode)
+{
+	if (mode) {
+	/* Activate PID autoscan mode. */
+		/* Initialize sample rate timer. */
+		rtl_timer_init(&obd_timer, obd_sr);
+
+		obd_ecu_st = OBD_ECU_ST_GETPID;
+	} else {
+	/* Deactivate PID autoscan mode. */
+		obd_ecu_st = OBD_ECU_ST_IDLE;
+	}
+
+	obd_autoscan_run = mode;
+
+	return 0;
+}
+
+/*
+ * Instructs OBD module to enter idle mode.
+ * returns: 0      - module entered idle mode 
+ *          EAGAIN - process of switching to idle mode in-progress
+ */
+int
+obd_goto_idle(void)
+{
+	/* Process already in-progress, return. */
+	if (obd_goto_idle_flag) {
+		return	EAGAIN;
+	}
+
+	/* Process finished. */
+	if (obd_ecu_st == OBD_ECU_ST_IDLE) {
+		return 0;
+	}
+
+	/* Process not started yet, so start it now. */
+	obd_goto_idle_flag = TRUE;
+
+	return EAGAIN;
+}
+
+/*
+ * Returns TRUE if OBD module is currently IDLE.
+ * FALSE otherwise.
+ */
+BOOL
+obd_is_idle(void) {
+	return (obd_ecu_st == OBD_ECU_ST_IDLE);
+}
+
+/*
  * Processes query from master targeted to ECU module
  */
 int
@@ -1213,7 +1360,6 @@ obd_process_query(char *data, int ln)
 	BOOL translate_err = TRUE;
 	BOOL respond_with_ack = TRUE;
 	BOOL respond_now = TRUE;
-	int i;
 
 	/* Verify that the command is targeted to OBD submodule */
 	if (data[0] != ECU_OBD_ID) {
@@ -1243,7 +1389,7 @@ obd_process_query(char *data, int ln)
 		/* Get "freeze frame" PID value */
 		case OBD_CMD_GETFFPID:
 			/* Module currently busy. */
-			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+			if (!obd_is_idle()) {
 				err = EBUSY;
 				respond_with_ack = FALSE;
 
@@ -1268,7 +1414,7 @@ obd_process_query(char *data, int ln)
 		/* Get current PID value */
 		case OBD_CMD_GETCURPID:
 			/* Module currently busy. */
-			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+			if (!obd_is_idle()) {
 				err = EBUSY;
 				respond_with_ack = FALSE;
 
@@ -1295,89 +1441,45 @@ obd_process_query(char *data, int ln)
 
 		/* Activate/deactivate PID auto-scan mode */
 		case OBD_CMD_GETCURPIDS:
-			/* PID list is empty. deactivate auto-scan mode */
+			/* PID list is empty. Deactivate auto-scan mode */
 			if (ln == 2) {
-				obd_autoscan_stop = TRUE;
+				/*
+				 * Postpone sending ACK to master,
+				 * until module enters idle mode.
+				 */
+				if (obd_goto_idle() != 0) {
+					respond_now = FALSE;
+
+					obd_send_ack_when_idle = TRUE;
+				}
+				
 				break;
 			}
 
 			/* Module currently busy. */
-			if (obd_ecu_st != OBD_ECU_ST_IDLE) {
+			if (!obd_is_idle()) {
 				err = EBUSY;
 				respond_with_ack = FALSE;
 
 				break;
 			}
 
-			/* Get [ms] sample rate and convert it to [us]. */
-			obd_sr = hex2ulong(&data[2], 4) * 1000;
-
-			/*
-			 * Populate group information and list of scanned PIDs.
-			 * As part of that process, calculate total number
-			 * of scanned PIDs.
-			 */
-			obd_pid_groups.num = 0;
-			for (i = 0; i < OBD_PID_GROUP_NUM; i++) {
-				/* Get number of PIDs in a group. */
-				obd_pid_groups.group[i].num =
-				    hex2ulong(&data[6 + 2 * i], 2);
-
-				obd_pid_groups.num +=
-				    obd_pid_groups.group[i].num;
-
-				/* Initialize index of current PID */
-				obd_pid_groups.group[i].curr = -1;
-			}
-
-			/* Start scan from the first PID in 'fast' group. */
-			obd_autoscan_move_to_next_pid();
-
-			/*
-			 * The highest priority group must never be empty.
-			 * Gaps are not supported either.
-			 */
-			if ((obd_pid_groups.group[0].num == 0) ||
-			    ((obd_pid_groups.group[1].num == 0) &&
-			    (obd_pid_groups.group[2].num != 0))) {
-				err = EINVAL;
+			/* Set PID sample rate. */
+			err = obd_autoscan_conf_sample_rate(&data[2]);
+			if (err != 0) {
 				respond_with_ack = FALSE;
-
 				break;
 			}
 
-			/* Too many PIDs, abort. */
-			if (obd_pid_groups.num > OBD_PID_LIST_LN) {
-				err = EINVAL;
+			/* Populate PID groups. */
+			err = obd_autoscan_conf_pid_groups(&data[6], ln - 6);
+			if (err != 0) {
 				respond_with_ack = FALSE;
-
 				break;
 			}
 
-			/*
-			 * Total number of PIDs does not match summ
-			 * of PIDs in particular groups, abort.
-			 */
-			if (obd_pid_groups.num != (ln - 12) / 2) {
-				err = EINVAL;
-				respond_with_ack = FALSE;
-
-				break;
-			}
-
-			hex2ucharbuf(&data[12], obd_pid_groups.list, ln - 12);
-
-			/* Asking for current, not "freeze frame" data. */
-			obd_freeze_frame_num = -1;
-
-			/* Activate auto-scan mode. */
-			obd_autoscan_run = TRUE;
-			obd_autoscan_stop = FALSE;
-
-			/* Initialize sample rate timer. */
-			rtl_timer_init(&obd_timer, obd_sr);
-
-			obd_ecu_st = OBD_ECU_ST_GETPID;
+			/* Activate PID autoscan mode. */
+			obd_autoscan_conf_mode(TRUE);
 
 			break;
 
@@ -1409,7 +1511,7 @@ obd_process_query(char *data, int ln)
 			respond_with_ack = FALSE;
 
 			break;
-	}
+	} /* switch */
 
 	/* Do not respond now, OBD service will take care of that */
 	if (!respond_now)
@@ -1439,6 +1541,8 @@ obd_init(void)
 {
 	/* Initialize ECU state machine */
 	obd_ecu_st = OBD_ECU_ST_IDLE;
+	obd_goto_idle_flag = FALSE;
+	obd_send_ack_when_idle = FALSE;
 
 	/* Initialize state machine sending response to master. */
 	obd_comm_st = OBD_COMM_ST_IDLE;
@@ -1449,7 +1553,6 @@ obd_init(void)
 
 	/* auto-scan mode turned off */
 	obd_autoscan_run = FALSE;
-	obd_autoscan_stop = FALSE;
 
 	/* Initialize packet sequence. */
 	pkt_num = 1;
