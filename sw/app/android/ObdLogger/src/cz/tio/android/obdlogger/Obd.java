@@ -61,6 +61,14 @@ class NullEcuComCallback implements IEcuComCallback {
  * Implements OBD communication protocol.
  */
 public class Obd {
+    /* Carmon logger modes */
+    static final String CARMON_MODE_CONFIGURE = "00";
+    static final String CARMON_MODE_AUTONOMOUS = "01";
+    static final String CARMON_MODE_ASSISTED = "02";
+
+    /* Carmon logger module ID */
+    static final String CARMON_MODULE_ID = "L";
+
     /* ECU communication modes */
     static final String ECU_COMM_MODE_KWP2K_AUTO = "00";
     static final String ECU_COMM_MODE_KWP2K_NORMAL = "01";
@@ -83,6 +91,9 @@ public class Obd {
     static final String PKT_GET_PERM_DTC_RESP = "ED00";
     static final String PKT_CLEAR_DTC = "EOR";
     static final String PKT_SET_COMM_MODE = "EOC";
+    static final String PKT_SET_CARMON_MODE = "LC";
+    static final String PKT_CARMON_ACK = "LA";
+    static final String PKT_CARMON_NAK = "LN";
 
     /* private attributes */
     private static final int ST_COMM_INIT = 0;
@@ -267,6 +278,23 @@ public class Obd {
      */
     public PicCom getPicCom() {
         return mPicCom;
+    }
+
+    /**
+     * Configures Carmon logger mode.
+     *
+     * @param    mode                       the Carmon logger mode
+     * @return
+     * @throws   PicTimeoutExpiredException when timeout expires while
+     *                                      waiting for data from PIC
+     *           PicConnectionLostException when lost connection with PIC
+     */
+    public int configCarmonMode(String mode)
+            throws PicTimeoutExpiredException, PicConnectionLostException {
+        mPicCom.sendPacket(PKT_SET_CARMON_MODE + mode);
+
+        /* Wait for ACK/NAK */
+        return mPicCom.waitForAckNak(CARMON_MODULE_ID);
     }
 
     /**

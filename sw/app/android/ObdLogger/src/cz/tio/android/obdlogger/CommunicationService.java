@@ -214,6 +214,14 @@ class ComSvcStateConfEcuComMode extends ComSvcState {
             throws PicTimeoutExpiredException, PicConnectionLostException {
         Obd obd = getObd();
 
+        /* Transition Carmon logger to 'assisted mode'. */
+        if (obd.configCarmonMode(obd.CARMON_MODE_ASSISTED) != 0) {
+            /* Command failed, re-try. */
+            mLog.w("Failed to configure Carmon logger mode.");
+
+            return ComSvcStateAction.STAY_IN_CURRENT;
+        }
+
         /* Set ECU communication protocol. */
         if (obd.setEcuCommMode(mEcuProtocol)) {
             return ComSvcStateAction.GOTO_NEXT;

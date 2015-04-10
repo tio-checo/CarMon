@@ -618,9 +618,15 @@ class InjFbProbe extends Probe {
                  *   return false;
                  * }
                  */
-                /* debug only */
-                /* mCurrY = raw[0 + mInjNum]; */
-                mCurrY = raw[17 + mInjNum];
+                /*
+                 * If packet has less than 17 bytes,
+                 * then we are operating in debug mode.
+                 */
+                if (raw.length < 17) {
+                    mCurrY = raw[0 + mInjNum];
+                } else {
+                    mCurrY = raw[17 + mInjNum];
+                }
 
                 mCurrY += mRawToPhysAdd;
                 mCurrY *= mRawToPhysMul;
