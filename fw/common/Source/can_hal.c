@@ -39,8 +39,10 @@
 #define	CAN_OBD_ECU_SID_MSK	0x7f8
 /* tester EID */
 #define	CAN_OBD_TESTER_EID	0x18db33f1
-/* 200ms receive timeout  */
+/* 200ms CAN OBD receive timeout */
 #define	CAN_OBD_RX_TIMEOUT	200000
+/* 100ms CAN transmit timeout - must be shorter than CAN_OBD_RX_TIMEOUT */
+#define	CAN_TX_TIMEOUT		100000
 
 /* USDT specific definitions */
 /*
@@ -183,8 +185,10 @@ static UINT32 can_filter_mask;
 /* If TRUE, sends ACK to master after done with configuration. */
 static BOOL can_conf_send_ack;
 
-/* OBD RX timer */
-static rtl_timer_t *can_obd_rx_timer;
+/* OBD RX timeout timer */
+static rtl_timer_t *can_obd_rx_to_timer;
+/* CAN TX timeout timer */
+static rtl_timer_t *can_tx_to_timer;
 
 /* local functions */
 
@@ -313,6 +317,9 @@ can_send_frame(char *pkt, int ln)
 	/* Move pointer to the next free message buffer. */
 	CANUpdateChannel(CAN1, CAN_TX_CHANNEL);
 
+	/* Arm TX timeout timer. */
+	rtl_timer_init(&can_tx_to_timer, CAN_TX_TIMEOUT);
+
 	/* Initiate the transmission. */
 	can_tx_st = CAN_TX_ST_WAIT4TXDONE_SENDRES;
 	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
@@ -421,7 +428,6 @@ static int
 can_tx_svc(void)
 {
 	CAN_TX_CHANNEL_CONDITION txc;
-	CAN_ERROR_STATE txe;
 
 	switch (can_tx_st) {
 	/* service idle */
@@ -432,23 +438,18 @@ can_tx_svc(void)
 	case CAN_TX_ST_WAIT4TXDONE:
 	case CAN_TX_ST_WAIT4TXDONE_SENDRES:
 		txc = CANGetTxChannelCondition(CAN1, CAN_TX_CHANNEL);
-		txe = CANGetErrorState(CAN1);
 
 		/*
-		 * Wait until all messages are transmitted. Abort transmission
-		 * if transmitter enters "Error State Bus Passive" state
-		 * due to problem encountered during packet transmission.
+		 * Wait until all messages are transmitted.
+		 * Abort transmission if timeout expires.
 		 */
 		if ((txc & CAN_TX_CHANNEL_TRANSMITTING) &&
-		    !(txe & CAN_TX_BUS_PASSIVE_STATE)) {
+		    !(rtl_timer_expired(can_tx_to_timer))) {
 			break;
 		}
 
-		/*
-		 * Transmitter entered "Error State Bus Passive" state,
-		 * abort transmission.
-		 */
-		if (txe & CAN_TX_BUS_PASSIVE_STATE) {
+		/* Abort transmission, since timeout expired. */
+		if (rtl_timer_expired(can_tx_to_timer)) {
 			CANAbortPendingTx(CAN1, CAN_TX_CHANNEL);
 
 			if (can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES) {
@@ -862,8 +863,12 @@ can_init(void)
 	can_snoop_init();
 
 	/* Initialize CAN OBD RX timer. */
-	can_obd_rx_timer = NULL;
-	rtl_timer_init(&can_obd_rx_timer, 0);
+	can_obd_rx_to_timer = NULL;
+	rtl_timer_init(&can_obd_rx_to_timer, 0);
+
+	/* Initialize CAN TX timeout timer. */
+	can_tx_to_timer = NULL;
+	rtl_timer_init(&can_tx_to_timer, 0);
 
 	/* Register and enable RFID service. */
 	rtl_svc_init("Can", can_svc, TRUE, FALSE);
@@ -1075,6 +1080,9 @@ can_usdt_send_frame(int frame_type, unsigned char *data, int ln)
 	/* Move pointer to the next free message buffer. */
 	CANUpdateChannel(CAN1, CAN_TX_CHANNEL);
 
+	/* Arm TX timeout timer. */
+	rtl_timer_init(&can_tx_to_timer, CAN_TX_TIMEOUT);
+
 	/* Initiate the transmission. */
 	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
 	CANFlushTxChannel(CAN1, CAN_TX_CHANNEL);
@@ -1099,7 +1107,7 @@ can_obd_send(unsigned char *data, int ln)
 	/* Packet sent out successfully, wait for response. */
 	if (ret == 0) {
 		/* Arm Rx timer */
-		rtl_timer_init(&can_obd_rx_timer, CAN_OBD_RX_TIMEOUT);
+		rtl_timer_init(&can_obd_rx_to_timer, CAN_OBD_RX_TIMEOUT);
 
 		can_usdt_rx_st = CAN_USDT_RX_ST_SF_FF;
 	}
@@ -1141,7 +1149,7 @@ can_obd_recv(unsigned char **data, int *ln)
 	int dln, i;
 
 	/* If ECU has not responded in given time, abort. */
-	if (rtl_timer_expired(can_obd_rx_timer)) {
+	if (rtl_timer_expired(can_obd_rx_to_timer)) {
 		/* Reset re-assembly state machine. */
 		can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
 
