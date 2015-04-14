@@ -280,6 +280,17 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 		}
 
 		/*
+		 * If PID number does not match, then discard
+		 * just received packet and continue with receiving
+		 * another one.
+		 */
+		if (obd_data[OBD_IS_FREEZE_FRAME ? 2 : 1] != pid) {
+			in_progress = TRUE;
+
+			return	EAGAIN;
+		}
+
+		/*
 		 * Pass resulting data to the caller.
 		 * Drop the header which is in form of
 		 * [OBD_MODE_GET_CUR_PID | 0x40, pid] or
