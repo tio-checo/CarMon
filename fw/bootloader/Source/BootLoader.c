@@ -273,7 +273,7 @@ int puts(const char *str)
 #endif
 #endif /* !HA! */
 
-#define SWITCH_PRESSED 1
+#define SWITCH_PRESSED 0
 
 BOOL CheckTrigger(void);
 void JumpToApp(void);

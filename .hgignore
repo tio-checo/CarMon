@@ -15,12 +15,16 @@ pic18f
 pictures
 vyroba
 MplabX
+.*\.dis$
 .*\.elf$
+.*\.hdr$
 .*\.hex$
 .*\.ld$
 .*\.o$
 .*\.ps$
 .*\.jpg$
 .*\.png$
+.*\.swp$
+.*\.sym$
 .*\.txt$
 .*~$
