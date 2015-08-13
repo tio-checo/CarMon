@@ -70,6 +70,15 @@
 #define OBD_GET_EGT_VALUE(er, n)	\
     ((256 * ((er)[2 * (n) - 2]) + ((er)[2 * (n) - 1])) / 10 - 40)
 
+/* DPF accumulation ratio. */
+#define	OBD_PID_DPFAR		0xDD
+
+/*
+ * Given raw packet received from ECU for PID 'DD', the macro extracts value
+ * of DPF accumulation ratio.
+ */
+#define OBD_GET_DPFAR_VALUE(er)	(2 * ((er)[21]))
+
 /* max number of PIDs scanned in auto-scan mode */
 #define	OBD_PID_LIST_LN		50
 /* number of PID groups */

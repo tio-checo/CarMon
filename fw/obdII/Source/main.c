@@ -15,10 +15,26 @@
 #endif
 
 #include "data_acq.h"
+
+#ifdef I2CSW_MODULE
+#include "i2c_sw.h"
+#endif
+
+#ifdef KWP2K_MODULE
 #include "kwp2k.h"
+#endif
+
+#ifdef LCDTERM_MODULE
+#include "lcd_term.h"
+#endif
+
 #include "master_comm.h"
 #include "mon.h"
+
+#ifdef OBD_MODULE
 #include "obd.h"
+#endif
+
 #include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
@@ -106,7 +122,18 @@ main(int argc, char **argv)
 	per_init();
         rtl_init();
 	bt_init();
+
+#ifdef I2CSW_MODULE
+	i2csw_init();
+#endif
+
+#ifdef LCDTERM_MODULE
+	lcdterm_init();
+#endif
+
+#ifdef KWP2K_MODULE
 	kwp2k_init();
+#endif
 
 	/*
 	 * CAN module
@@ -115,7 +142,10 @@ main(int argc, char **argv)
 	 */
 	can_init();
 
+#ifdef OBD_MODULE
 	obd_init();
+#endif
+
 	daq_init();
 
 	/*

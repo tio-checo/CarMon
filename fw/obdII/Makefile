@@ -20,7 +20,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
--DCARMON_MODULE \
+-DCARMON_MODULE -DI2CSW_MODULE -DLCDTERM_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -53,7 +53,9 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/CANTransmitFunctions.o \
     $(BUILD_DIR)/can_hal.o \
     $(BUILD_DIR)/can_snoop.o \
-    $(BUILD_DIR)/carmon.o
+    $(BUILD_DIR)/carmon.o \
+    $(BUILD_DIR)/i2c_sw.o \
+    $(BUILD_DIR)/lcd_term.o
 
 APPNAME= main
 
@@ -123,7 +125,13 @@ $(BUILD_DIR)/carmon.o: ../common/Source/carmon.c
 $(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
+$(BUILD_DIR)/i2c_sw.o: ../common/Source/i2c_sw.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
 $(BUILD_DIR)/kwp2k.o: ../common/Source/kwp2k.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/lcd_term.o: ../common/Source/lcd_term.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/master_comm.o: ../common/Source/master_comm.c

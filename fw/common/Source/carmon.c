@@ -30,13 +30,13 @@
 /* constants */
 /*
  * Activates periodic acquisition of PID values.
- *  - sample rate:  500ms
- *  - fast group:   0x78 - EGT probes
+ *  - sample rate:  250ms
+ *  - fast group:   0x78 (EGT probes), 0xDD (DPF accumulation ratio)
  *  - medium group: empty
  *  - slow group:   empty
  */
-#define	CM_AUTOSCAN_SR		"01F4"
-#define	CM_AUTOSCAN_PIDG	"01000078"
+#define	CM_AUTOSCAN_SR		"00FA"
+#define	CM_AUTOSCAN_PIDG	"02000078DD"
 
 /* types */
 /* States in 'Configuration' mode */

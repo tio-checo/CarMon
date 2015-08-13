@@ -13,6 +13,8 @@
 #include "rt_light.h"
 
 /* constants */
+#ifdef RFID_MODULE
+
 /* I2C communication pins */
 #define I2CSW_SDA	0	/* RF0 */
 #define I2CSW_SDA_MASK	(1 << I2CSW_SDA)
@@ -24,6 +26,22 @@
 #define I2CSW_SDA_CLR	LATFCLR = I2CSW_SDA_MASK
 #define I2CSW_SCLK_SET	LATFSET = I2CSW_SCLK_MASK
 #define I2CSW_SCLK_CLR	LATFCLR = I2CSW_SCLK_MASK
+
+#else
+
+/* I2C communication pins */
+#define I2CSW_SDA	7	/* RB7 */
+#define I2CSW_SDA_MASK	(1 << I2CSW_SDA)
+#define I2CSW_SCLK	6	/* RB6 */
+#define I2CSW_SCLK_MASK	(1 << I2CSW_SCLK)
+
+/* macros */
+#define I2CSW_SDA_SET	LATBSET = I2CSW_SDA_MASK
+#define I2CSW_SDA_CLR	LATBCLR = I2CSW_SDA_MASK
+#define I2CSW_SCLK_SET	LATBSET = I2CSW_SCLK_MASK
+#define I2CSW_SCLK_CLR	LATBCLR = I2CSW_SCLK_MASK
+
+#endif /* RFID_MODULE */
 
 /* local types */
 /* I2C message */
@@ -543,9 +561,15 @@ i2csw_init(void)
 	/*
 	 * initialize SDA and SCLK I2C pins - open collectors.
 	 */
+#ifdef RFID_MODULE
 	LATFSET = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
 	ODCFSET = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
 	TRISFCLR = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
+#else
+	LATBSET = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
+	ODCBSET = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
+	TRISBCLR = I2CSW_SDA_MASK | I2CSW_SCLK_MASK;
+#endif
 
 	/* Initialize I2C communication state machines. */
 	/* Lower layer is idle. */

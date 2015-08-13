@@ -11,6 +11,7 @@
 #include "can_hal.h"
 #include "carmon.h"
 #include "kwp2k.h"
+#include "lcd_term.h"
 #include "master_comm.h"
 #include "obd.h"
 #include "utils.h"
@@ -1081,22 +1082,28 @@ static void
 obd_alarm_process(unsigned char *d, int ln)
 {
 	static int warn_phase = 0;
-	int egt12;
+	static int dpf_ar = 101;
+	int egt11, egt12;
+	char *fb_addr;
+	int fb_size;
 
 	/* Take desired action based on PID value received. */
 	switch (d[0]) {
 	/*
 	 * EGT bank 1
-	 * Inform user if there is an active DPF regeneration
+	 *
+	 * Update terminal with new data.
+	 *
+	 * Inform user via LED if there is an active DPF regeneration
 	 * currently in progress.
 	 */
 	case OBD_PID_EGT1:
 		/*
-		 * Extract value of EGT12 sensor from raw ECU data.
-		 * Skip PID number and byte containing mask
-		 * of supported EGT sensors.
-		 * Result is in degree Celsius.
+		 * Extract value of EGT11 and EGT12 sensors from raw ECU data.
+		 * Skip PID number and byte containing mask of supported EGT
+		 * sensors. Result is in degree Celsius.
 		 */
+		egt11 = OBD_GET_EGT_VALUE(d + 2, 1);
 		egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
 
 		/*
@@ -1167,6 +1174,39 @@ obd_alarm_process(unsigned char *d, int ln)
 			break;
 		} /* switch */
 
+		/*
+		 * Update terminal with new data
+		 *  - temperature EGT11
+		 *  - temperature EGT12
+		 */
+
+		/*
+		 * Obtain information about framebuffer.
+		 * If that fails, then terminal is unavailable,
+		 * in which case there is no point to proceed
+		 * with the update.
+		 */
+		if (lcdterm_fb_info(&fb_addr, &fb_size) != 0) {
+			break;
+		}
+
+		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s",
+		    egt11, 0xb2, egt12, 0xb2, dpf_ar, "%");
+
+		/* Write framebuffer to the terminal. */
+		lcdterm_fb_write();
+
+		break;
+
+	/*
+	 * DPF accumulation ratio.
+	 *
+	 * Just save the received value. It is later send to terminal
+	 * when EGT information is obtained. 
+	 */
+	case OBD_PID_DPFAR:
+		/* Skip PID number */
+		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
 		break;
 
 	/* No action is to be taken for provided PID. */
