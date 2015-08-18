@@ -36,8 +36,11 @@ static enum {
 	LCDTERM_ST_SENDFB2
 } lcdterm_st;
 
-/* frame buffer - 16 characters, 1st character reserved for FB I2C address */
-static char lcdterm_fb[16 + 1];
+/*
+ * frame buffer - null terminated 16 character string,
+ * 1st character reserved for FB I2C address
+ */
+static char lcdterm_fb[16 + 1 + 1];
 
 /* local functions */
 
@@ -72,14 +75,15 @@ lcdterm_svc(void)
 	 * Send framebuffer to the terminal - phase 2.
 	 *
 	 * Send framebuffer to the terminal. First byte in data buffer
-	 * contains address of framebuffer register. The terminal
-	 * automatically increments address pointer after each byte is
-	 * processed.
+	 * contains address of framebuffer register. Do not send the last
+	 * zero byte terminating the string.
+	 * The terminal automatically increments address pointer after
+	 * each byte is processed.
 	 */
 	case LCDTERM_ST_SENDFB2:
 		if (i2csw_write(LCDTERM_I2C_ADDRESS,
 		    (unsigned char *) lcdterm_fb,
-		    sizeof (lcdterm_fb)) == EAGAIN)
+		    sizeof (lcdterm_fb) - 1) == EAGAIN)
 			break;
 
 		/* Release I2C bus */

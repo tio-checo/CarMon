@@ -33,6 +33,16 @@
 
 /* OBD PIDs - used by alarms */
 /*
+ * Engine coolant temperature
+ */
+#define	OBD_PID_WATER		0x05
+/*
+ * Given raw packet received from ECU for PID '05', the macro extracts value
+ * of Engine coolant temperature.
+ */
+#define OBD_GET_WATER_VALUE(er)	(((er)[0]) - 40)
+
+/*
  * Exhaust Gas temperature (EGT) Bank 1
  * A request for this PID will return 9 bytes of data.
  * The first byte is a bit encoded field indicating

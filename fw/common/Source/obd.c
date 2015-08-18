@@ -1082,7 +1082,8 @@ static void
 obd_alarm_process(unsigned char *d, int ln)
 {
 	static int warn_phase = 0;
-	static int dpf_ar = 101;
+	static int dpf_ar = 0;
+	static int water = 0;
 	int egt11, egt12;
 	char *fb_addr;
 	int fb_size;
@@ -1190,8 +1191,14 @@ obd_alarm_process(unsigned char *d, int ln)
 			break;
 		}
 
-		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s",
-		    egt11, 0xb2, egt12, 0xb2, dpf_ar, "%");
+		/*
+		 * Make sure string has exactly 16 characters
+		 * (which is size of LCD display).
+		 * If string was shorter null terminator would
+		 * be displayed as well (as bogus character).
+		 */
+		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s ",
+		    water, 0xb2, egt11, 0xb2, dpf_ar, "%");
 
 		/* Write framebuffer to the terminal. */
 		lcdterm_fb_write();
@@ -1205,8 +1212,19 @@ obd_alarm_process(unsigned char *d, int ln)
 	 * when EGT information is obtained. 
 	 */
 	case OBD_PID_DPFAR:
-		/* Skip PID number */
+		/* Pass pointer to the data payload (skip PID number). */
 		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
+		break;
+
+	/*
+	 * Engine coolant temperature
+	 *
+	 * Just save the received value. It is later send to terminal
+	 * when EGT information is obtained. 
+	 */
+	case OBD_PID_WATER:
+		/* Pass pointer to the data payload (skip PID number). */
+		water = OBD_GET_WATER_VALUE(d + 1);
 		break;
 
 	/* No action is to be taken for provided PID. */

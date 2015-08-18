@@ -32,11 +32,11 @@
  * Activates periodic acquisition of PID values.
  *  - sample rate:  250ms
  *  - fast group:   0x78 (EGT probes), 0xDD (DPF accumulation ratio)
- *  - medium group: empty
+ *  - medium group: 0x05 (Engine coolant temperature)
  *  - slow group:   empty
  */
 #define	CM_AUTOSCAN_SR		"00FA"
-#define	CM_AUTOSCAN_PIDG	"02000078DD"
+#define	CM_AUTOSCAN_PIDG	"02010078DD05"
 
 /* types */
 /* States in 'Configuration' mode */
