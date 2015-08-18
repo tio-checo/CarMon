@@ -2,7 +2,7 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 12.8.2015
+; Last modified: 18.8.2015
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
@@ -44,7 +44,7 @@ ValueC	EQU	b'00000000'	; PC
 ;----
 ; 1 - input, 0 - output
 ;----
-DirA	EQU	b'00001011'	; PA
+DirA	EQU	b'00001111'	; PA
 ;			  ||||||||--------- RA0 - Rotary switch CHA
 ;			  |||||||---------- RA1 - Rotary switch CHB
 ;			  ||||||----------- RA2 - AN2 (environment brightness)
@@ -141,7 +141,7 @@ SSPADD_INI	EQU (0x31 << 1)	; I2C address of this device
 ;---
 ; PWM controlling LCD brightness
 PR2_INI		EQU	0xff
-CCPR1L_INI	EQU	0x80
+CCPR1L_INI	EQU	0x01	; backlight almost off
 CCP1CON_INI	EQU	b'00001100'
 ;		    	  ||||||||--------- CCP1M3:0 - PWM mode
 ;			      ||||------------- DC1B1:0  - two LSBs of the PWM duty cycle
@@ -154,15 +154,38 @@ T2CON_INI	EQU	b'00000100'
 ;			      |---------------- unused
 
 ;---
-T1CON_INI EQU	b'00010001'	; inicializace TIMER1
-;				  ||||||||--------- TMR1ON - TMR1 ON
-;				  |||||||---------- TMR1CS - clock Fosc/4
-;				  ||||||----------- T1SYNC - ignored
-;				  |||||------------ T1OSCEN - oscilator OFF
-;				  ||||------------- T1CKPS1:0  - PS 1:2
+T1CON_INI	EQU b'00010001'	; inicializace TIMER1
+;				  ||||||||--------- TMR1ON		- TMR1 ON
+;				  |||||||---------- TMR1CS		- clock Fosc/4
+;				  ||||||----------- T1SYNC		- ignored
+;				  |||||------------ T1OSCEN		- oscilator OFF
+;				  ||||------------- T1CKPS1:0	- PS 1:2
 ;				  ||--------------- unimplemented
 ;---
+ANSEL_INI	EQU b'00000100'	; ANSEL init value (1 for analog pin)
+;			      ||||||||--------- AN0/RA0 - Rotary switch CHA
+;			      |||||||---------- AN1/RA1 - Rotary switch CHB
+;			      ||||||----------- AN2/RA2 - environment brightness
+;			      |||||------------ AN3/RA4 - NC
+;			      ||||------------- AN4/RC0 - LCD DB4
+;			      |||-------------- AN5/RC1 - LCD DB5
+;			      ||--------------- AN6/RC2 - LCD DB6
+;			      |---------------- AN7/RC3 - LCD DB7
+;---
+ADCON0_INI	EQU b'00001001'	; ADCON0 init value
+;				  ||||||||--------- ADON	- ADC enabled
+;				  |||||||---------- GO/DONE	- AD conversion not started
+;				  ||||||----------- CHS3:0	- AN2 measured
+;				  ||--------------- VCFG	- Vref connected to Vdd
+;				  |---------------- ADFM	- conversion result left justified
+;---
+ADCON1_INI	EQU b'01100000'	; ADCON1 init value
+;				  ||||||||--------- bit3:0	- not implemented
+;				  ||||------------- ADCS2:0	- ADC clock set to Fosc/64
+;				  |---------------- bit		- not implemented
+;---
 FOSC		EQU 4		; Fosc in MHz
+TAD			EQU	16		; Tad in useconds
 TMR0_CLK	EQU	1		; TMR0clk in us
 MAIN_LOOP_TIME	EQU	100	; period of main loop in us
 TMR0_PRELOAD	EQU (262 - MAIN_LOOP_TIME)

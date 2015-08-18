@@ -2,7 +2,7 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 12.8.2015
+; Last modified: 18.8.2015
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
@@ -63,11 +63,12 @@ lPicIni11
 	MIODef  PORTC,ValueC,DirC
 
 ;
-; configure analog/digital pins as digital ones,
+; configure analog/digital pins as digital ones (except of AN2),
 ; since they are analog after POR
 ;
 	bsf		STATUS,RP1
-	clrf	ANSEL
+	movlw	ANSEL_INI
+	movwf	ANSEL
 	clrf	ANSELH
 	bcf		STATUS,RP1
 
@@ -97,7 +98,7 @@ lPicIni11
 	bcf		STATUS,RP0
 
 ;
-; enable SSP module in SSPMSK mode before changing th mode
+; enable SSP module in SSPMSK mode before changing the mode
 ; to the desired I2C mode to workaround following issue:
 ; In any of the I2C modes, the SSP module will fail to recognize
 ; the first Start bit received after a transition from module
@@ -109,8 +110,20 @@ lPicIni11
 	movlw	SSPCON_INI
 	movwf	SSPCON
 
+; initialize AD converter - measures environment brightness
+; used to control LCD backlight
+; ADCON1 first, since ADCON0 enables ADC
+
+	bsf		STATUS,RP0
+	movlw	ADCON1_INI
+	movwf	ADCON1
+	bcf		STATUS,RP0
+
+	movlw	ADCON0_INI
+	movwf	ADCON0
+
 ; initialize PWM module - controls display backlight
-; period 256us, DC 50%
+; period 256us, DC 1/256
 	movlw	CCPR1L_INI
 	movwf	CCPR1L
 

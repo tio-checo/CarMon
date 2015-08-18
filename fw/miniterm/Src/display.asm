@@ -3,11 +3,9 @@
 ; File: DISPLAY.ASM
 ; Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 13.8.2015
+; Last modified: 18.8.2015
 ;
-; - populates display content according to data received
-;   from master via I2C bus.
-; - controls display brightness via PWM
+; - populates display content according to data received from master.
 ;
 ; variables occupy RAM space 0x50-0x6f
 ;
@@ -424,7 +422,7 @@ lDisp_WriteFB2
 
 ; if last character has been written, we are done
 	movf	vDisp_StrIndex,w
-	xorlw	cDISP_FB_SIZE - 1	; do not write the last character for now
+	xorlw	cDISP_FB_SIZE
 
 	btfsc	STATUS,Z			; we are not done yet
 	goto	lDisp_WriteFB21

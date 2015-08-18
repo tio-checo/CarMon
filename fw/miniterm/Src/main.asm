@@ -6,7 +6,7 @@
 ; version: v0.1
 ;
 ; Created: 19.5.2015
-; Last modified: 12.8.2015
+; Last modified: 18.8.2015
 ; Changelog:
 ;
 ; memory usage
@@ -17,6 +17,7 @@
 ;  MAIN          0x000-0x0ff  0x70-0x73
 ;  PICHW         0x100-0x1ff
 ;  MCOM          0x200-0x2ff  0x20-0x2f
+;  BRIGHTNESS    0x300-0x3ff  0x30-0x3f
 ;  KBD           0x400-0x4ff  0x40-0x4f
 ;  DISPLAY       0x500-0x5ff  0x50-0x6f
 ;
@@ -72,10 +73,11 @@ lAppInit
 ; initialize local variables
 	clrf	STATUS	; select data BANK0
 
- EXTERN lPicIni11, sMcom_Ini, sDisp_Ini, sKbd_Ini
+ EXTERN lPicIni11, sMcom_Ini, sBright_Ini, sDisp_Ini, sKbd_Ini
  
 	call	lPicIni11
 	call	sMcom_Ini
+	call	sBright_Ini
 	call	sDisp_Ini
 	call	sKbd_Ini
 
@@ -94,8 +96,9 @@ lMainLoop
 	xorwf	PORT_DEBUG,f
 
 ; State machines
- EXTERN sMcom_Ctrl, sKbd_Ctrl, sDisp_Ctrl
+ EXTERN sMcom_Ctrl, sBright_Ctrl, sKbd_Ctrl, sDisp_Ctrl
 	call	sMcom_Ctrl
+	call	sBright_Ctrl
 	call	sKbd_Ctrl
 	call	sDisp_Ctrl
 

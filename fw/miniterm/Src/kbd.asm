@@ -3,7 +3,7 @@
 ; File: KBD.ASM
 ; Jan Damborsky
 ; Created: 17.6.2015
-; Last modified: 17.6.2015
+; Last modified: 17.8.2015
 ;
 ; Handles keyboard.
 ;
@@ -114,7 +114,7 @@ lKbd_Decrement
 ; adjust display brightness accordingly
 lKbdAdjustPWM
 	movf	vKbd_NumSteps,w
-	movwf	CCPR1L
+;	movwf	CCPR1L
 
 	goto	lKbd_SaveNewState
 ;----
