@@ -1,4 +1,4 @@
-#!/usr/bin/python -u
+#!/usr/bin/python2.6 -u
 
 import argparse
 import serial
