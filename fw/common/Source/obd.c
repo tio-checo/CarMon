@@ -303,10 +303,12 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 
 		/*
 		 * Let current PID value to be processed
-		 * by alarm framework. Pass PID number as well.
+		 * by 'alarm' framework and 'carmon' service.
+		 * Pass PID number as well.
 		 */
 		if (!OBD_IS_FREEZE_FRAME) {
 			obd_alarm_process(obd_data + 1, obd_ln - 1);
+			cm_obd_pid_callback(obd_data + 1, obd_ln - 1);
 		}
 
 		return 0;
@@ -1177,8 +1179,9 @@ obd_alarm_process(unsigned char *d, int ln)
 
 		/*
 		 * Update terminal with new data
-		 *  - temperature EGT11
-		 *  - temperature EGT12
+		 *  - Coolant temperature
+		 *  - Exhaust gas temperature EGT12
+		 *  - DPF accumulation ratio
 		 */
 
 		/*

@@ -20,8 +20,10 @@
 #include "xc.h"
 
 #include "carmon.h"
+#include "dlfs.h"
 #include "master_comm.h"
 #include "obd.h"
+#include "pic_core.h"
 #include "rt_light.h"
 #include "utils.h"
 
@@ -79,6 +81,18 @@ static cm_conf_state_t	cm_conf_st;
 static cm_auto_state_t	cm_auto_st;
 /* current state when operating in assisted mode */
 static cm_assist_state_t	cm_assist_st;
+
+/* Log record */
+static char log_record[100];
+
+/* Logging command */
+static enum {
+	CM_LOG_CMD_NOOP = 0,	/* No operation currently in progress. */
+	CM_LOG_CMD_WRITE	/* Write log record to log device. */
+} cm_log_cmd;
+
+/* TRUE if log device available. FALSE otherwise. */
+static BOOL cm_log_available;
 
 /* local functions */
 
@@ -388,6 +402,63 @@ cm_conf(char *data, int ln)
 	return EAGAIN;
 }
 
+/* Logs PID value to log device. */
+static void
+cm_log_pid(unsigned char *d, int ln)
+{
+	char *ts = pcore_gettime();
+	int i;
+	size_t sln;
+
+	/*
+	 * Save PID value to log device.
+	 * Log record is in CSV format as specified in rfc4180:
+	 *
+	 * <timestamp>,ECU<mode><pid number>,<pid value>CRLF
+	 *
+	 * format of <timestamp>: YYYYMMDDhhmmssmmm
+	 * <pid value> is in form of raw data received from ECU
+	 *
+	 */
+
+	/*
+	 * Log timestamp and PID address first. Resulting string
+	 * fits the available buffer for sure, so no need to
+	 * check for buffer overflow.
+	 */
+
+	snprintf(log_record, sizeof (log_record), "%s,ECU01%02X,", ts, d[0]);
+	sln = strlen(log_record);
+
+	/*
+	 * Append PID value.
+	 * Handle scenario when resulting log record does not fit
+	 * a buffer. Log error string instead of PID value in such case.
+	 */
+	if (sln + 2 * (ln - 1) + 3 > sizeof (log_record)) {
+		snprintf(log_record + sln, sizeof (log_record) - sln,
+		    "ERR_OVERFLOW\n\r");
+	} else {
+		for (i = 1; i < ln; i++) {
+			size_t pos = strlen(log_record);
+
+			snprintf(log_record + pos, sizeof (log_record) - pos,
+			    "%02X", d[i]);
+		}
+	}
+
+	/* Append 'end of log record' marker. */
+	strcat(log_record, "\r\n");
+
+	/*
+	 * Write log record to log device.
+	 * dlfs_write() is non-blocking function, so can be called
+	 * from interrupt context.
+	 */
+	dlfs_write(0, log_record, strlen(log_record));
+	/* cm_log_cmd = CM_LOG_CMD_WRITE; */
+}
+
 /* public functions */
 
 /*
@@ -461,8 +532,16 @@ cm_init(void)
 	/* Set id of module in response structure. */
 	mcom_response_init(&cm_resp_ack_nak, MCOMM_CM_ID);
 
+	/* Create new log file. */
+	cm_log_available = dlfs_open("obd_log", O_CREAT) == 0;
+
+	/* Clear IO statistics. */
+	dlfs_kstat_clear();
+
 	/* Register and enable main service routine. */
 	rtl_svc_init("CarMon", cm_main_svc, TRUE, TRUE);
+
+	cm_log_cmd = CM_LOG_CMD_NOOP;
 
 	return 0;
 }
@@ -472,4 +551,37 @@ cm_mode_t
 cm_get_mode(void)
 {
 	return cm_mode;
+}
+
+/* Processes PID values received from ECU. */
+void
+cm_obd_pid_callback(unsigned char *d, int ln)
+{
+	/* Log PID to log device if available. */
+	if (cm_log_available) {
+		cm_log_pid(d, ln);
+	}
+}
+
+/* Upper layer logging service. */
+void
+cm_log_ul_svc(void)
+{
+	/* If there is nothing to do, return. */
+	if (cm_log_cmd == CM_LOG_CMD_NOOP) {
+		return;
+	}
+
+	switch (cm_log_cmd) {
+	/* Noop */
+	case CM_LOG_CMD_NOOP:
+		break;
+
+	/* Write record to the log device. */
+	case CM_LOG_CMD_WRITE:
+		dlfs_write(0, log_record, strlen(log_record));
+		break;
+	}
+
+	cm_log_cmd = CM_LOG_CMD_NOOP;
 }

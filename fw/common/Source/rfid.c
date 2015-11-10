@@ -123,7 +123,7 @@ static char pkt_hdr[3];
 static void
 rfid_heartbeat_svc(void)
 {
-	static int hb_counter = RTL_TIME_250_MSEC;
+	static int hb_counter = RTL_TIME_MS2RTICKS(250);
 	static int hb_num_ticks = 1;
 	static int hb_curr_tick = 1;
 
@@ -133,7 +133,7 @@ rfid_heartbeat_svc(void)
 
 		/* Turn LED on for 1 second. */
 		LATBCLR = 1 << 6;
-		hb_counter = RTL_TIME_1_SEC;
+		hb_counter = RTL_TIME_MS2RTICKS(1000);
 
 		rfid_heartbeat_mode = HB_MODE_ON;
 	} else {
@@ -145,7 +145,7 @@ rfid_heartbeat_svc(void)
 	switch (rfid_heartbeat_mode) {
 	case HB_MODE_FIFTY_FIFTY:
 		if (--hb_counter <= 0) {
-			hb_counter = RTL_TIME_250_MSEC;
+			hb_counter = RTL_TIME_MS2RTICKS(250);
 			LATBINV = 1 << 6;
 		}
 		break;
@@ -156,10 +156,10 @@ rfid_heartbeat_svc(void)
 			if (hb_counter <= 0) {
 				hb_curr_tick--;
 				if (hb_curr_tick > 0)
-					hb_counter = RTL_TIME_200_MSEC;
+					hb_counter = RTL_TIME_MS2RTICKS(200);
 				else
-					hb_counter = RTL_TIME_1_SEC;
-			} else if (hb_counter <= RTL_TIME_175_MSEC) {
+					hb_counter = RTL_TIME_MS2RTICKS(1000);
+			} else if (hb_counter <= RTL_TIME_MS2RTICKS(175)) {
 				LATBSET = 1 << 6;
 			} else {
 				LATBCLR = 1 << 6;
@@ -167,7 +167,7 @@ rfid_heartbeat_svc(void)
 		} else {
 			/* silent period */
 			if (--hb_counter <= 0) {
-				hb_counter = RTL_TIME_200_MSEC;
+				hb_counter = RTL_TIME_MS2RTICKS(200);
 				hb_curr_tick = hb_num_ticks;
 				LATBCLR = 1 << 6;
 			}
@@ -184,7 +184,7 @@ rfid_heartbeat_svc(void)
 			 * of silence.
 			 */
 			hb_curr_tick = 0;
-			hb_counter = RTL_TIME_1_SEC;
+			hb_counter = RTL_TIME_MS2RTICKS(1000);
 			rfid_heartbeat_mode = HB_MODE_TICKS;
 		}
 		break;

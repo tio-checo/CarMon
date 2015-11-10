@@ -30,4 +30,10 @@ extern cm_mode_t cm_get_mode(void);
 /* Processes query from master. */
 extern int cm_process_query(char *, int);
 
+/* Processes PID values received from ECU. */
+extern void cm_obd_pid_callback(unsigned char *, int);
+
+/* Upper layer logging service. */
+extern void cm_log_ul_svc(void);
+
 #endif /* __CARMON_H */

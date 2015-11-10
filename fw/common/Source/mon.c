@@ -22,10 +22,15 @@
 #include "rt_light.h"
 
 #include <errno.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
+
+#ifdef DLFS_MODULE
+#include "dlfs.h"
+#endif
 
 /* type declarations */
 /* Groups menu and related handler together. */
@@ -79,6 +84,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "------------------------\n\r"
 
 /* SD card submenu */
+#ifdef FAT_MODULE
 #define MON_DIAG_SD_MENU \
     "------------------------\n\r" \
     "[1] Status of SD card\n\r" \
@@ -89,7 +95,21 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[6] Print IO statistics\n\r" \
     "[7] Clear IO statistics\n\r" \
     "[0] Back\n\r" \
+    "------------------------\n\r"
+#elif defined DLFS_MODULE
+#define MON_DIAG_SD_MENU \
     "------------------------\n\r" \
+    "[1] Status of log media\n\r" \
+    "[2] List of log files\n\r" \
+    "[3] Display inode table\n\r" \
+    "[4] Print IO statistics\n\r" \
+    "[5] Clear IO statistics\n\r" \
+    "[9] Format SD card\n\r" \
+    "[0] Back\n\r" \
+    "------------------------\n\r"
+#else
+#error "No monitor menu defined for SD card."
+#endif
 
 /* Association between state, menu and handler */
 static mon_map_st2menu_t mon_st2menu_map[] = {
@@ -227,6 +247,7 @@ mon_print_str(const char *str)
 	return 0;
 }
 
+#ifdef FAT_MODULE
 /*
  * Prints information about directory or file.
  */
@@ -258,6 +279,7 @@ mon_print_finfo(SearchRec *rec)
 
 	return 0;
 }
+#endif /* FAT_MODULE */
 
 /*
  * Sets communication speed (baudrate). Returns previous value.
@@ -477,6 +499,7 @@ mon_sd_menu(unsigned char ch)
 {
 	int next_st = MON_ST_SD_CARD;
 
+#ifdef FAT_MODULE
 	char s[9];
 	char str[81];
 
@@ -484,6 +507,10 @@ mon_sd_menu(unsigned char ch)
 	unsigned char attributes = ATTR_MASK;
 	FSFILE *fh;
 	int err;
+#elif defined DLFS_MODULE
+	int i;
+	char str[81];
+#endif
 
 	switch (ch) {
 	/* Go back */
@@ -491,6 +518,7 @@ mon_sd_menu(unsigned char ch)
 		next_st = MON_ST_MAIN;
 		break;
 
+#ifdef FAT_MODULE
 	/* print SD card status */
 	case '1':
 		SD_CS_TRIS = 0;
@@ -641,7 +669,6 @@ mon_sd_menu(unsigned char ch)
 		}
 
 		break;
-
 	/* Display IO statistics */
 	case '6':
 		FSkstat_display(mon_print_str);
@@ -651,6 +678,101 @@ mon_sd_menu(unsigned char ch)
 	case '7':
 		FSkstat_clear();
 		break;
+
+#elif defined DLFS_MODULE
+	/* Display status of log media. */
+	case '1':
+		dlfs_display_media_status(mon_print_str);
+		break;
+
+	/* Display list of log files */
+	case '2':
+		mon_print_str("Log records\r\n<");
+
+		for (i = 0; i < DLFS_GET_MAX_INODES; i++) {
+			unsigned long long b;
+
+			/*
+			 * If the inode is occupied by data block, continue
+			 * with the next one.
+			 * As a side effect, reads inode's sector
+			 * into the buffer.
+			 */
+			if (dlfs_inode_used_by_db(i)) {
+				continue;
+			}
+
+			/*
+			 * Stop once the first unused inode is found.
+			 * Expects that inode's sector resides in buffer.
+			 */
+			if (!dlfs_inode_in_use(i)) {
+				break;
+			}
+
+			snprintf(str, sizeof (str), " %d", i);
+			mon_print_str(str);
+
+			/* Display number of blocks occupied by this inode */
+			b = dlfs_blocks_in_use(i);
+
+			snprintf(str, sizeof (str), "(%llu)", b);
+			mon_print_str(str);
+		}
+
+		mon_print_str(" >\r\n");
+
+		break;
+
+	/* Display inode table */
+	case '3':
+		mon_print_str("Inode table\r\n<");
+
+		for (i = 0; i < DLFS_GET_MAX_INODES; i++) {
+			if (dlfs_inode_in_use(i)) {
+				mon_print_str("I");
+			} else if (dlfs_inode_used_by_db(i)) {
+				mon_print_str("D");
+			} else if (dlfs_inode_is_free(i)) {
+				mon_print_str("*");
+			} else {
+				/* Print number of problematic inode */
+				snprintf(str, sizeof (str), "?%d", i);
+				mon_print_str(str);
+			}
+		}
+
+		mon_print_str(" >\r\n");
+
+		break;
+
+	/* Display IO statistics */
+	case '4':
+		dlfs_display_kstat(mon_print_str);
+		break;
+
+	/* Clear IO statistics */
+	case '5':
+		dlfs_kstat_clear();
+		break;
+
+	/* Format SD card */
+	case '9':
+	{
+		int err;
+
+		mon_print_str("\n\rFormatting media... ");
+		if ((err = dlfs_format()) != 0) {
+			snprintf(str, sizeof (str), "failed with err %d \n\r",
+			    err);
+			mon_print_str(str);
+		} else {
+			mon_print_str("done.\n\r");
+		}
+	} break;
+#else
+#error "No monitor menu defined for SD card."
+#endif
 
 	/* Unknown input */
 	default:

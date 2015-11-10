@@ -19,6 +19,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DRFID_MODULE -DI2CSW_MODULE -DMCP9801_MODULE -DPCF8563_MODULE \
+-DFAT_MODULE \
 -nostdinc -Os -Wall -msoft-float \-march=m4k $(HEADER_DIRS)
 
 # linker flags

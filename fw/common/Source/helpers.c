@@ -159,8 +159,6 @@ time_t time(time_t *tod)
 int
 get_curr_hrtime(struct timeval *hrtod)
 {
-/*	unsigned long t1, t2; */
-
 	if (hrtod == NULL)
 		return EINVAL;
 

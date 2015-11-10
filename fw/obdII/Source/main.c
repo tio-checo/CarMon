@@ -16,6 +16,10 @@
 
 #include "data_acq.h"
 
+#ifdef DLFS_MODULE
+#include "dlfs.h"
+#endif
+
 #ifdef I2CSW_MODULE
 #include "i2c_sw.h"
 #endif
@@ -162,6 +166,15 @@ main(int argc, char **argv)
 	/* USB module */
 	uapp_init();
 
+#ifdef DLFS_MODULE
+	/*
+	 * dambi logging filesystem
+	 * Must be initialized before Carmon module, since cm_init()
+	 * calls dlfs_open().
+	 */
+	dlfs_init();
+#endif
+
 #ifdef CARMON_MODULE
 	/* CarMon service */
 	cm_init();
@@ -222,6 +235,16 @@ main(int argc, char **argv)
 
 		/* Run post processing upper layer service routine. */
 		daq_pp_upper_svc();
+
+#ifdef CARMON_MODULE
+		/* Run carmon logging upper layer service routine. */
+		cm_log_ul_svc();
+#endif
+
+#ifdef DLFS_MODULE
+		/* Run dlfs flushing service. */
+		dlfs_flush_ul_svc();
+#endif
 
 		/*
 		 * Enter idle mode if there is nothing to do.
