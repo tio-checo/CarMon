@@ -35,5 +35,8 @@ extern int pcf8563_gettime(struct tm *);
  */
 extern int pcf8563_settime(struct tm *);
 
+/* Displays last read values. */
+extern void pcf8563_display_read_values(int (*)(const char *));
+
 #endif /* __PCF8563_H */
 

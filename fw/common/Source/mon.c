@@ -32,6 +32,10 @@
 #include "dlfs.h"
 #endif
 
+#ifdef PCF8563_MODULE
+#include "pcf8563.h"
+#endif
+
 /* type declarations */
 /* Groups menu and related handler together. */
 typedef struct mon_map_st2menu {
@@ -80,6 +84,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[a] Attach USB\n\r" \
     "[t] Display time of the day\n\r" \
     "[T] Set date to 04/10/2013 17:00:00\n\r" \
+    "[r] Read pcf8563 registers\n\r" \
     "[0] Quit diagnostic mode\n\r" \
     "------------------------\n\r"
 
@@ -472,6 +477,19 @@ mon_main_menu(unsigned char ch)
 		}
 
 		break;
+
+#ifdef PCF8563_MODULE
+	/* Display pcf8563 RTC registers. */
+	case 'r':
+		mon_print_str("pcf8563 read values\n\r");
+		pcf8563_display_read_values(mon_print_str);
+		break;
+#else
+	/* pcf8563 RTC not available */
+	case 'r':
+		mon_print_str("pcf8563 RTC not available\n\r");
+		break;
+#endif
 
 #if 0
 	/* Display history of memory allocation requests */

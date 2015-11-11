@@ -319,3 +319,24 @@ pcf8563_settime(struct tm *newtm)
 
 	return EAGAIN;
 }
+
+/*
+ * Displays last read values.
+ */
+void
+pcf8563_display_read_values(int (*print_str)(const char *))
+{
+	char s[81];
+	int i;
+
+	/* header */
+	print_str("-------------------------------------\n\r");
+
+	for (i = 0; i < 8; i++) {
+		snprintf(s, sizeof (s), " %02X", pcf8563_data[i]);
+		print_str(s);
+	}
+
+	/* footer */
+	print_str("\n\r-------------------------------------\n\r");
+}

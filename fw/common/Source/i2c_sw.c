@@ -15,7 +15,8 @@
 /* constants */
 #ifdef RFID_MODULE
 
-/* I2C communication pins */
+/* I2C communication port and pins */
+#define I2CSW_PORT	PORTF
 #define I2CSW_SDA	0	/* RF0 */
 #define I2CSW_SDA_MASK	(1 << I2CSW_SDA)
 #define I2CSW_SCLK	1	/* RF1 */
@@ -29,7 +30,8 @@
 
 #else
 
-/* I2C communication pins */
+/* I2C communication port and pins */
+#define I2CSW_PORT	PORTB
 #define I2CSW_SDA	7	/* RB7 */
 #define I2CSW_SDA_MASK	(1 << I2CSW_SDA)
 #define I2CSW_SCLK	6	/* RB6 */
@@ -286,7 +288,7 @@ i2csw_i2c_ll_svc(void)
 
 	/* Read ACK bit */
 	case I2CSW_I2C_LL_ST_ACKD:
-		i2csw_i2c_ll_ack = PORTF & I2CSW_SDA_MASK;
+		i2csw_i2c_ll_ack = I2CSW_PORT & I2CSW_SDA_MASK;
 
 		/* Generate stop condition if desired. */
 		if (i2csw_i2c_ll_send_stop)
@@ -314,7 +316,7 @@ i2csw_i2c_ll_svc(void)
 		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXR;
 		break;
 
-	/* Make sure that bus is release. */
+	/* Make sure that bus is released. */
 	case I2CSW_I2C_LL_ST_RXR:
 		I2CSW_SDA_SET;
 
@@ -330,7 +332,7 @@ i2csw_i2c_ll_svc(void)
 
 	/* read SDA */
 	case I2CSW_I2C_LL_ST_RXD:
-		if (PORTF & I2CSW_SDA_MASK)
+		if (I2CSW_PORT & I2CSW_SDA_MASK)
 			d |= bit_mask;
 
 		/* Move to the next bit. */

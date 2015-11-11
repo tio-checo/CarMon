@@ -20,7 +20,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
--DCARMON_MODULE -DI2CSW_MODULE -DLCDTERM_MODULE -DDLFS_MODULE \
+-DCARMON_MODULE -DI2CSW_MODULE -DPCF8563_MODULE -DLCDTERM_MODULE -DDLFS_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -56,7 +56,8 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/carmon.o \
     $(BUILD_DIR)/i2c_sw.o \
     $(BUILD_DIR)/lcd_term.o \
-    $(BUILD_DIR)/dlfs.o
+    $(BUILD_DIR)/dlfs.o \
+    $(BUILD_DIR)/pcf8563.o
 
 APPNAME= main
 
@@ -145,6 +146,9 @@ $(BUILD_DIR)/mon.o: ../common/Source/mon.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/obd.o: ../common/Source/obd.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/pcf8563.o: ../common/Source/pcf8563.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/pic_core.o: ../common/Source/pic_core.c
