@@ -32,13 +32,30 @@
 /* constants */
 /*
  * Activates periodic acquisition of PID values.
- *  - sample rate:  250ms
- *  - fast group:   0x78 (EGT probes), 0xDD (DPF accumulation ratio)
- *  - medium group: 0x05 (Engine coolant temperature)
- *  - slow group:   empty
+ *  - sample rate:  20ms
+ *  - Fast group
+ *    0C - RPM
+ *    10 - MAF
+ *    23 - Rail pressure
+ *    EF - DPF differential pressure
+ *
+ *  - Medium group
+ *    04 - Calculated load
+ *    0B - Intake manifold absolute pressure
+ *    0D - Vehicle speed
+ *    2C - Commanded EGR
+ *    49 - Accelerator pedal position D
+ *    
+ *  - Slow group
+ *    05 - Engine coolant temperature
+ *    0F - Intake air temperature
+ *    33 - Barometric pressure
+ *    78 - EGT bank 1
+ *    AD - Injector Feedback Values
+ *    DD - DPF accumulation ratio
  */
-#define	CM_AUTOSCAN_SR		"00FA"
-#define	CM_AUTOSCAN_PIDG	"02010078DD05"
+#define	CM_AUTOSCAN_SR		"0014"
+#define	CM_AUTOSCAN_PIDG	"0405060C1023EF040B0D2C49050F3378ADDD"
 
 /* types */
 /* States in 'Configuration' mode */
