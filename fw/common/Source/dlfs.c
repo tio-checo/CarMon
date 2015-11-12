@@ -61,6 +61,7 @@
 
 #include "dlfs.h"
 #include "helpers.h"
+#include "pic_core.h"
 #include "SD-SPI.h"
 
 #include <errno.h>
@@ -432,7 +433,7 @@ dlfs_find_first_free_inode(void)
  *          EBUSY - still busy with previous operation
  */
 static int
-dlfs_flush(BOOL write_eof_mark)
+dlfs_flush(unsigned long long sec, BOOL write_eof_mark, BOOL update_inode_time)
 {
 	int fd = 0;
 
@@ -448,9 +449,10 @@ dlfs_flush(BOOL write_eof_mark)
 	}
 
 	/* Copy sector to be flushed. */
-	memcpy(dlfs_flush_sec.buf, dlfs_files[fd].u.buf, DLFS_SECTOR_SIZE);
-	dlfs_flush_sec.sec = dlfs_files[fd].sec;
+	memcpy(dlfs_flush_sec.u.buf, dlfs_files[fd].u.buf, DLFS_SECTOR_SIZE);
+	dlfs_flush_sec.sec = sec;
 	dlfs_flush_sec.write_eof_mark = write_eof_mark;
+	dlfs_flush_sec.update_inode_time = update_inode_time;
 
 	/* Start the process. */
 	dlfs_flush_sec.dirty = TRUE;
@@ -594,18 +596,13 @@ dlfs_open(const char *path, int oflag)
 	/* Create new 'inode' and write it to the media. */
 	/* Populate magic word. */
 	dlfs_populate_magic(dlfs_files[fd].u.inode.magic, DLFS_MAGIC_INODE);
-	/* Populate creation time. */
-	dlfs_files[fd].u.inode.ctime = time(NULL);
 
-	/* Write EOF mark first. */
-	if (dlfs_write_sector(inode_sec + 1, (void *)dlfs_empty_sec,
-	    FALSE) != 0) {
-		/*dlfs_kstat.oen++;*/
-		return ENODEV;
-	}
-
-	/* Now write 'inode' to the storage. */
-	return dlfs_write_sector(inode_sec, dlfs_files[fd].u.buf, TRUE);
+	/*
+	 * Flush the inode sector to the media.
+	 * Write EOF mark.
+	 * Update inode time.
+	 */
+	return dlfs_flush(inode_sec, TRUE, TRUE);
 }
 
 /*
@@ -663,8 +660,9 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 		/*
 		 * Flush the current sector to the media.
 		 * Write 'EOF mark' sector as well.
+		 * Do not update inode time.
 		 */
-		if (dlfs_flush(TRUE) != 0) {
+		if (dlfs_flush(dlfs_files[fd].sec, TRUE, FALSE) != 0) {
 			return 0;
 		}
 
@@ -693,6 +691,11 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 void
 dlfs_flush_ul_svc(void)
 {
+	/* Wait until core services are initialized. */
+	if (!pcore_svc_online()) {
+		return;
+	}
+
 	/* Nothing to be done. */
 	if (!dlfs_flush_sec.dirty) {
 		return;
@@ -704,8 +707,13 @@ dlfs_flush_ul_svc(void)
 		    (void *)dlfs_empty_sec, FALSE);
 	}
 
+	/* Update inode time if desired. */
+	if (dlfs_flush_sec.update_inode_time) {
+		dlfs_flush_sec.u.inode.ctime = (unsigned long long)time(NULL);
+	}
+
 	/* Now write data. */
-	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.buf, FALSE);
+	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.u.buf, FALSE);
 
 	/* Let lower layer know we are done. */
 	dlfs_flush_sec.dirty = FALSE;

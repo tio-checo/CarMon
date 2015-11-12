@@ -94,10 +94,19 @@ typedef struct {
 	BOOL			dirty;
 	/* Setting to TRUE writes empty sector after data one as EOF mark. */
 	BOOL			write_eof_mark;
+	/* Setting to TRUE update inode time stamp before inode is written. */
+	BOOL			update_inode_time;
 	unsigned long long	sec;	/* sector number */
 
-	/* sector buffer */
-	char	buf[DLFS_SECTOR_SIZE];
+	/* sector buffer - can be interpreted in several ways */
+	union {
+		char			buf[DLFS_SECTOR_SIZE];
+		unsigned long		buf_ul[DLFS_SECTOR_SIZE /
+					    sizeof (unsigned long)];
+		dlfs_inode_t		inode;
+		dlfs_db_t		db;
+		dlfs_sb_t		sb;
+	} u;
 } dlfs_flush_t;
 
 /* macros */

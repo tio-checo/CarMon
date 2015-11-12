@@ -29,5 +29,8 @@ extern int pcore_process_query(char *, int);
 /* Reads date and time. Returns pointer to resulting string. */
 extern char *pcore_gettime(void);
 
+/* Returns TRUE if core services are up and running; FALSE otherwise. */
+extern BOOL pcore_svc_online(void);
+
 #endif /* __PIC_CORE_H */
 

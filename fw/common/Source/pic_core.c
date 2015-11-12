@@ -41,6 +41,8 @@ static BOOL fl_send_ack_nak;
 static mcom_response_t pcore_resp_data;
 /* If set to TRUE, send response containing data to master */
 static BOOL fl_send_data;
+/* real time initialized */
+static BOOL pcore_time_initialized = FALSE;
 
 /* local functions */
 /*
@@ -160,8 +162,6 @@ static int
 pcore_svc(void)
 {
 #ifdef PCF8563_MODULE
-	static BOOL pcore_time_initialized = FALSE;
-
 	time_t t;
 	struct tm newtm;
 	struct timeval newtv;
@@ -341,3 +341,12 @@ pcore_gettime(void)
 	return tds;
 }
 
+/*
+ * Returns TRUE if core services are up and running; FALSE otherwise.
+ */
+BOOL
+pcore_svc_online(void)
+{
+	/* Only time service checked at this point. */
+	return pcore_time_initialized;
+}
