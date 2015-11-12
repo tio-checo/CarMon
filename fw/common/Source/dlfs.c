@@ -759,7 +759,7 @@ dlfs_inode_is_free(int in)
 unsigned long long
 dlfs_blocks_in_use(int in)
 {
-	unsigned long long in_use, l, lsave, m, h;
+	unsigned long long in_use, l, i;
 	BOOL is_db;
 	int curr_inode;
 
@@ -772,7 +772,10 @@ dlfs_blocks_in_use(int in)
 	for (curr_inode = in + 1, is_db = TRUE; is_db; curr_inode++) {
 		if ((is_db = dlfs_inode_used_by_db(curr_inode))) {
 			in_use += DLFS_SECS_PER_INODE;
-			/* The first inode slot holds inode as well. */
+			/*
+			 * The first block of the first inode slot
+			 * is occupied by inode itself, subtract it.
+			 */
 			if (curr_inode == in + 1) {
 				in_use--;
 			}
@@ -783,51 +786,25 @@ dlfs_blocks_in_use(int in)
 	curr_inode -= 2;
 
 	/*
-	 * Low marker points to the first data block in inode slot
-	 * High marker points to the last data block in inode slot
-	 * Middle marker points to the middle data block in inode slot
+	 * We can't use binary search, since the inode slot may contain
+	 * data blocks from deleted log record, so we basically
+	 * have to sequentially search for EOF mark.
 	 */
 	l = DLFS_INODE2SEC(curr_inode);
-	h = l + DLFS_SECS_PER_INODE - 1;
 	/*
-	 * The first sector in the first inode slot is occupied by inode record.
+	 * The first block of the first inode slot is occupied by inode record,
+	 * skip it.
 	 */
-	if (curr_inode == in) {
-		l++;
-	}
-	m = (l + h) / 2;
-
-	/*
-	 * Handle corner cases where
-	 * either inode slot is empty or full.
-	 */
-	if (!dlfs_block_is_db(l)) {
-		return in_use;
-	}
-
-	if (dlfs_block_is_db(h)) {
-		return in_use + h - l + 1;
-	}
-	
-	/* Save low marker. */
-	lsave = l;
-
-	/*
-	 * Binary search for last used data block.
-	 * Search until low and high markers point to the subsequent
-	 * data blocks. Then low marker points to the last used data block.
-	 */
-	while (h - l > 1) {
-		if (dlfs_block_is_db(m)) {
-			l = m;
+	for (is_db = TRUE, i = curr_inode == in ? 1 : 0;
+	    is_db && (i < DLFS_SECS_PER_INODE); i++) {
+		if (dlfs_block_is_db(l + i)) {
+			in_use++;
 		} else {
-			h = m;
+			is_db = FALSE;
 		}
-
-		m = (l + h) / 2;
 	}
 
-	return in_use + l - lsave + 1;
+	return in_use;
 }
 
 /*
