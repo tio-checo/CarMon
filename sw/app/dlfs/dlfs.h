@@ -19,6 +19,9 @@
 /* size of device block */
 #define	DLFS_SECTOR_SIZE	512
 
+/* last two bytes are dedicated to CRC */
+#define	DLFS_CRC_SIZE		2
+
 /* Max length of one contiguous data record. */
 #define	DLFS_MAX_DATA_LN	506
 

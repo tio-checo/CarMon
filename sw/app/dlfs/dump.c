@@ -6,13 +6,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dlfs.h"
 
+/* local constants */
+/* look-up table for CRC calculation */
+static const unsigned short crc_table[16] = {
+    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
+    0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef
+};
+
 /* local variables */
 /* file descriptors for processed and generated files */
 static int fdi, fdo;
+
+/* crc checksum */
+static unsigned short crc;
 
 /* local functions */
 static BOOL block_is_empty(dlfs_file_t *);
@@ -42,6 +53,47 @@ gracefully_abort(void)
 	exit(EXIT_FAILURE);
 }
 
+/*
+ * Initializes 16bit CRC-CCITT calculation algorithm
+ */
+void
+crc_init(void)
+{
+	crc = 0xffff;
+}
+
+/*
+ * Calculates 16bit CRC-CCITT
+ */
+void
+crc_calc(unsigned char data)
+{
+	unsigned short i;
+
+	i = (crc >> 12) ^ (data >> 4);
+	crc = crc_table[i & 0x0F] ^ (crc << 4);
+	i = (crc >> 12) ^ (data >> 0);
+	crc = crc_table[i & 0x0F] ^ (crc << 4);
+}
+
+/*
+ * Finishes calculation of CRC-CCITT and returns resulting value.
+ */
+unsigned short
+crc_finalize(void)
+{
+	/*
+	 * Per standard, empty messages should be appended
+	 * with 16 zero bits. We do not handle that for now,
+	 * as we do not deal with empty messages at all.
+	 */
+/*
+	crc_calc(0);
+	crc_calc(0);
+*/
+	return crc;
+}
+
 /* Reads one dlfs block. */
 static void
 read_block(dlfs_file_t *df)
@@ -53,9 +105,17 @@ read_block(dlfs_file_t *df)
 		gracefully_abort();
 	} else if (!block_is_empty(df) && df->u.db.crc != 0xaa55) {
 		/* Validate CRC. Empty blocks obviously do not contain it. */
-		(void) fprintf(stderr,
-			"CRC error, aborting.\n");
-		gracefully_abort();
+		int i;
+
+		crc_init();
+		for (i = 0; i < DLFS_SECTOR_SIZE - DLFS_CRC_SIZE; i++) {
+			crc_calc(df->u.buf[i]);
+		}
+
+		if (df->u.db.crc != crc_finalize()) {
+			(void) fprintf(stderr, "CRC error, aborting.\n");
+			gracefully_abort();
+		}
 	} else if (num < DLFS_SECTOR_SIZE) {
 		(void) fprintf(stderr,
 		    "Filesystem truncated, aborting.\n");
@@ -92,7 +152,6 @@ block_is_db(dlfs_file_t *df)
 	    DLFS_MAGIC_DB, DLFS_MAGIC_SIZE) == 0;
 }
 
-
 /* global functions */
 int
 main(int argc, char *argv[])
@@ -107,6 +166,8 @@ main(int argc, char *argv[])
 	unsigned long long blk_num;
 	dlfs_file_t dlfs_file;
 	off_t pos;
+	time_t inode_time;
+	struct tm *inode_tm;
 	/* Number of bytes per inode. */
 	off_t bpi = DLFS_SECS_PER_INODE * DLFS_SECTOR_SIZE;
 
@@ -169,9 +230,21 @@ main(int argc, char *argv[])
 			gracefully_abort();
 		}
 
+		/*
+		 * Obtain time when log record was created from inode structure
+		 * and use that to construct name of output file.
+		 */
+		inode_time = dlfs_file.u.inode.ctime;
+		inode_tm = gmtime(&inode_time);
+
 		/* Valid inode found, dump associated log record. */
 		fnum++;
-		snprintf(ofname, sizeof (ofname), "file%02d.csv", fnum);
+		snprintf(ofname, sizeof (ofname),
+		    "obd%03d-%04d%02d%02d-%02d%02d%02d.csv",
+		    fnum, inode_tm->tm_year + 1900, inode_tm->tm_mon + 1,
+		    inode_tm->tm_mday, inode_tm->tm_hour, inode_tm->tm_min,
+		    inode_tm->tm_sec);
+
 		printf("Dumping file %s... ", ofname);
 
 		/* Create output file. */

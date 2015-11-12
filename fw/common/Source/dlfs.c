@@ -62,6 +62,7 @@
 #include "dlfs.h"
 #include "helpers.h"
 #include "pic_core.h"
+#include "utils.h"
 #include "SD-SPI.h"
 
 #include <errno.h>
@@ -162,14 +163,26 @@ dlfs_crc_valid(void *d)
 }
 
 /*
- * Calculates CRC for given sector and writes result to the last two bytes.
+ * Calculates 16bit CRC-CCITT for given sector and writes result
+ * to the last two bytes.
  */
 static void
-dlfs_calc_crc(char *buff)
+dlfs_calc_crc(unsigned char *buff)
 {
-	/* TODO: Calc real chsum */
-	buff[DLFS_SECTOR_SIZE - 2] = 0x55;
-	buff[DLFS_SECTOR_SIZE - 1] = 0xaa;
+	int i;
+	unsigned short c;
+
+	crc_init();
+
+	for (i = 0; i < DLFS_SECTOR_SIZE - DLFS_CRC_SIZE; i++) {
+		crc_calc(buff[i]);
+	}
+
+	c = crc_finalize();
+
+	/* LSB first */
+	buff[DLFS_SECTOR_SIZE - 2] = c & 0xff;
+	buff[DLFS_SECTOR_SIZE - 1] = c >> 8;
 }
 
 /*
@@ -713,7 +726,7 @@ dlfs_flush_ul_svc(void)
 	}
 
 	/* Now write data. */
-	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.u.buf, FALSE);
+	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.u.buf, TRUE);
 
 	/* Let lower layer know we are done. */
 	dlfs_flush_sec.dirty = FALSE;
