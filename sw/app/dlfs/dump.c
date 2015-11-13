@@ -103,8 +103,12 @@ read_block(dlfs_file_t *df)
 	if (num == -1) {
 		perror("Read error");
 		gracefully_abort();
-	} else if (!block_is_empty(df) && df->u.db.crc != 0xaa55) {
-		/* Validate CRC. Empty blocks obviously do not contain it. */
+	} else if (num < DLFS_SECTOR_SIZE) {
+		(void) fprintf(stderr,
+		    "Filesystem truncated, aborting.\n");
+		gracefully_abort();
+	} else if (!block_is_empty(df)) {
+		/* Validate CRC - skip for empty blocks. */
 		int i;
 
 		crc_init();
@@ -116,10 +120,6 @@ read_block(dlfs_file_t *df)
 			(void) fprintf(stderr, "CRC error, aborting.\n");
 			gracefully_abort();
 		}
-	} else if (num < DLFS_SECTOR_SIZE) {
-		(void) fprintf(stderr,
-		    "Filesystem truncated, aborting.\n");
-		gracefully_abort();
 	}
 }
 
@@ -235,12 +235,13 @@ main(int argc, char *argv[])
 		 * and use that to construct name of output file.
 		 */
 		inode_time = dlfs_file.u.inode.ctime;
-		inode_tm = gmtime(&inode_time);
+		/* dlfs keeps time in UTC format, convert to local time. */
+		inode_tm = localtime(&inode_time);
 
 		/* Valid inode found, dump associated log record. */
 		fnum++;
 		snprintf(ofname, sizeof (ofname),
-		    "obd%03d-%04d%02d%02d-%02d%02d%02d.csv",
+		    "obd-%03d-%04d%02d%02d-%02d%02d%02d.csv",
 		    fnum, inode_tm->tm_year + 1900, inode_tm->tm_mon + 1,
 		    inode_tm->tm_mday, inode_tm->tm_hour, inode_tm->tm_min,
 		    inode_tm->tm_sec);
