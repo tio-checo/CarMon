@@ -628,7 +628,7 @@ obd_comm_ecu_svc(void)
 		/* Wait until pid value is received or error occurs. */
 		ret = obd_ecu_get_pid(curr_mode, curr_pid, &d, &ln);
 
-		/* Operation still in progress, try again later. */
+		/* Operation in progress, try again later. */
 		if (ret == EAGAIN) {
 			break;
 		}
@@ -731,10 +731,16 @@ obd_comm_ecu_svc(void)
 		obd_ecu_st = OBD_ECU_ST_NEXTPID;
 		/* FALLTHROUGH */
 	
-	/* If operating in auto-scan mode, process next PID. */
+	/*
+	 * If operating in auto-scan mode, process next PID.
+	 * But only if value of current PID has been successfully
+	 * obtained; otherwise re-try.
+	 */
 	case OBD_ECU_ST_NEXTPID:
 		if (obd_autoscan_run) {
-			obd_autoscan_move_to_next_pid();
+			if (ret == 0) {
+				obd_autoscan_move_to_next_pid();
+			}
 
 			obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
 		} else {

@@ -244,11 +244,6 @@ main(int argc, char **argv)
 		/* Run post processing upper layer service routine. */
 		daq_pp_upper_svc();
 
-#ifdef CARMON_MODULE
-		/* Run carmon logging upper layer service routine. */
-		cm_log_ul_svc();
-#endif
-
 #ifdef DLFS_MODULE
 		/* Run dlfs flushing service. */
 		dlfs_flush_ul_svc();

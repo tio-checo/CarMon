@@ -102,12 +102,6 @@ static cm_assist_state_t	cm_assist_st;
 /* Log record */
 static char log_record[100];
 
-/* Logging command */
-static enum {
-	CM_LOG_CMD_NOOP = 0,	/* No operation currently in progress. */
-	CM_LOG_CMD_WRITE	/* Write log record to log device. */
-} cm_log_cmd;
-
 /* TRUE if log device available. FALSE otherwise. */
 static BOOL cm_log_available;
 
@@ -473,7 +467,6 @@ cm_log_pid(unsigned char *d, int ln)
 	 * from interrupt context.
 	 */
 	dlfs_write(0, log_record, strlen(log_record));
-	/* cm_log_cmd = CM_LOG_CMD_WRITE; */
 }
 
 /* public functions */
@@ -558,8 +551,6 @@ cm_init(void)
 	/* Register and enable main service routine. */
 	rtl_svc_init("CarMon", cm_main_svc, TRUE, TRUE);
 
-	cm_log_cmd = CM_LOG_CMD_NOOP;
-
 	return 0;
 }
 
@@ -578,27 +569,4 @@ cm_obd_pid_callback(unsigned char *d, int ln)
 	if (cm_log_available) {
 		cm_log_pid(d, ln);
 	}
-}
-
-/* Upper layer logging service. */
-void
-cm_log_ul_svc(void)
-{
-	/* If there is nothing to do, return. */
-	if (cm_log_cmd == CM_LOG_CMD_NOOP) {
-		return;
-	}
-
-	switch (cm_log_cmd) {
-	/* Noop */
-	case CM_LOG_CMD_NOOP:
-		break;
-
-	/* Write record to the log device. */
-	case CM_LOG_CMD_WRITE:
-		dlfs_write(0, log_record, strlen(log_record));
-		break;
-	}
-
-	cm_log_cmd = CM_LOG_CMD_NOOP;
 }
