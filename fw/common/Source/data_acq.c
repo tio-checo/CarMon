@@ -1480,7 +1480,7 @@ daq_acq_process_query(char *data, int ln)
 int
 daq_adc_process_query(char *data, int ln)
 {
-	unsigned int res;
+	static unsigned int res;
 
 	/* Module already sending a packet, abort */
 	if (mcom_response_inuse(&daq_resp_data))
