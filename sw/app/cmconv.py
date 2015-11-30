@@ -34,6 +34,12 @@ def extract_raw_pid_value(r):
 
     return ba
 
+#
+# Returns True if given record carries information about ECU pid;
+# False otherwise.
+#
+def is_obd_pid(r):
+    return r[1].startswith('ECU')
 
 #
 # Extracts OBD PID from log record.
@@ -66,20 +72,25 @@ def main():
     # file with the same name, but with 'txt' extension.
     #
 
+    #
     # Read raw logged data - they are in CSV format.
+    # Skip records not carrying ECU pids (e.g. GPS records)
+    #
     if args.filename is not None:
         with open(args.filename, 'r') as fcsv:
             log_reader = csv.reader(fcsv, delimiter=',')
             # Read all records into the memory
             log_records = []
             for row in log_reader:
-                log_records.append(row)
+                if is_obd_pid(row):
+                    log_records.append(row)
     else:
         log_reader = csv.reader(sys.stdin, delimiter=',')
         # Read all records into the memory
         log_records = []
         for row in log_reader:
-            log_records.append(row)
+            if is_obd_pid(row):
+                log_records.append(row)
 
     # Discard the last record - it is very likely truncated
     del log_records[-1]

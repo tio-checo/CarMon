@@ -20,6 +20,10 @@
 #include "dlfs.h"
 #endif
 
+#ifdef GPS_MODULE
+#include "gps.h"
+#endif
+
 #ifdef I2CSW_MODULE
 #include "i2c_sw.h"
 #endif
@@ -186,6 +190,10 @@ main(int argc, char **argv)
 #ifdef CARMON_MODULE
 	/* CarMon service */
 	cm_init();
+#endif
+
+#ifdef GPS_MODULE
+	gps_init();
 #endif
 
 	/* All services are initialized, thus enable main service handler. */

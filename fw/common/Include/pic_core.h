@@ -32,5 +32,10 @@ extern char *pcore_gettime(void);
 /* Returns TRUE if core services are up and running; FALSE otherwise. */
 extern BOOL pcore_svc_online(void);
 
+/*
+ * Sets date and time. Validates provided data.
+ * Returns EINVAL value if provided configuration is invalid.
+ */
+extern int pcore_settime(char *, int, BOOL, BOOL);
 #endif /* __PIC_CORE_H */
 

@@ -91,7 +91,7 @@
  */
 static struct mcom_comm_object_t {
 	int	(*getchar)(unsigned char *);	/* receives char from master */
-	int	(*putchar)(unsigned char);	/* sends char to master */
+	int	(*putchar)(unsigned char, BOOL); /* sends char to master */
 
 	/* receive buffer */
 	char rx_buf[MCOM_PACKET_MAXLN];
@@ -644,8 +644,11 @@ mcom_tx_st(void)
 		ch = MCOM_PKT_SOF;
 	}
 
-	/* Wait until current character is queued for transmission. */
-	if ((mcom_co.putchar)(ch) != 0) {
+	/*
+	 * Wait until current character is queued for transmission.
+	 * Do not block.
+	 */
+	if ((mcom_co.putchar)(ch, FALSE) != 0) {
 		return 0;
 	} 
 
@@ -918,7 +921,7 @@ mcom_init(void)
 {
 	/* Initialize main communication object */
  	/* method for receiving char from master */
-	mcom_co.getchar = bt_getchar;
+	mcom_co.getchar = bt_getchar_master;
 	/* method for sending char to master */
 	mcom_co.putchar = bt_putchar;
 

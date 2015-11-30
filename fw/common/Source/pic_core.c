@@ -46,70 +46,6 @@ static BOOL pcore_time_initialized = FALSE;
 
 /* local functions */
 /*
- * Set date and time. Validates provided data.
- * Returns EINVAL value if provided configuration is invalid.
- */
-static int
-pcore_settime(char *td, int ln)
-{
-	time_t t;
-	struct tm newtm;
-	struct timeval newtv;
-
-	/* malformed packet */
-	if (ln != 14)
-		return EINVAL;
-
-	/* td[0..3] - year */
-	newtm.tm_year = (int) dec2ulong(td, 4);
-	if (newtm.tm_year < 1970 || newtm.tm_year > 2038)
-		return EINVAL;
-	newtm.tm_year -= 1900;
-
-	/* td[4..5] - month */
-	newtm.tm_mon = (int) dec2ulong(td + 4, 2) - 1;
-	if (newtm.tm_mon < 0 || newtm.tm_mon > 11)
-		return EINVAL;
-
-	/* td[6..7] - day */
-	newtm.tm_mday = (int) dec2ulong(td + 6, 2);
-	if (newtm.tm_mday < 1 || newtm.tm_mday > 31)
-		return EINVAL;
-
-	/* td[8..9] - hour */
-	newtm.tm_hour = (int) dec2ulong(td + 8, 2);
-	if (newtm.tm_hour < 0 || newtm.tm_hour > 23)
-		return EINVAL;
-
-	/* td[10..11] - minute */
-	newtm.tm_min = (int) dec2ulong(td + 10, 2);
-	if (newtm.tm_min < 0 || newtm.tm_min > 59)
-		return EINVAL;
-
-	/* td[12..13] - seconds 00..59 */
-	newtm.tm_sec = (int) dec2ulong(td + 12, 2);
-	if (newtm.tm_sec < 0 || newtm.tm_sec > 59)
-		return EINVAL;
-
-	t = mktime(&newtm);
-	if (t == (time_t) -1)
-		return EINVAL;
-
-	newtv.tv_sec = t;
-	newtv.tv_usec = 0;
-
-	if (settimeofday(&newtv, NULL) != 0)
-		return EINVAL;
-
-#ifdef PCF8563_MODULE
-	/* Set time in RTC */
-	pcf8563_settime(&newtm);
-#endif
-
-	return 0;
-}
-
-/*
  * Takes care of sending response to master. Two responses might be scheduled
  * for transmission - ack/nak one and data one.
  * ack/nak response takes precedence over data response, since it is short,
@@ -204,6 +140,75 @@ pcore_svc(void)
 
 /* global functions */
 /*
+ * Sets date and time. Validates provided data.
+ * Returns EINVAL value if provided configuration is invalid.
+ */
+int
+pcore_settime(char *td, int ln, BOOL update_hw_clock, BOOL update_sw_clock)
+{
+	time_t t;
+	struct tm newtm;
+	struct timeval newtv;
+
+	/* malformed packet */
+	if (ln != 14)
+		return EINVAL;
+
+	/* td[0..3] - year */
+	newtm.tm_year = (int) dec2ulong(td, 4);
+	if (newtm.tm_year < 1970 || newtm.tm_year > 2038)
+		return EINVAL;
+	newtm.tm_year -= 1900;
+
+	/* td[4..5] - month */
+	newtm.tm_mon = (int) dec2ulong(td + 4, 2) - 1;
+	if (newtm.tm_mon < 0 || newtm.tm_mon > 11)
+		return EINVAL;
+
+	/* td[6..7] - day */
+	newtm.tm_mday = (int) dec2ulong(td + 6, 2);
+	if (newtm.tm_mday < 1 || newtm.tm_mday > 31)
+		return EINVAL;
+
+	/* td[8..9] - hour */
+	newtm.tm_hour = (int) dec2ulong(td + 8, 2);
+	if (newtm.tm_hour < 0 || newtm.tm_hour > 23)
+		return EINVAL;
+
+	/* td[10..11] - minute */
+	newtm.tm_min = (int) dec2ulong(td + 10, 2);
+	if (newtm.tm_min < 0 || newtm.tm_min > 59)
+		return EINVAL;
+
+	/* td[12..13] - seconds 00..59 */
+	newtm.tm_sec = (int) dec2ulong(td + 12, 2);
+	if (newtm.tm_sec < 0 || newtm.tm_sec > 59)
+		return EINVAL;
+
+	t = mktime(&newtm);
+	if (t == (time_t) -1)
+		return EINVAL;
+
+	newtv.tv_sec = t;
+	newtv.tv_usec = 0;
+
+	if (update_sw_clock) {
+		if (settimeofday(&newtv, NULL) != 0) {
+			return EINVAL;
+		}
+	}
+
+#ifdef PCF8563_MODULE
+	/* Set time in RTC */
+	if (update_hw_clock) {
+		pcf8563_settime(&newtm);
+	}
+#endif
+
+	return 0;
+}
+
+/*
  * Initialization routine.
  */
 int
@@ -249,8 +254,8 @@ pcore_process_query(char *data, int ln)
 
 		/* Set time and date */
 		case MCOMM_PCORE_CMD_SETTIME:
-			/* configure module */
-			err = pcore_settime(data + 1, ln - 1);
+			/* Update both sw and hw clock. */
+			err = pcore_settime(data + 1, ln - 1, TRUE, TRUE);
 			if (err != 0)
 				respond_with_ack = FALSE;
 			break;

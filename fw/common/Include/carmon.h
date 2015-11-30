@@ -33,7 +33,7 @@ extern int cm_process_query(char *, int);
 /* Processes PID values received from ECU. */
 extern void cm_obd_pid_callback(unsigned char *, int);
 
-/* Upper layer logging service. */
-extern void cm_log_ul_svc(void);
+/* Processes NMEA sentences received from GPS. */
+extern void cm_gps_callback(char *);
 
 #endif /* __CARMON_H */

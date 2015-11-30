@@ -15,10 +15,19 @@ extern int bt_init(void);
 /* Suspend Bluetooth module */
 extern int bt_suspend(void);
 
-extern int bt_putchar(unsigned char ch);
-extern int bt_getchar(unsigned char *ch);
+extern int bt_putchar(unsigned char, BOOL);
+extern int bt_getchar_gps(unsigned char *);
+extern int bt_getchar_master(unsigned char *);
 
-/* Return TRUE if BT module is paired with master, otherwise return FALSE */
+/*
+ * Return TRUE if BT module is paired with remote BT end-point;
+ * FALSE otherwise.
+ */
 extern BOOL bt_is_paired(void);
+/*
+ * Return TRUE if BT module is paired with GPS module;
+ * FALS Eotherwise.
+ */
+extern BOOL bt_is_paired_with_gps(void);
 
 #endif /* __BT_H */

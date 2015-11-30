@@ -32,6 +32,10 @@
 #include "dlfs.h"
 #endif
 
+#ifdef GPS_MODULE
+#include "gps.h"
+#endif
+
 #ifdef PCF8563_MODULE
 #include "pcf8563.h"
 #endif
@@ -82,6 +86,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[d] Detach USB\n\r" \
     "[D] Disable USB\n\r" \
     "[a] Attach USB\n\r" \
+    "[g] GPS\n\r" \
     "[t] Display time of the day\n\r" \
     "[T] Set date to 04/10/2013 17:00:00\n\r" \
     "[r] Read pcf8563 registers\n\r" \
@@ -163,23 +168,8 @@ mon_getchar(unsigned char *ch, BOOL block)
 
 	/* Bluetooth used as a communication device. */
 	if (mon_diag_mode == MON_DIAG_MODE_BT) {
-		/* handle receive errors */
-		if (U2STA & 0x000E) {
-			/* dummy read to clear FERR/PERR */
-			dummy = U2RXREG;
-			/* clear OERR to keep receiving */
-			U2STAbits.OERR = 0;
-		}
-
-		/* Block only if required */
-		if (!block && !U2STAbits.URXDA)
-			return EAGAIN;
-
-		/* Block until character is available */
-		while (!U2STAbits.URXDA);
-
-		/* get data from UART RX FIFO */
-		*ch = U2RXREG;
+		/* Blocking in BT diag mode not supported. */
+		return bt_getchar_master(ch);
 	} else {
 		/* UART used as a communication device. */
 		/* handle receive errors */
@@ -215,11 +205,8 @@ mon_putchar(unsigned char ch)
 
 	/* Bluetooth used as a communication device. */
 	if (mon_diag_mode == MON_DIAG_MODE_BT) {
-		/* Wait until transmitter is ready */
-		while (!U2STAbits.TRMT);
-
-		/* Send out the character */
-		U2TXREG = ch;
+		/* Block until character is sent out. */
+		return bt_putchar(ch, TRUE);
 	} else {
 		/* UART used as a communication device. */
 		/* Wait until transmitter is ready */
@@ -478,18 +465,25 @@ mon_main_menu(unsigned char ch)
 
 		break;
 
+	/* GPS module. */
+	case 'g':
+#ifdef GPS_MODULE
+		gps_print_diag_info(mon_print_str);
+#else
+		mon_print_str("GPS not available\r\n");
+#endif
+		break;
+
+	case 'r':
 #ifdef PCF8563_MODULE
 	/* Display pcf8563 RTC registers. */
-	case 'r':
 		mon_print_str("pcf8563 read values\n\r");
 		pcf8563_display_read_values(mon_print_str);
-		break;
 #else
 	/* pcf8563 RTC not available */
-	case 'r':
 		mon_print_str("pcf8563 RTC not available\n\r");
-		break;
 #endif
+		break;
 
 #if 0
 	/* Display history of memory allocation requests */
@@ -811,8 +805,9 @@ mon_svc(void)
 
 	/* Wait for user's input - handle Bluetooth menu separately for now. */
 	if (mon_st != MON_ST_BLUETOOTH) {
-		if (mon_getchar(&ch, FALSE) == EAGAIN)
+		if (mon_getchar(&ch, FALSE) == EAGAIN) {
 			return 0;
+		}
 
 		mon_print_str("\n\r");
 	}
@@ -827,19 +822,36 @@ mon_svc(void)
 	 * Bluetooth module and diagnostic port.
 	 */
 	case MON_ST_BLUETOOTH: {
-		BOOL exit_bt = FALSE;
+		BOOL bt_exit = FALSE;
 
-		while (!exit_bt) {
-			if (bt_getchar(&ch) == 0) {
+		while (!bt_exit) {
+			/* Dry out HW receive buffer. */
+			while (mon_getchar(&ch, FALSE) == 0) {
+				bt_putchar(ch, TRUE);
+
+				/* '#' escapes from Bluetooth mode */
+				if (ch == '#') {
+					bt_exit = TRUE;
+				}
+			}
+
+			/*
+			 * There are two potential sources of BT characters.
+			 * Handle them both.
+			 * Dry out 8-level deep receive FIFO.
+			 */
+			while (bt_getchar_gps(&ch) == 0) {
+				mon_putchar(ch);
+			}
+
+			while (bt_getchar_master(&ch) == 0) {
 				mon_putchar(ch);
 
 				/* '#' escapes from Bluetooth mode */
-				if (ch == '#')
-					exit_bt = TRUE;
+				if (ch == '#') {
+					bt_exit = TRUE;
+				}
 			}
-
-			if (mon_getchar(&ch, FALSE) == 0)
-				bt_putchar(ch);
 		}
 
 		/* Switch to main menu */
@@ -847,9 +859,8 @@ mon_svc(void)
 		mon_print_str(mon_st2menu_map[mon_st].menu);
 		mon_print_str(MON_DIAG_PROMPT);
 
-	} /* PASS THROUGH */
+		} break;
 
-	/* Main menu and its submenus */
 	default:
 		/* Handle current menu */
 		next = mon_st2menu_map[mon_st].h(ch);

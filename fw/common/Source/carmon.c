@@ -99,11 +99,16 @@ static cm_auto_state_t	cm_auto_st;
 /* current state when operating in assisted mode */
 static cm_assist_state_t	cm_assist_st;
 
-/* Log record */
-static char log_record[100];
+/*
+ * Log record - buffer needs to be big enough to be able to hold
+ * all types of log records.
+ */
+static char log_record[150];
 
-/* TRUE if log device available. FALSE otherwise. */
+/* TRUE if log device available; FALSE otherwise. */
 static BOOL cm_log_available;
+/* Set to TRUE once the first ECU PID is logged to the log device. */
+static BOOL cm_ecu_pid_logged;
 
 /* local functions */
 
@@ -469,6 +474,35 @@ cm_log_pid(unsigned char *d, int ln)
 	dlfs_write(0, log_record, strlen(log_record));
 }
 
+/* Logs GPS data to log device. */
+static void
+cm_log_gps(char *d)
+{
+	char *ts = pcore_gettime();
+
+	/*
+	 * Log record is in CSV format as specified in rfc4180:
+	 *
+	 * <timestamp>,GPS,<NMEA sentence>CRLF
+	 *
+	 * format of <timestamp>: YYYYMMDDhhmmssmmm
+	 *
+	 */
+
+	/*
+	 * timestamp and name-value pair are to be logged.
+	 * snprintf guarantees that the resulting string is NULL-terminated.
+	 */
+	snprintf(log_record, sizeof (log_record), "%s,GPS,%s\r\n", ts, d);
+
+	/*
+	 * Write log record to log device.
+	 * dlfs_write() is non-blocking function, so can be called
+	 * from interrupt context.
+	 */
+	dlfs_write(0, log_record, strlen(log_record));
+}
+
 /* public functions */
 
 /*
@@ -545,6 +579,9 @@ cm_init(void)
 	/* Create new log file. */
 	cm_log_available = dlfs_open("obd_log", O_CREAT) == 0;
 
+	/* No ECU PID logged yet. */
+	cm_ecu_pid_logged = FALSE;
+
 	/* Clear IO statistics. */
 	dlfs_kstat_clear();
 
@@ -568,5 +605,26 @@ cm_obd_pid_callback(unsigned char *d, int ln)
 	/* Log PID to log device if available. */
 	if (cm_log_available) {
 		cm_log_pid(d, ln);
+
+		cm_ecu_pid_logged = TRUE;
+	}
+}
+
+/*
+ * Processes NMEA sentences received from GPS.
+ * It is expected that they are provided in form of NULL-terminated strings.
+ */
+void
+cm_gps_callback(char *d)
+{
+	/*
+	 * Start loggin NMEA sentence to the log device
+	 * only after at least one ECU PID value has been logged.
+	 * That assures that log inode is not wasted in case
+	 * connection to ECU is not established before the logger
+	 * is turned off.
+	 */
+	if (cm_ecu_pid_logged) {
+		cm_log_gps(d);
 	}
 }

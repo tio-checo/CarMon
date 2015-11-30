@@ -21,6 +21,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
 -DCARMON_MODULE -DI2CSW_MODULE -DPCF8563_MODULE -DLCDTERM_MODULE -DDLFS_MODULE \
+-DGPS_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -57,7 +58,8 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/i2c_sw.o \
     $(BUILD_DIR)/lcd_term.o \
     $(BUILD_DIR)/dlfs.o \
-    $(BUILD_DIR)/pcf8563.o
+    $(BUILD_DIR)/pcf8563.o \
+    $(BUILD_DIR)/gps.o
 
 APPNAME= main
 
@@ -128,6 +130,9 @@ $(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/dlfs.o: ../common/Source/dlfs.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/gps.o: ../common/Source/gps.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/i2c_sw.o: ../common/Source/i2c_sw.c

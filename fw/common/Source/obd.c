@@ -10,6 +10,7 @@
 #include "bt.h"
 #include "can_hal.h"
 #include "carmon.h"
+#include "gps.h"
 #include "kwp2k.h"
 #include "lcd_term.h"
 #include "master_comm.h"
@@ -1188,6 +1189,7 @@ obd_alarm_process(unsigned char *d, int ln)
 		 *  - Coolant temperature
 		 *  - Exhaust gas temperature EGT12
 		 *  - DPF accumulation ratio
+		 *  - status of GPS device
 		 */
 
 		/*
@@ -1206,8 +1208,10 @@ obd_alarm_process(unsigned char *d, int ln)
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
 		 */
-		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s ",
-		    water, 0xb2, egt11, 0xb2, dpf_ar, "%");
+		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s%s",
+		    water, 0xb2, egt11, 0xb2, dpf_ar, "%",
+		    bt_is_paired_with_gps() ?
+		    gps_get_status() > 0 ? "g" : "-" : " ");
 
 		/* Write framebuffer to the terminal. */
 		lcdterm_fb_write();
