@@ -26,7 +26,7 @@ extern int hex2ucharbuf(char *, unsigned char *, int);
 extern unsigned long dec2ulong(char *, int);
 
 /* Converts unsigned long to string with leading zeros. */
-extern int ulong2str(unsigned long n, char *out, int ln);
+extern int long2str(long, char *, int, BOOL);
 
 /* Initializes CRC calculation algorithm */
 extern void crc_init(void);

@@ -699,20 +699,27 @@ obd_comm_ecu_svc(void)
 			curr_pid = obd_autoscan_get_curr_pid();
 			
 			if (obd_autoscan_run) {
-				snprintf(hdr, sizeof (hdr), "%c%02X%02X",
-				    OBD_CMD_GETCURPIDS, pkt_num, curr_pid);
+				hdr[0] = OBD_CMD_GETCURPIDS;
+				uint2hex(pkt_num, hdr + 1, 1);
+				uint2hex(curr_pid, hdr + 3, 1);
+				hdr[5] = '\0';
 
 				/* Increment sequence number. */
 				if (++pkt_num > 255)
 					pkt_num = 1;
 			} else {
 				if (OBD_IS_FREEZE_FRAME) {
-					snprintf(hdr, sizeof (hdr),
-					    "%c00%02X%02X", OBD_CMD_GETFFPID,
-					    obd_freeze_frame_num, curr_pid);
+					hdr[0] = OBD_CMD_GETFFPID;
+					uint2hex(0, hdr + 1, 1);
+					uint2hex(obd_freeze_frame_num,
+					    hdr + 3, 1);
+					uint2hex(curr_pid, hdr + 5, 1);
+					hdr[7] = '\0';
 				} else {
-					snprintf(hdr, sizeof (hdr), "%c00%02X",
-					    OBD_CMD_GETCURPID, curr_pid);
+					hdr[0] = OBD_CMD_GETCURPID;
+					uint2hex(0, hdr + 1, 1);
+					uint2hex(curr_pid, hdr + 3, 1);
+					hdr[5] = '\0';
 				}
 			}
 
@@ -764,8 +771,9 @@ obd_comm_ecu_svc(void)
 				obd_resp_data_buf[i] = d[i];
 			}
 
-			snprintf(hdr, sizeof (hdr), "%c00",
-			    OBD_CMD_GETPERMDTC);
+			hdr[0] = OBD_CMD_GETPERMDTC;
+			uint2hex(0, hdr + 1, 1);
+			hdr[3] = '\0';
 
 			obd_send_data_response_to_master(hdr, ln);
 		} else {
@@ -1208,10 +1216,18 @@ obd_alarm_process(unsigned char *d, int ln)
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
 		 */
-		snprintf(fb_addr, fb_size, " %3d%c %3d%c %3d%s%s",
-		    water, 0xb2, egt11, 0xb2, dpf_ar, "%",
-		    bt_is_paired_with_gps() ?
-		    gps_get_status() > 0 ? "g" : "-" : " ");
+		fb_addr[0] = fb_addr[5] = fb_addr[10] = ' ';
+		long2str(water, fb_addr + 1, 3, FALSE);
+		fb_addr[4] = 0xb2;
+		long2str(egt11, fb_addr + 6, 3, FALSE);
+		fb_addr[9] = 0xb2;
+		long2str(dpf_ar, fb_addr + 11, 3, FALSE);
+		fb_addr[14] = '%';
+
+		fb_addr[15] = bt_is_paired_with_gps() ?
+		    gps_get_status() > 0 ? ' '  : 'g' : '-';
+
+		fb_addr[16] = '\0';
 
 		/* Write framebuffer to the terminal. */
 		lcdterm_fb_write();

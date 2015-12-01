@@ -423,8 +423,6 @@ static void
 cm_log_pid(unsigned char *d, int ln)
 {
 	char *ts = pcore_gettime();
-	int i;
-	size_t sln;
 
 	/*
 	 * Save PID value to log device.
@@ -442,29 +440,33 @@ cm_log_pid(unsigned char *d, int ln)
 	 * fits the available buffer for sure, so no need to
 	 * check for buffer overflow.
 	 */
-
-	snprintf(log_record, sizeof (log_record), "%s,ECU01%02X,", ts, d[0]);
-	sln = strlen(log_record);
+	log_record[0] = '\0';
+	strcat(log_record, ts);
+	strcat(log_record + 17, ",ECU01");
+	uint2hex(d[0], log_record + 23, 1);
+	log_record[25] = ',';
 
 	/*
 	 * Append PID value.
 	 * Handle scenario when resulting log record does not fit
 	 * a buffer. Log error string instead of PID value in such case.
 	 */
-	if (sln + 2 * (ln - 1) + 3 > sizeof (log_record)) {
-		snprintf(log_record + sln, sizeof (log_record) - sln,
-		    "ERR_OVERFLOW\n\r");
+	if (26 + 2 * (ln - 1) + 3 > sizeof (log_record)) {
+		log_record[26] = '\0';
+		strcat(log_record + 26, "ERR_OVERFLOW\r\n");
 	} else {
-		for (i = 1; i < ln; i++) {
-			size_t pos = strlen(log_record);
+		int i;
+		size_t pos;
 
-			snprintf(log_record + pos, sizeof (log_record) - pos,
-			    "%02X", d[i]);
+		for (i = 1, pos = 26; i < ln; i++, pos += 2) {
+			uint2hex(d[i], log_record + pos, 1);
 		}
-	}
 
-	/* Append 'end of log record' marker. */
-	strcat(log_record, "\r\n");
+		/* Append 'end of log record' marker. */
+		log_record[pos++] = '\r';
+		log_record[pos++] = '\n';
+		log_record[pos] = '\0';
+	}
 
 	/*
 	 * Write log record to log device.

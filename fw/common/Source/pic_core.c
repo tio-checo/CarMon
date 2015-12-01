@@ -341,13 +341,14 @@ pcore_gettime(void)
 	t = currtv.tv_sec;
 	currtm = gmtime(&t);
 
-	ulong2str(currtm->tm_year + 1900, tds, 4);
-	ulong2str(currtm->tm_mon + 1, tds + 4, 2);
-	ulong2str(currtm->tm_mday, tds + 6, 2);
-	ulong2str(currtm->tm_hour, tds + 8, 2);
-	ulong2str(currtm->tm_min, tds + 10, 2);
-	ulong2str(currtm->tm_sec, tds + 12, 2);
-	ulong2str(currtv.tv_usec / 1000, tds + 14, 3);
+	/* Display leading zeros. */
+	long2str(currtm->tm_year + 1900, tds, 4, TRUE);
+	long2str(currtm->tm_mon + 1, tds + 4, 2, TRUE);
+	long2str(currtm->tm_mday, tds + 6, 2, TRUE);
+	long2str(currtm->tm_hour, tds + 8, 2, TRUE);
+	long2str(currtm->tm_min, tds + 10, 2, TRUE);
+	long2str(currtm->tm_sec, tds + 12, 2, TRUE);
+	long2str(currtv.tv_usec / 1000, tds + 14, 3, TRUE);
 
 	tds[17] = '\0';
 

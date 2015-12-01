@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <stddef.h>
 
+#include "GenericTypeDefs.h"
+
 /* local constants */
 /* HEX->ASCII conversion table */
 static const char hex2ascii_tbl[16] = {'0', '1', '2', '3', '4', '5', '6',
@@ -119,14 +121,39 @@ dec2ulong(char *a, int ln)
 }
 
 /*
- * Converts unsigned long to string with leading zeros.
+ * Converts unsigned long to string, optionally
+ * with leading zeros.
  */
 int
-ulong2str(unsigned long n, char *out, int ln)
+long2str(long n, char *out, int ln, BOOL lz)
 {
 	int i;
+	BOOL display_minus;
+
+	/* Display minus sign for negative numbers. */
+	display_minus = n < 0;
 
 	for (i = ln - 1; i >= 0; i--) {
+		/*
+		 * If leading zeros are not to be displayed,
+		 * display spaces instead.
+		 */
+		if (!lz && (n == 0) && (i != ln - 1)) {
+			/*
+			 * Display minus sign for negative number
+			 * in place of the first space.
+			 */
+			if (display_minus) {
+				out[i] = '-';
+
+				display_minus = FALSE;
+			} else {
+				out[i] = ' ';
+			}
+
+			continue;
+		}
+
 		out[i] = '0' + n % 10;
 
 		n /= 10;
