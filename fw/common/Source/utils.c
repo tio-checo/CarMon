@@ -5,6 +5,8 @@
  *********************************************************************/
 
 #include <errno.h>
+#include <sys/types.h>
+#include <stddef.h>
 
 /* local constants */
 /* HEX->ASCII conversion table */
@@ -155,4 +157,173 @@ crc_finalize(void)
 	crc_calc(0);
 */
 	return crc;
+}
+
+#define op_t unsigned long int
+#define OPSIZ (sizeof (op_t))
+typedef unsigned char byte;
+/*
+ * Optimized version of memset
+ */
+void *
+memset(void *dstpp, int c, size_t len)
+{
+	long int dstp = (long int) dstpp;
+
+	if (len >= 8) {
+		size_t xlen;
+		op_t cccc;
+
+		cccc = (unsigned char) c;
+		cccc |= cccc << 8;
+		cccc |= cccc << 16;
+
+		/*
+		 * There are at least some bytes to set.
+		 */
+		while (dstp % OPSIZ != 0) {
+			((byte *) dstp)[0] = c;
+			dstp += 1;
+			len -= 1;
+		}
+
+		/*
+		 * Write 8 `op_t' per iteration until less
+		 * than 8 `op_t' remain.
+		 */
+		xlen = len / (OPSIZ * 8);
+		while (xlen > 0) {
+			((op_t *) dstp)[0] = cccc;
+			((op_t *) dstp)[1] = cccc;
+			((op_t *) dstp)[2] = cccc;
+			((op_t *) dstp)[3] = cccc;
+			((op_t *) dstp)[4] = cccc;
+			((op_t *) dstp)[5] = cccc;
+			((op_t *) dstp)[6] = cccc;
+			((op_t *) dstp)[7] = cccc;
+			dstp += 8 * OPSIZ;
+			xlen -= 1;
+		}
+		len %= OPSIZ * 8;
+
+		/*
+		 * Write 1 `op_t' per iteration until less than
+		 * OPSIZ bytes remain.
+		 */
+		xlen = len / OPSIZ;
+		while (xlen > 0) {
+			((op_t *) dstp)[0] = cccc;
+			dstp += OPSIZ;
+			xlen -= 1;
+		}
+		len %= OPSIZ;
+	}
+
+	/* Write the last few bytes.  */
+	while (len > 0) {
+		((byte *) dstp)[0] = c;
+		dstp += 1;
+		len -= 1;
+	}
+
+	return dstpp;
+}
+
+/*
+ * Optimized version of memcpy
+ */
+void *
+memcpy(void *dstpp, const void *srcpp, size_t len)
+{
+	long int dstp = (long int) dstpp;
+	long int srcp = (long int) srcpp;
+
+	/*
+	 * Unaligned source or destinations pointers,
+	 * need to copy byte-by-byte. Though unroll
+	 * the loop a bit to speed up the process.
+	 */
+	if ((srcp % OPSIZ != 0) || (dstp % OPSIZ != 0)) {
+		while (len >= 8) {
+			((byte *) dstp)[0] = ((byte *)srcp)[0];
+			((byte *) dstp)[1] = ((byte *)srcp)[1];
+			((byte *) dstp)[2] = ((byte *)srcp)[2];
+			((byte *) dstp)[3] = ((byte *)srcp)[3];
+			((byte *) dstp)[4] = ((byte *)srcp)[4];
+			((byte *) dstp)[5] = ((byte *)srcp)[5];
+			((byte *) dstp)[6] = ((byte *)srcp)[6];
+			((byte *) dstp)[7] = ((byte *)srcp)[7];
+
+			dstp += 8;
+			srcp += 8;
+
+			len -= 8;
+		}
+
+		while (len > 0) {
+			((byte *) dstp)[0] = ((byte *)srcp)[0];
+			dstp += 1;
+			srcp += 1;
+			len -= 1;
+		}
+
+		return dstpp;
+	}
+
+	if (len >= 8) {
+		size_t xlen;
+
+		/*
+		 * There are at least some bytes to copy.
+		 */
+		while (dstp % OPSIZ != 0) {
+			((byte *) dstp)[0] = ((byte *)srcp)[0];
+			dstp += 1;
+			srcp += 1;
+			len -= 1;
+		}
+
+		/*
+		 * Copy 8 `op_t' per iteration until less
+		 * than 8 `op_t' remain.
+		 */
+		xlen = len / (OPSIZ * 8);
+		while (xlen > 0) {
+			((op_t *) dstp)[0] = ((op_t *) srcp)[0];
+			((op_t *) dstp)[1] = ((op_t *) srcp)[1];
+			((op_t *) dstp)[2] = ((op_t *) srcp)[2];
+			((op_t *) dstp)[3] = ((op_t *) srcp)[3];
+			((op_t *) dstp)[4] = ((op_t *) srcp)[4];
+			((op_t *) dstp)[5] = ((op_t *) srcp)[5];
+			((op_t *) dstp)[6] = ((op_t *) srcp)[6];
+			((op_t *) dstp)[7] = ((op_t *) srcp)[7];
+			dstp += 8 * OPSIZ;
+			srcp += 8 * OPSIZ;
+			xlen -= 1;
+		}
+		len %= OPSIZ * 8;
+
+		/*
+		 * Write 1 `op_t' per iteration until less than
+		 * OPSIZ bytes remain.
+		 */
+		xlen = len / OPSIZ;
+		while (xlen > 0) {
+			((op_t *) dstp)[0] = ((op_t *) srcp)[0];
+			dstp += OPSIZ;
+			srcp += OPSIZ;
+			xlen -= 1;
+		}
+		len %= OPSIZ;
+	}
+
+	/* Write the last few bytes.  */
+	while (len > 0) {
+		((byte *) dstp)[0] = ((byte *) srcp)[0];
+		dstp += 1;
+		srcp += 1;
+		len -= 1;
+	}
+
+	return dstpp;
 }
