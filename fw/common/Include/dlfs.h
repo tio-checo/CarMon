@@ -47,6 +47,9 @@
 /* Unused data payload */
 #define	DLFS_DATA_UNUSED	((unsigned long)-1)
 
+/* number of sector buffers */
+#define	DLFS_SEC_BUF_NUM	2
+
 /* types */
 
 /* superblock - 512 bytes in total */
@@ -72,20 +75,24 @@ typedef struct {
 	unsigned short	crc;		/*   2b - checksum */
 } dlfs_db_t;
 
+/* sector buffer - can be interpreted in several ways */
+typedef union {
+	char			buf[DLFS_SECTOR_SIZE];
+	unsigned long		buf_ul[DLFS_SECTOR_SIZE /
+					    sizeof (unsigned long)];
+	dlfs_inode_t		inode;
+	dlfs_db_t		db;
+	dlfs_sb_t		sb;
+} dlfs_sec_buf_t;
+
 /* structure holding state of open file */
 typedef struct {
 	unsigned long long	sec;	/* current sector number */
 	unsigned short		pos;	/* current position within sector */
+	unsigned short		sbuf_num; /* number of current sector buffer */
+	dlfs_sec_buf_t		*sbufp;	/* pointer to current sector buffer */
 
-	/* sector buffer - can be interpreted in several ways */
-	union {
-		char			buf[DLFS_SECTOR_SIZE];
-		unsigned long		buf_ul[DLFS_SECTOR_SIZE /
-					    sizeof (unsigned long)];
-		dlfs_inode_t		inode;
-		dlfs_db_t		db;
-		dlfs_sb_t		sb;
-	} u;
+	dlfs_sec_buf_t		sbuf[DLFS_SEC_BUF_NUM];	/* sector buffers */
 } dlfs_file_t;
 
 /* structure holding data block to be flushed to the media */
@@ -100,16 +107,7 @@ typedef struct {
 	/* Setting to TRUE update inode time stamp before inode is written. */
 	BOOL			update_inode_time;
 	unsigned long long	sec;	/* sector number */
-
-	/* sector buffer - can be interpreted in several ways */
-	union {
-		char			buf[DLFS_SECTOR_SIZE];
-		unsigned long		buf_ul[DLFS_SECTOR_SIZE /
-					    sizeof (unsigned long)];
-		dlfs_inode_t		inode;
-		dlfs_db_t		db;
-		dlfs_sb_t		sb;
-	} u;
+	dlfs_sec_buf_t		*sbufp;	/* pointer to sector buffer */
 } dlfs_flush_t;
 
 /* macros */

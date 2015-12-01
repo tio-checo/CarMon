@@ -266,7 +266,7 @@ dlfs_read_sector(unsigned long long secaddr, dlfs_file_t *df)
 	/* Capture current time for purposes of measuring statistics. */
 	get_curr_hrtime(&ct);
 
-	if (!MDD_SectorRead(secaddr, (BYTE *)(df->u.buf))) {
+	if (!MDD_SectorRead(secaddr, (BYTE *)(df->sbufp->buf))) {
 		/* Operation failed, mark backend storage as not available. */
 		dlfs_media_mounted = FALSE;
 		dlfs_media_ready = FALSE;
@@ -306,11 +306,7 @@ dlfs_read_sector(unsigned long long secaddr, dlfs_file_t *df)
 static void
 dlfs_clean_db_data(dlfs_db_t *db)
 {
-	int i;
-
-	for (i = 0; i < sizeof (db->data); i++) {
-		db->data[i] = 0xff;
-	}
+	memset(db->data, 0xff, sizeof (db->data));
 }
 
 /*
@@ -341,7 +337,7 @@ dlfs_mount(void)
 		return EINVAL;
 	}
 */
-	if (!dlfs_crc_valid(&dlfs_files[fd].u.sb)) {
+	if (!dlfs_crc_valid(&dlfs_files[fd].sbufp->sb)) {
 		return EINVAL;
 	} 
 
@@ -364,7 +360,7 @@ dlfs_block_is_db(unsigned long long sec)
 		return FALSE;
 	}
 
-	return strncmp((char *)dlfs_files[fd].u.db.magic,
+	return strncmp((char *)dlfs_files[fd].sbufp->db.magic,
 	    DLFS_MAGIC_DB, DLFS_MAGIC_SIZE) == 0;
 }
 
@@ -429,7 +425,7 @@ dlfs_find_first_free_inode(void)
 		return -1;
 	}
 
-	if (dlfs_files[fd].u.buf_ul[0] == DLFS_DATA_UNUSED) {
+	if (dlfs_files[fd].sbufp->buf_ul[0] == DLFS_DATA_UNUSED) {
 		return l;
 	}
 
@@ -461,8 +457,13 @@ dlfs_flush(unsigned long long sec, BOOL write_eof_mark, BOOL update_inode_time)
 		return EBUSY;
 	}
 
-	/* Copy sector to be flushed. */
-	memcpy(dlfs_flush_sec.u.buf, dlfs_files[fd].u.buf, DLFS_SECTOR_SIZE);
+	/* Save pointer to the sector buffer to be flushed. */
+	dlfs_flush_sec.sbufp = dlfs_files[fd].sbuf + dlfs_files[fd].sbuf_num;
+	/* Switch to the free sector buffer. */
+	dlfs_files[fd].sbuf_num = (dlfs_files[fd].sbuf_num + 1) %
+	    DLFS_SEC_BUF_NUM;
+	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf + dlfs_files[fd].sbuf_num;
+
 	dlfs_flush_sec.sec = sec;
 	dlfs_flush_sec.write_eof_mark = write_eof_mark;
 	dlfs_flush_sec.update_inode_time = update_inode_time;
@@ -494,6 +495,9 @@ dlfs_init(void)
 	/* Initialize file descriptor. */
 	dlfs_files[fd].sec = 0;
 	dlfs_files[fd].pos = 0;
+	/* Current sector buffer. */
+	dlfs_files[fd].sbuf_num = 0;
+	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf;
 
 	/* Initialize structure for measuring IO statistics. */
 	dlfs_kstat_clear();
@@ -602,13 +606,17 @@ dlfs_open(const char *path, int oflag)
 	/* Initialize file descriptor. */
 	dlfs_files[fd].sec = inode_sec + 1;
 	dlfs_files[fd].pos = 0;
+	/* Current sector buffer. */
+	dlfs_files[fd].sbuf_num = 0;
+	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf;
 
 	/* Clean up data buffer. */
-	dlfs_clean_db_data(&dlfs_files[fd].u.db);
+	dlfs_clean_db_data(&dlfs_files[fd].sbufp->db);
 
 	/* Create new 'inode' and write it to the media. */
 	/* Populate magic word. */
-	dlfs_populate_magic(dlfs_files[fd].u.inode.magic, DLFS_MAGIC_INODE);
+	dlfs_populate_magic(dlfs_files[fd].sbufp->inode.magic,
+	    DLFS_MAGIC_INODE);
 
 	/*
 	 * Flush the inode sector to the media.
@@ -657,7 +665,8 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 	 */
 	if (pos + nbyte > DLFS_MAX_DATA_LN) {
 		/* Populate magic word. */
-		dlfs_populate_magic(dlfs_files[fd].u.db.magic, DLFS_MAGIC_DB);
+		dlfs_populate_magic(dlfs_files[fd].sbufp->db.magic,
+		    DLFS_MAGIC_DB);
 
 		/*
 		 * Write as much as possible of the log record to the
@@ -667,20 +676,19 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 
 		if (written > 0) {
 			nbyte -= written;
-			memcpy(dlfs_files[fd].u.db.data + pos, buf, written);
+			memcpy(dlfs_files[fd].sbufp->db.data + pos, buf,
+			    written);
 		}
 
 		/*
 		 * Flush the current sector to the media.
 		 * Write 'EOF mark' sector as well.
 		 * Do not update inode time.
+		 * If flush operation fails, then do not write anything.
 		 */
 		if (dlfs_flush(dlfs_files[fd].sec, TRUE, FALSE) != 0) {
 			return 0;
 		}
-
-		/* Clean up data buffer. */
-		dlfs_clean_db_data(&dlfs_files[fd].u.db);
 
 		/* Start populating the next sector. */
 		dlfs_files[fd].sec++;
@@ -688,11 +696,19 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 	}
 
 	/* Copy rest of the data to the buffer. */
-	memcpy(dlfs_files[fd].u.db.data + pos, buf + written, nbyte);
+	memcpy(dlfs_files[fd].sbufp->db.data + pos, buf + written, nbyte);
 	written += nbyte;
 
 	/* Update index. */
 	dlfs_files[fd].pos += nbyte;
+
+	/*
+	 * Write 'end of record' mark after the last written character.
+	 * But only if there is a space for it.
+	 */
+	if (dlfs_files[fd].pos < DLFS_MAX_DATA_LN) {
+		dlfs_files[fd].sbufp->db.data[dlfs_files[fd].pos] = 0xff;
+	}
 	
 	return written;
 }
@@ -722,11 +738,12 @@ dlfs_flush_ul_svc(void)
 
 	/* Update inode time if desired. */
 	if (dlfs_flush_sec.update_inode_time) {
-		dlfs_flush_sec.u.inode.ctime = (unsigned long long)time(NULL);
+		dlfs_flush_sec.sbufp->inode.ctime =
+		    (unsigned long long)time(NULL);
 	}
 
 	/* Now write data. */
-	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.u.buf, TRUE);
+	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.sbufp->buf, TRUE);
 
 	/* Let lower layer know we are done. */
 	dlfs_flush_sec.dirty = FALSE;
@@ -746,7 +763,7 @@ dlfs_inode_in_use(int in)
 		return FALSE;
 	}
 
-	return strncmp((char *)dlfs_files[fd].u.inode.magic,
+	return strncmp((char *)dlfs_files[fd].sbufp->inode.magic,
 	    DLFS_MAGIC_INODE, DLFS_MAGIC_SIZE) == 0;
 }
 
@@ -771,7 +788,7 @@ dlfs_inode_is_free(int in)
 		return FALSE;
 	}
 
-	return dlfs_files[fd].u.buf_ul[0] == DLFS_DATA_UNUSED;
+	return dlfs_files[fd].sbufp->buf_ul[0] == DLFS_DATA_UNUSED;
 }
 
 /*
