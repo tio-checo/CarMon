@@ -42,6 +42,8 @@ typedef struct rtl_svc {
 	int		(*svc)(void);	/* service method */
 	BOOL		enabled;	/* service enabled */
 	BOOL		run_in_diag;	/* service enabled in diagnostic mode */
+	long		start_time;	/* max start time */
+	long		svc_time;	/* max time spent in the service */
 } rtl_svc_t;
 
 /* macros */
@@ -75,6 +77,8 @@ static struct rtl_istat_t {
 	int	num;		/* Interrupt number */
 	unsigned long	min_time;	/* Min timer ticks spent in handler */
 	unsigned long	max_time;	/* Max timer ticks spent in handler */
+	unsigned long	missed;	/* Number of missed interrupts */
+	unsigned long	nloops;	/* Max number of loops spent in ISR. */
 } rtl_istat[RTL_ISTAT_NUM];
 
 /* local functions */
@@ -288,6 +292,7 @@ rtl_svc_init(const char *name, int (*svc)(void), BOOL en, BOOL run_in_diag)
 	rtl_pool_svcs[i].svc = svc;
 	rtl_pool_svcs[i].enabled = en;
 	rtl_pool_svcs[i].run_in_diag = run_in_diag;
+	rtl_pool_svcs[i].start_time = rtl_pool_svcs[i].svc_time = 0;
 
 	return (rtl_svc_handle_t) i;
 }
@@ -357,6 +362,8 @@ rtl_init(void)
 	rtl_istat[RTL_ISTAT_TIMER1].num = _TIMER_1_IRQ;
 	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
 	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
+	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
+	rtl_istat[RTL_ISTAT_TIMER1].nloops = 0L;
 
 	/*
 	 * Timer 1 used to generate interrupt for main service loop.
@@ -404,42 +411,67 @@ rtl_svc_handler_disable(void)
 }
 
 /*
+ * Clear kstats.
+ */
+int
+rtl_svc_clear_kstats(void)
+{
+	int i;
+
+	/* Service kstats. */
+	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
+	    i++) {
+		rtl_pool_svcs[i].start_time = rtl_pool_svcs[i].svc_time = 0;
+	}
+
+	/* Interrupt kstats. */
+	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
+	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
+	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
+	rtl_istat[RTL_ISTAT_TIMER1].nloops = 0L;
+
+	return 0;
+}
+
+/*
  * Display service table and statistics for debugging purposes.
  */
 int
-rtl_svc_display_table(int (*print_str)(const char *))
+rtl_svc_display_kstats(int (*print_str)(const char *))
 {
 	char s[81];
 	int i;
 
 	/* print header */
-	print_str("-------------------------------------\n\r");
-	print_str("SH ADDRESS     E  D  N\n\r");
-	print_str("-------------------------------------\n\r");
+	print_str("---------------------------------------------\n\r");
+	print_str("SH ADDRESS    E D start_time svc_time N\n\r");
+	print_str("---------------------------------------------\n\r");
 
 	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
 	    i++) {
-		snprintf(s, sizeof (s), "%2d 0x%08X  %s  %s  %s\n\r",
+		snprintf(s, sizeof (s), "%2d 0x%08X %s %s %10ld %8ld %s\r\n",
 		    i, (unsigned int) rtl_pool_svcs[i].svc,
 		    rtl_pool_svcs[i].enabled ? "Y" : "N",
 		    rtl_pool_svcs[i].run_in_diag ? "Y" : "N",
+		    rtl_pool_svcs[i].start_time, rtl_pool_svcs[i].svc_time,
 		    rtl_pool_svcs[i].name);
 
 		print_str(s);
 	}
 
-	print_str("-------------------------------------\n\r");
-	print_str("IRQ# min[ticks] max[ticks] NAME\n\r");
-	print_str("-------------------------------------\n\r");
+	print_str("---------------------------------------------\n\r");
+	print_str("IRQ# min[ticks] max[ticks] missed nloops NAME\n\r");
+	print_str("---------------------------------------------\n\r");
 
 	for (i = 0; i < RTL_ISTAT_NUM; i++) {
-		snprintf(s, sizeof (s), "%4d %10ld %10ld %s\n\r",
-		    rtl_istat[0].num, rtl_istat[0].min_time,
-		    rtl_istat[0].max_time, rtl_istat[0].name);
+		snprintf(s, sizeof (s), "%4d %10ld %10ld %6ld %6ld %s\n\r",
+		    rtl_istat[i].num, rtl_istat[i].min_time,
+		    rtl_istat[i].max_time, rtl_istat[i].missed,
+		    rtl_istat[i].nloops, rtl_istat[i].name);
 		print_str(s);
 	}
 
-	print_str("-------------------------------------\n\r");
+	print_str("---------------------------------------------\n\r");
 
 	return 0;
 }
@@ -463,43 +495,92 @@ void
 __attribute__ ((interrupt)) isr_timer1(void)
 {
 	int i;
-	unsigned long t;
+	unsigned long nloops = 0;
 
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
-	/* Handle timers */
-	rtl_timer_svc();
-	/* handle heartbeat LED */
-	rtl_heartbeat_svc();
+	/*
+	 * Loop in case of missed interrupt,
+	 * thus avoiding redundant context switch.
+	 */
+	do {
+		/* clear Timer 1 interrupt flag */
+		IFS0CLR = 1 << 4;
 
-	/* Run enabled services */
-	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
-	    i++) {
-		/*
-		 * If in diagnostic mode, make sure that particular service
-		 * should run in that mode.
-		 */
-		if (rtl_pool_svcs[i].enabled) {
-			if (!mon_is_diag_mode()) {
+		/* Count number of loops in this ISR. */
+		nloops++;
+
+		/* Handle timers */
+		rtl_timer_svc();
+		/* handle heartbeat LED */
+		rtl_heartbeat_svc();
+
+		/* Run enabled services */
+		for (i = 0; (i < RTL_SVC_POOL_SIZE) &&
+		    (rtl_pool_svcs[i].svc != NULL); i++) {
+			/*
+			 * If in diagnostic mode, make sure that particular
+			 * service should run in that mode.
+			 */
+			if (rtl_pool_svcs[i].enabled &&
+			    (!mon_is_diag_mode() ||
+			    rtl_pool_svcs[i].run_in_diag)) {
+				long s, t;
+
+				/*
+				 * Record start time as well as
+				 * time spent in the service.
+				 */
+				s  = TMR1;
+
 				rtl_pool_svcs[i].svc();
-			} else if (rtl_pool_svcs[i].run_in_diag) {
-				rtl_pool_svcs[i].svc();
+
+				t = (long)TMR1 - s;
+
+				/* Update only if not running in diag mode. */
+				if (mon_is_diag_mode()) {
+					continue;
+				}
+
+				if (rtl_pool_svcs[i].start_time < s) {
+					rtl_pool_svcs[i].start_time = s;
+				}
+
+				if (rtl_pool_svcs[i].svc_time < t) {
+					rtl_pool_svcs[i].svc_time = t;
+				}
 			}
 		}
-	}
 
-	/* Record time spent in this handler, but only if not in diag mode. */
+		/*
+		 * Count missed interrupts and record time spent
+		 * in this handler, but only if not in diag mode.
+		 */
+		if (!mon_is_diag_mode()) {
+			unsigned long t = TMR1;
+
+			if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t) {
+				rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
+			}
+
+			if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t) {
+				rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
+			}
+
+			if (IFS0bits.T1IF &&
+			    rtl_istat[RTL_ISTAT_TIMER1].missed <
+			    0xffffffff) {
+				rtl_istat[RTL_ISTAT_TIMER1].missed++;
+			}
+		}
+	} while (IFS0bits.T1IF);
+
+	/* Update max number of loops spent in this ISR. */
 	if (!mon_is_diag_mode()) {
-		t = TMR1;
-		if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t)
-			rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
-
-		if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t)
-			rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
+		if (rtl_istat[RTL_ISTAT_TIMER1].nloops < nloops) {
+			rtl_istat[RTL_ISTAT_TIMER1].nloops = nloops;
+		}
 	}
-
-	/* clear Timer 1 interrupt flag */
-	IFS0CLR = 1 << 4;
 
 	/* turn off LED indicating CPU load */
 	LATBSET = 1 << 12;

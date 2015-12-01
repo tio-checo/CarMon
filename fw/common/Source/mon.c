@@ -81,7 +81,8 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[1] SD card\n\r" \
     "[2] Bluetooth module\n\r" \
     "[3] Read Memory\n\r" \
-    "[4] Display task table\n\r" \
+    "[4] Display kstats\n\r" \
+    "[c] Clear kstats\n\r" \
     "[5] Status of USB\n\r" \
     "[d] Detach USB\n\r" \
     "[D] Disable USB\n\r" \
@@ -364,9 +365,14 @@ mon_main_menu(unsigned char ch)
 
 		break;
 
-	/* Display service table */
+	/* Display RT kstats. */
 	case '4':
-		rtl_svc_display_table(mon_print_str);
+		rtl_svc_display_kstats(mon_print_str);
+		break;
+
+	/* Clear RT kstats. */
+	case 'c':
+		rtl_svc_clear_kstats();
 		break;
 
 	/* print USB status */

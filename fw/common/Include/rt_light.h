@@ -60,8 +60,10 @@ extern int rtl_svc_disable(rtl_svc_handle_t);
 extern int rtl_svc_handler_enable(void);
 /* Disable service handler. */
 extern int rtl_svc_handler_disable(void);
-/* Display service table for debugging purposes. */
-extern int rtl_svc_display_table(int (*)(const char *));
+/* Display kstats. */
+extern int rtl_svc_display_kstats(int (*)(const char *));
+/* Clear kstats. */
+extern int rtl_svc_clear_kstats(void);
 /* Configure heartbeat LED. */
 extern int rtl_hb_mode(int, int, int);
 
