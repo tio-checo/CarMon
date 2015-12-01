@@ -496,6 +496,7 @@ __attribute__ ((interrupt)) isr_timer1(void)
 {
 	int i;
 	unsigned long nloops = 0;
+	BOOL is_diag_mode;
 
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
@@ -515,6 +516,8 @@ __attribute__ ((interrupt)) isr_timer1(void)
 		/* handle heartbeat LED */
 		rtl_heartbeat_svc();
 
+		is_diag_mode = mon_is_diag_mode();
+
 		/* Run enabled services */
 		for (i = 0; (i < RTL_SVC_POOL_SIZE) &&
 		    (rtl_pool_svcs[i].svc != NULL); i++) {
@@ -523,22 +526,23 @@ __attribute__ ((interrupt)) isr_timer1(void)
 			 * service should run in that mode.
 			 */
 			if (rtl_pool_svcs[i].enabled &&
-			    (!mon_is_diag_mode() ||
-			    rtl_pool_svcs[i].run_in_diag)) {
+			    (!is_diag_mode || rtl_pool_svcs[i].run_in_diag)) {
 				long s, t;
 
 				/*
 				 * Record start time as well as
 				 * time spent in the service.
 				 */
-				s  = TMR1;
+				s = TMR1;
 
 				rtl_pool_svcs[i].svc();
 
 				t = (long)TMR1 - s;
 
+				/* Service may have switched us to diag mode. */
 				/* Update only if not running in diag mode. */
-				if (mon_is_diag_mode()) {
+				if (mon_is_diag_mode() || is_diag_mode) {
+					is_diag_mode = TRUE;
 					continue;
 				}
 
@@ -556,7 +560,7 @@ __attribute__ ((interrupt)) isr_timer1(void)
 		 * Count missed interrupts and record time spent
 		 * in this handler, but only if not in diag mode.
 		 */
-		if (!mon_is_diag_mode()) {
+		if (!is_diag_mode) {
 			unsigned long t = TMR1;
 
 			if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t) {
@@ -576,7 +580,7 @@ __attribute__ ((interrupt)) isr_timer1(void)
 	} while (IFS0bits.T1IF);
 
 	/* Update max number of loops spent in this ISR. */
-	if (!mon_is_diag_mode()) {
+	if (!is_diag_mode) {
 		if (rtl_istat[RTL_ISTAT_TIMER1].nloops < nloops) {
 			rtl_istat[RTL_ISTAT_TIMER1].nloops = nloops;
 		}

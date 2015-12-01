@@ -491,9 +491,13 @@ cm_log_gps(char *d)
 
 	/*
 	 * timestamp and name-value pair are to be logged.
-	 * snprintf guarantees that the resulting string is NULL-terminated.
+	 * strcat guarantees that the resulting string is NULL-terminated.
 	 */
-	snprintf(log_record, sizeof (log_record), "%s,GPS,%s\r\n", ts, d);
+	log_record[0] = '\0';
+	strcat(log_record, ts);
+	strcat(log_record + 17, ",GPS,");
+	strcat(log_record + 22, d);
+	strcat(log_record, "\r\n");
 
 	/*
 	 * Write log record to log device.

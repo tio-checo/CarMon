@@ -333,15 +333,33 @@ pcore_gettime(void)
 	time_t t;
 	struct tm *currtm;
 	struct timeval currtv;
+	unsigned long t1, t2;
+
+	t1 = TMR1;
 
 	get_curr_hrtime(&currtv);
 	t = currtv.tv_sec;
 	currtm = gmtime(&t);
 
-	snprintf(tds, sizeof (tds), "%04d%02d%02d%02d%02d%02d%03ld",
-	    currtm->tm_year + 1900, currtm->tm_mon + 1, currtm->tm_mday,
-	    currtm->tm_hour, currtm->tm_min, currtm->tm_sec,
-	    currtv.tv_usec / 1000);
+	ulong2str(currtm->tm_year + 1900, tds, 4);
+	ulong2str(currtm->tm_mon + 1, tds + 4, 2);
+	ulong2str(currtm->tm_mday, tds + 6, 2);
+	ulong2str(currtm->tm_hour, tds + 8, 2);
+	ulong2str(currtm->tm_min, tds + 10, 2);
+	ulong2str(currtm->tm_sec, tds + 12, 2);
+	ulong2str(currtv.tv_usec / 1000, tds + 14, 3);
+
+	tds[17] = '\0';
+
+	t2 = TMR1;
+
+	if (t2 > t1) {
+		t2 -= t1;
+
+		if (pcore_gettime_time < t2) {
+			pcore_gettime_time = t2;
+		}
+	}
 
 	return tds;
 }

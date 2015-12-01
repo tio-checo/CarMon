@@ -119,6 +119,23 @@ dec2ulong(char *a, int ln)
 }
 
 /*
+ * Converts unsigned long to string with leading zeros.
+ */
+int
+ulong2str(unsigned long n, char *out, int ln)
+{
+	int i;
+
+	for (i = ln - 1; i >= 0; i--) {
+		out[i] = '0' + n % 10;
+
+		n /= 10;
+	}
+
+	return 0;
+}
+
+/*
  * Initializes 16bit CRC-CCITT calculation algorithm
  */
 void

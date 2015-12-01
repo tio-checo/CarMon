@@ -58,6 +58,9 @@ extern USB_VOLATILE long USBEP0Service;
 /* external functions */
 /* print information about memory allocation requests */
 extern int print_alloc_requests(int (*printstr)());
+/* global variables */
+/* used to measure time spent in various functions. */
+long pcore_gettime_time;
 
 /* local functions */
 /* Handler for main menu. */
@@ -91,6 +94,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[t] Display time of the day\n\r" \
     "[T] Set date to 04/10/2013 17:00:00\n\r" \
     "[r] Read pcf8563 registers\n\r" \
+    "[p] Function profiler\n\r" \
     "[0] Quit diagnostic mode\n\r" \
     "------------------------\n\r"
 
@@ -478,6 +482,16 @@ mon_main_menu(unsigned char ch)
 #else
 		mon_print_str("GPS not available\r\n");
 #endif
+		break;
+
+	/* Function profiler. */
+	case 'p':
+		snprintf(str, sizeof (str), "pcore_gettime(): %ld\r\n",
+		    pcore_gettime_time);
+		mon_print_str(str);
+
+		pcore_gettime_time = 0;
+
 		break;
 
 	case 'r':

@@ -136,7 +136,7 @@ gps_update_rtc(char *s)
 	 *             YYYYMMDDHHMMSS
 	 */
 	/* Year */
-	snprintf(td, sizeof (td), "%s", "20");
+	td[0] = '2'; td[1] = '0';
 	td[2] = d[4]; td[3] = d[5];
 
 	/* Month */
@@ -146,7 +146,12 @@ gps_update_rtc(char *s)
 	td[6] = d[0]; td[7] = d[1];
 
 	/* Time */
-	snprintf(td + 8, sizeof (td) - 8, "%s", t);
+	td[8] = t[0]; td[9] = t[1];
+	td[10] = t[2]; td[11] = t[3];
+	td[12] = t[4]; td[13] = t[5];
+
+	/* null terminator */
+	td[14] = '\0';
 
 	/*
 	 * Update HW clock.
@@ -167,6 +172,11 @@ gps_update_rtc(char *s)
 static void
 gps_rx_svc(unsigned char ch)
 {
+	/* Index in NMEA sentence buffer */
+	static int i;
+
+	BOOL is_gga, is_rmc;
+
 	switch (gps_st) {
 	/* Wait for SOF */
 	case GPS_ST_WAIT4SOF:
@@ -174,8 +184,9 @@ gps_rx_svc(unsigned char ch)
 			break;
 		}
 
-		/* SOF received, initialize sentence buffer. */
-		memset(gps_nmea_buf, 0, sizeof (gps_nmea_buf));
+		/* SOF received, clear sentence buffer. */
+		gps_nmea_buf[0] = '\0';
+		i = 0;
 
 		gps_st = GPS_ST_SENTENCE;
 
@@ -185,7 +196,8 @@ gps_rx_svc(unsigned char ch)
 	case GPS_ST_SENTENCE:
 		/* SOF received, start from scratch. */
 		if (ch == GPS_NMEA_SOF) {
-			memset(gps_nmea_buf, 0, sizeof (gps_nmea_buf));
+			gps_nmea_buf[0] = '\0';
+			i = 0;
 
 			break;
 		}
@@ -199,13 +211,16 @@ gps_rx_svc(unsigned char ch)
 		 * terminator.
 		 */
 		if (ch != GPS_NMEA_CHSUM) {
-			size_t l = strlen(gps_nmea_buf);
-
-			if (l >= sizeof(gps_nmea_buf) - 1) {
+			if (i >= sizeof(gps_nmea_buf) - 1) {
 				break;
 			}
 
-			gps_nmea_buf[l] = ch;
+			gps_nmea_buf[i++] = ch;
+		 	/*
+			 * Make sure that the string to be logged
+			 * is  NULL-terminated.
+			 */
+			gps_nmea_buf[i] = '\0';
 			break;
 		}
 
@@ -214,13 +229,9 @@ gps_rx_svc(unsigned char ch)
 		 * 'GPGGA' and 'GPRMC' sentences are logged,
 		 * others are currently discarded.
 		 */
-		if (gps_is_nmea_sentence(GPS_NMEA_GGA) ||
-		    gps_is_nmea_sentence(GPS_NMEA_RMC)) {
-		 	/*
-			 * Make sure that the string to be logged
-			 * is  NULL-terminated.
-			 */
-			gps_nmea_buf[sizeof (gps_nmea_buf) - 1] = '\0';
+		is_gga = gps_is_nmea_sentence(GPS_NMEA_GGA);
+		is_rmc = gps_is_nmea_sentence(GPS_NMEA_RMC);
+		if (is_gga || is_rmc) {
 			cm_gps_callback(gps_nmea_buf);
 		}
 
@@ -229,7 +240,7 @@ gps_rx_svc(unsigned char ch)
 		 * Determined from 'GGA' sentence:
 		 * $GPGGA,<time>,<lat1>,<lat2>,<long1>,<long2>,<status>,...
 		 */
-		if (gps_is_nmea_sentence(GPS_NMEA_GGA)) {
+		if (is_gga) {
 			char *pos = gps_get_nmea_field(gps_nmea_buf, 6);
 
 			/* Field containing status was found. */
@@ -244,7 +255,7 @@ gps_rx_svc(unsigned char ch)
 		 * $GPRMC,<HHMMSS>,<sts>,<lat1>,<lat2>,<long1>,<long2>,<speed>,
 		 *        <track angle>,<DDMMYY>,<mag var>
 		 */
-		if (gps_is_nmea_sentence(GPS_NMEA_RMC)) {
+		if (is_rmc) {
 			gps_update_rtc(gps_nmea_buf);
 		}
 

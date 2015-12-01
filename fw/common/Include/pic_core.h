@@ -19,6 +19,10 @@
 
 /* types */
 
+/* variables */
+/* used to measure time spent in various functions. */
+extern long pcore_gettime_time;
+
 /* public functions */
 /* Initialization routine. */
 extern int pcore_init(void);

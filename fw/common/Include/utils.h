@@ -25,6 +25,9 @@ extern int hex2ucharbuf(char *, unsigned char *, int);
 /* Converts given number of ASCII decimal characters (max 10) to unsigned long */
 extern unsigned long dec2ulong(char *, int);
 
+/* Converts unsigned long to string with leading zeros. */
+extern int ulong2str(unsigned long n, char *out, int ln);
+
 /* Initializes CRC calculation algorithm */
 extern void crc_init(void);
 
