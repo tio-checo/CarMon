@@ -791,6 +791,7 @@ mon_sd_menu(unsigned char ch)
 	/* Format SD card */
 	case '9':
 	{
+#if 0
 		int err;
 
 		mon_print_str("\n\rFormatting media... ");
@@ -801,6 +802,9 @@ mon_sd_menu(unsigned char ch)
 		} else {
 			mon_print_str("done.\n\r");
 		}
+#else
+		mon_print_str("\r\nFeature disabled, use CLI instead.\r\n");
+#endif
 	} break;
 #else
 #error "No monitor menu defined for SD card."

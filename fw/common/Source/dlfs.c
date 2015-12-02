@@ -535,6 +535,7 @@ dlfs_init(void)
 	return 0;
 }
 
+#if 0
 /*
  * Formats media.
  *
@@ -568,6 +569,7 @@ dlfs_format(void)
 
 	return 0;
 }
+#endif
 
 /*
  * Opens file.

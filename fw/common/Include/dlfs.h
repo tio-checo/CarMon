@@ -119,8 +119,10 @@ typedef struct {
 /* Initialization routine. */
 extern int dlfs_init(void);
 
+#if 0
 /* Formats media. */
 extern int dlfs_format(void);
+#endif
 
 /* Opens file. */
 extern int dlfs_open(const char *, int);
