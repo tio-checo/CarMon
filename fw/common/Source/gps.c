@@ -18,6 +18,7 @@
 #include "carmon.h"
 #include "pic_core.h"
 #include "rt_light.h"
+#include "utils.h"
 #include "gps.h"
 
 #include <stdio.h>
@@ -46,6 +47,9 @@ static int gps_status;
 
 /* Set to TRUE once HW clock has been synced with GPS. */
 static BOOL gps_rtc_updated;
+
+/* Number of checksum errors. */
+static unsigned long gps_chsum_err;
 
 /*
  * Buffer holding received NMEA sentence.
@@ -176,6 +180,7 @@ gps_rx_svc(unsigned char ch)
 	static int i;
 
 	BOOL is_gga, is_rmc;
+	int chsum;
 
 	switch (gps_st) {
 	/* Wait for SOF */
@@ -184,8 +189,7 @@ gps_rx_svc(unsigned char ch)
 			break;
 		}
 
-		/* SOF received, clear sentence buffer. */
-		gps_nmea_buf[0] = '\0';
+		/* SOF received, prepare sentence buffer. */
 		i = 0;
 
 		gps_st = GPS_ST_SENTENCE;
@@ -194,33 +198,87 @@ gps_rx_svc(unsigned char ch)
 
 	/* Receives NMEA sentence. */
 	case GPS_ST_SENTENCE:
-		/* SOF received, start from scratch. */
+		/*
+		 * '\n' received in the middle of the sentence means
+		 * that we have lost connection with the GPS BT module.
+		 * Drop the ball in such case and wait for the new
+		 * sentence which is to be received once the connection
+		 * is established again.
+		 */
+		if (ch == '\n') {
+			gps_st = GPS_ST_WAIT4SOF;
+
+			break;
+		}
+
+		/*
+		 * SOF received, start from scratch.
+		 * Not likely, but also not impossible.
+		 */
 		if (ch == GPS_NMEA_SOF) {
-			gps_nmea_buf[0] = '\0';
 			i = 0;
 
 			break;
 		}
 
 		/*
-		 * Received character is not a checksum indicator,
+		 * Received character is not an EOF mark,
 		 * so it is part of a sentence. Store it to the buffer.
 		 * If buffer is already full, then discard the character,
 		 * but continue to receive the sentence.
 		 * Last position in the buffer is reserved for NULL
 		 * terminator.
 		 */
-		if (ch != GPS_NMEA_CHSUM) {
+		if (ch != GPS_NMEA_EOF) {
 			if (i >= sizeof(gps_nmea_buf) - 1) {
 				break;
 			}
 
 			gps_nmea_buf[i++] = ch;
-		 	/*
-			 * Make sure that the string to be logged
-			 * is  NULL-terminated.
-			 */
-			gps_nmea_buf[i] = '\0';
+			break;
+		}
+
+		/*
+		 * Sentence complete.
+		 * Verify that at least some data
+		 * and check sum have been received.
+		 */
+		if (i < 4) {
+			gps_st = GPS_ST_WAIT4SOF;
+
+			break;
+		}
+
+		/*
+		 * Calculate and verify check sum.
+		 * If check sum is not present, discard the sentence.
+		 */
+		if (gps_nmea_buf[i - 3] != GPS_NMEA_CHSUM) {
+			gps_st = GPS_ST_WAIT4SOF;
+
+			break;
+		}
+
+		/* Extract check sum. */
+		chsum = hex2ulong(gps_nmea_buf + i - 2, 2);
+
+	 	/* Drop the checksum from the resulting sentence. */
+		gps_nmea_buf[i - 3] = '\0';
+
+		/*
+		 * Calculate the checksum and XOR it with expected value.
+		 * Result of such operation should be zero.
+		 */
+		for (i = 0; gps_nmea_buf[i] != 0; i++) {
+			chsum ^= gps_nmea_buf[i];
+		}
+
+		if (chsum != 0) {
+			/* Increment error counter. */
+			gps_chsum_err++;
+
+			gps_st = GPS_ST_WAIT4SOF;
+
 			break;
 		}
 
@@ -303,6 +361,9 @@ gps_init(void)
 	/* HW clock not synced yet. */
 	gps_rtc_updated = FALSE;
 
+	/* Clear check sum error counter. */
+	gps_chsum_err = 0;
+
 	/* Register and enable main service routine. */
 	rtl_svc_init("GPS", gps_main_svc, TRUE, TRUE);
 
@@ -335,6 +396,10 @@ gps_print_diag_info(int (*print_str)(const char *))
 	    bt_is_paired_with_gps() ? "Yes" : "No");
 	print_str(s);
 
+	/* Number of checksum errors. */
+	snprintf(s, sizeof(s), "Chsum errors: %lu\r\n", gps_chsum_err);
+	print_str(s);
+	
 	/* GPS status */
 	snprintf(s, sizeof(s), "GGA fix quality: %d\r\n", gps_status);
 	print_str(s);
