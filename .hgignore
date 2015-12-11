@@ -28,6 +28,7 @@ MplabX
 .*\.ps$
 .*\.jpg$
 .*\.png$
+.*\.pyc$
 .*\.sbs$
 .*\.swp$
 .*\.sym$
