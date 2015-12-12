@@ -262,14 +262,14 @@ gps_rx_svc(unsigned char ch)
 		/* Extract check sum. */
 		chsum = hex2ulong(gps_nmea_buf + i - 2, 2);
 
-	 	/* Drop the checksum from the resulting sentence. */
-		gps_nmea_buf[i - 3] = '\0';
+	 	/* Make sure string is null-terminated. */
+		gps_nmea_buf[i] = '\0';
 
 		/*
 		 * Calculate the checksum and XOR it with expected value.
 		 * Result of such operation should be zero.
 		 */
-		for (i = 0; gps_nmea_buf[i] != 0; i++) {
+		for (i = 0; gps_nmea_buf[i] != GPS_NMEA_CHSUM; i++) {
 			chsum ^= gps_nmea_buf[i];
 		}
 
