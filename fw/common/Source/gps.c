@@ -70,7 +70,8 @@ gps_is_nmea_sentence(const char *s)
 {
 	size_t l = strlen(s);
 
-	return (strncmp(gps_nmea_buf, s, l) == 0);
+	/* start of frame is not subject of comparison */
+	return (strncmp(gps_nmea_buf + 1, s, l) == 0);
 }
 
 /*
@@ -190,7 +191,8 @@ gps_rx_svc(unsigned char ch)
 		}
 
 		/* SOF received, prepare sentence buffer. */
-		i = 0;
+		gps_nmea_buf[0] = GPS_NMEA_SOF;
+		i = 1;
 
 		gps_st = GPS_ST_SENTENCE;
 
@@ -216,7 +218,8 @@ gps_rx_svc(unsigned char ch)
 		 * Not likely, but also not impossible.
 		 */
 		if (ch == GPS_NMEA_SOF) {
-			i = 0;
+			gps_nmea_buf[0] = GPS_NMEA_SOF;
+			i = 1;
 
 			break;
 		}
@@ -268,8 +271,9 @@ gps_rx_svc(unsigned char ch)
 		/*
 		 * Calculate the checksum and XOR it with expected value.
 		 * Result of such operation should be zero.
+		 * Skip start of frame.
 		 */
-		for (i = 0; gps_nmea_buf[i] != GPS_NMEA_CHSUM; i++) {
+		for (i = 1; gps_nmea_buf[i] != GPS_NMEA_CHSUM; i++) {
 			chsum ^= gps_nmea_buf[i];
 		}
 
