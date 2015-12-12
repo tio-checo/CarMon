@@ -32,6 +32,7 @@
 #define	GPS_NMEA_EOF		'\r'	/* NMEA 'end of frame' */
 #define	GPS_NMEA_FIELD_SEP	','	/* NMEA field separator */
 #define	GPS_NMEA_GGA		"GPGGA"	/* GGA sentence signature */
+#define	GPS_NMEA_GSA		"GPGSA"	/* GSA sentence signature */
 #define	GPS_NMEA_RMC		"GPRMC"	/* RMC sentence signature */
 
 /* states of the main state machine */
@@ -183,7 +184,7 @@ gps_rx_svc(unsigned char ch)
 	/* Index in NMEA sentence buffer */
 	static int i;
 
-	BOOL is_gga, is_rmc;
+	BOOL is_gga, is_rmc, is_gsa;
 	int chsum;
 
 	switch (gps_st) {
@@ -291,12 +292,13 @@ gps_rx_svc(unsigned char ch)
 
 		/*
 		 * Checksum indicator received, sentence is complete.
-		 * 'GPGGA' and 'GPRMC' sentences are logged,
+		 * 'GPGGA', 'GPGSA' and 'GPRMC' sentences are logged,
 		 * others are currently discarded.
 		 */
 		is_gga = gps_is_nmea_sentence(GPS_NMEA_GGA);
+		is_gsa = gps_is_nmea_sentence(GPS_NMEA_GSA);
 		is_rmc = gps_is_nmea_sentence(GPS_NMEA_RMC);
-		if (is_gga || is_rmc) {
+		if (is_gga || is_gsa || is_rmc) {
 			cm_gps_callback(gps_nmea_buf);
 		}
 
