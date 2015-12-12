@@ -14,6 +14,8 @@
 extern int gps_init(void);
 /* Returns status of GPS device. */
 extern int gps_get_status(void);
+/* Returns current course - obtained from RMC sentence. */
+extern char gps_get_course(void);
 /* Prints diagnostic information. */
 extern void gps_print_diag_info(int (*)(const char *));
 #endif /* __GPS_H */

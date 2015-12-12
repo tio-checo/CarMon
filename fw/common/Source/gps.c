@@ -45,6 +45,9 @@ static int gps_st;
 /* Status of GPS device. */
 static int gps_status;
 
+/* Course - obtained from RMC sentence. */
+static int gps_course;
+
 /* Set to TRUE once HW clock has been synced with GPS. */
 static BOOL gps_rtc_updated;
 
@@ -298,9 +301,9 @@ gps_rx_svc(unsigned char ch)
 		}
 
 		/*
-		 * Keep status of GPS device.
-		 * Determined from 'GGA' sentence:
+		 * GGA sentence:
 		 * $GPGGA,<time>,<lat1>,<lat2>,<long1>,<long2>,<status>,...
+		 * Determine status of GPS device.
 		 */
 		if (is_gga) {
 			char *pos = gps_get_nmea_field(gps_nmea_buf, 6);
@@ -312,12 +315,20 @@ gps_rx_svc(unsigned char ch)
 		}
 
 		/*
-		 * Synchronize HW clock from GPS.
-		 * Time and date determined from 'RMC' sentence:
+		 * RMC sentence.
 		 * $GPRMC,<HHMMSS>,<sts>,<lat1>,<lat2>,<long1>,<long2>,<speed>,
 		 *        <track angle>,<DDMMYY>,<mag var>
+		 *  - synchronize HW clock from GPS
+		 *  - extract course
 		 */
 		if (is_rmc) {
+			char *course;
+
+			course = gps_get_nmea_field(gps_nmea_buf, 8);
+			if (course != NULL) {
+				gps_course = dec2ulong(course, 3);
+			}
+
 			gps_update_rtc(gps_nmea_buf);
 		}
 
@@ -379,6 +390,22 @@ int
 gps_get_status(void)
 {
 	return gps_status;
+}
+
+/* Returns current course - obtained from RMC sentence. */
+char
+gps_get_course(void)
+{
+	static const char course_str[] =
+	   {'S', 's', 'V', 'v', 'J', 'j', 'Z', 'z', 'S'};
+
+	int i = (gps_course * 2 + 45) / 90;
+
+	if (i < 0 || i > 8) {
+		return 'u';
+	}
+
+	return course_str[i];
 }
 
 /*

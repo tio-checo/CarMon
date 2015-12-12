@@ -99,6 +99,7 @@ hex2ucharbuf(char *in, unsigned char *out, int ln)
 
 /*
  * Converts given number of ASCII decimal characters (max 10) to unsigned long
+ * Stops conversion once non-digit character is found.
  */
 unsigned long
 dec2ulong(char *a, int ln)
@@ -106,14 +107,16 @@ dec2ulong(char *a, int ln)
 	int i;
 	unsigned long res = 0;
 
-	if (ln > 10)
-		return 0;
+	if (ln > 10) {
+		ln = 10;
+	}
 
 	for (i = 0; i < ln; i++) {
-		res *= 10;
-		if (a[i] < '0' || a[i] > '9')
-			return 0;
+		if (a[i] < '0' || a[i] > '9') {
+			break;
+		}
 
+		res *= 10;
 		res += a[i] - '0';
 	}
 

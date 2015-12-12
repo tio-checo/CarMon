@@ -1225,7 +1225,7 @@ obd_alarm_process(unsigned char *d, int ln)
 		fb_addr[14] = '%';
 
 		fb_addr[15] = bt_is_paired_with_gps() ?
-		    gps_get_status() > 0 ? ' '  : 'g' : '-';
+		    gps_get_status() > 0 ? gps_get_course() : 'g' : '-';
 
 		fb_addr[16] = '\0';
 
