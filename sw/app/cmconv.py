@@ -39,6 +39,9 @@ def extract_raw_pid_value(r):
 # False otherwise.
 #
 def is_obd_pid(r):
+    # Truncated record by no means does not carry valid PID value
+    if len(r) < 3:
+        return False
     return r[1].startswith('ECU')
 
 #
@@ -91,9 +94,6 @@ def main():
         for row in log_reader:
             if is_obd_pid(row):
                 log_records.append(row)
-
-    # Discard the last record - it is very likely truncated
-    del log_records[-1]
 
     # Determine start time from the first record
     start_time = ts2datetime(log_records[0][0])
