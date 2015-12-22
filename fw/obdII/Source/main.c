@@ -216,9 +216,10 @@ main(int argc, char **argv)
 			/* Suspend real time module */
 			rtl_suspend();
 
+#ifdef KWP2K_MODULE
 			/* Suspend KWP module */
 			kwp2k_suspend();
-
+#endif
 			/* Suspend BT module */
 			bt_suspend();
 
@@ -227,6 +228,11 @@ main(int argc, char **argv)
 
 			/* Suspend CAN module */
 			can_suspend();
+
+#ifdef GPS_MODULE
+			/* Suspend GPS module */
+			gps_suspend();
+#endif
 
 			/* turn off LEDs */
 			LATBSET = (1 << 12);

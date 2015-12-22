@@ -19,7 +19,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 #  - code optimized for size
 #  - soft float
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
--DOBDCONV_BOARD -DDEBUG_KWP2K -DKWP2K_MODULE -DOBD_MODULE -DCANHAL_MODULE \
+-DOBDCONV_BOARD -DOBD_MODULE -DCANHAL_MODULE \
 -DCARMON_MODULE -DI2CSW_MODULE -DPCF8563_MODULE -DLCDTERM_MODULE -DDLFS_MODULE \
 -DGPS_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
@@ -33,7 +33,7 @@ LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
 
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/helpers.o $(BUILD_DIR)/pic_core.o \
-    $(BUILD_DIR)/kwp2k.o $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
+    $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
     $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o $(BUILD_DIR)/obd.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
     $(BUILD_DIR)/usb_device.o \
@@ -136,9 +136,6 @@ $(BUILD_DIR)/gps.o: ../common/Source/gps.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/i2c_sw.o: ../common/Source/i2c_sw.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/kwp2k.o: ../common/Source/kwp2k.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/lcd_term.o: ../common/Source/lcd_term.c

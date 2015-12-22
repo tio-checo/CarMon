@@ -14,6 +14,10 @@
  *
  *********************************************************************/
 
+#include "HardwareProfile.h"
+#include "peripheral/uart.h"
+#include "xc.h"
+
 #include "bt.h"
 #include "carmon.h"
 #include "pic_core.h"
@@ -21,6 +25,7 @@
 #include "utils.h"
 #include "gps.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -342,6 +347,30 @@ gps_rx_svc(unsigned char ch)
 }
 
 /*
+ * Receives character from K-line UART.
+ * Return 0 if character has been received; EAGAIN otherwise.
+ */
+static int
+gps_getchar_uart(unsigned char *ch)
+{
+	/* Receive buffer is empty */
+	if (!U1STAbits.URXDA) {
+		/* If receiving was disabled due to 'buffer overflow',
+		 * re-enable it by clearing OERR error bit.
+		 */
+		if (U1STAbits.OERR)
+			U1STAbits.OERR = 0;
+
+		return EAGAIN;
+	}
+
+	/* There is a character in receive buffer, return it. */
+	*ch = U1RXREG;
+
+	return 0;
+}
+
+/*
  * Main service routine.
  *
  * Receives NMEA sentences from GPS and logs them to the log device.
@@ -355,8 +384,15 @@ gps_main_svc(void)
 	 * If there is a character from GPS module available,
 	 * let receive service routine process it.
 	 * Dry out HW receive buffer.
+	 * GPS can be connected either via Bluetooth or K-line.
+	 * It is up to the user to make sure that only one
+	 * type of connection is used.
 	 */
 	while (bt_getchar_gps(&ch) == 0) {
+		gps_rx_svc(ch);
+	}
+
+	while (gps_getchar_uart(&ch) == 0) {
 		gps_rx_svc(ch);
 	}
 
@@ -369,6 +405,36 @@ gps_main_svc(void)
 int
 gps_init(void)
 {
+#ifndef KWP2K_MODULE
+	/*
+	 * Initialize UART1 - used for communication with GPS over K-line.
+	 * K-line is only available if not in use by KWP2000 module.
+	 */
+
+	/*
+	 * initialize IO pins
+	 */
+	/* set Tx to inactive before it is configured as digital output */
+	LATDCLR = GPS_TX_MASK;
+	TRISDCLR = GPS_TX_MASK;
+
+	/*
+	 *  - baudrate: GPS_BAUDRATE
+	 *  - 8 data bits, 1 stop bit
+	 *  - continue to operate in IDLE mode
+	 *  - IrDA mode disabled
+	 *  - HW flow control turned off
+	 *  - loopback mode disabled
+	 *  - autobaud mode disabled
+	 *  - standard speed mode - 16x baud clock enabled
+	 */
+	U1BRG = (SYS_FREQ / 16 / GPS_BAUDRATE - 1);
+	U1MODE = UART_EN;
+
+	/* TX pin is inverted, so configure it as active in LOW */
+	U1STA = (UART_RX_ENABLE | UART_TX_ENABLE | UART_TX_INV);
+#endif /* KWP2K_MODULE */
+
 	/* Initialize GPS state machine. */
 	gps_st = GPS_ST_WAIT4SOF;
 
@@ -449,3 +515,20 @@ gps_print_diag_info(int (*print_str)(const char *))
 	/* footer */
 	print_str("-------------------------------------\n\r");	
 }
+
+/*
+ * Suspends the module.
+ */
+int
+gps_suspend(void)
+{
+	/* Before turning off UART, make sure Tx line is inactive */
+	LATDCLR = GPS_TX_MASK;
+
+	/* turn off K-line UART */
+	U1STA = UART_DIS;
+	U1MODE = UART_DIS;
+
+	return 0;
+}
+

@@ -11,7 +11,11 @@
 #include "can_hal.h"
 #include "carmon.h"
 #include "gps.h"
+
+#ifdef KWP2K_MODULE
 #include "kwp2k.h"
+#endif
+
 #include "lcd_term.h"
 #include "master_comm.h"
 #include "obd.h"
@@ -922,22 +926,26 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 	CAN_COMM_SPEED can_speed;
 	int filter_mode;
 	UINT32 filter, mask;
+#ifdef KWP2K_MODULE
 	int kwp_mode = KWP2K_MODE_DEBUG;
+#endif
 
-	if ((mode < 0) || (mode >= OBD_COMM_MODE_NUMBER_OF_MODES))
+	if ((mode < 0) || (mode >= OBD_COMM_MODE_NUMBER_OF_MODES)) {
 		return EINVAL;
+	}
 
 	switch (mode) {
 	/* Auto mode - TODO */
 	case OBD_COMM_MODE_AUTO:
 		/* obd_[send|recv] must be initialized to something. */
-		obd_send = kwp2k_ul_send;
-		obd_recv = kwp2k_obd_recv;
+		obd_send = can_obd_send;
+		obd_recv = can_obd_recv;
 
 		/* For now just make sure ACK is sent to master. */
-		obd_comm_st = OBD_COMM_ST_WAIT4KWP2KCONFDONE;
+		obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
 		break;
 
+#ifdef KWP2K_MODULE
 	/* KWP2000 normal or mixed with CAN */
 	case OBD_COMM_MODE_KWP2K_NORM:
 	case OBD_COMM_MODE_KWP2K_MIXED:
@@ -985,6 +993,14 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		}
 
 		break;
+#else
+	/* KWP2000 support not compiled in */
+	case OBD_COMM_MODE_KWP2K_NORM:
+	case OBD_COMM_MODE_KWP2K_MIXED:
+	case OBD_COMM_MODE_KWP2K_DEBUG:
+		err = EINVAL;
+		break;
+#endif /* KWP2K_MODULE */
 
 	/* Controller Area Network (CAN) */
 	case OBD_COMM_MODE_CAN_SID_250:
@@ -1224,8 +1240,7 @@ obd_alarm_process(unsigned char *d, int ln)
 		long2str(dpf_ar, fb_addr + 11, 3, FALSE);
 		fb_addr[14] = '%';
 
-		fb_addr[15] = bt_is_paired_with_gps() ?
-		    gps_get_status() > 0 ? gps_get_course() : 'g' : '-';
+		fb_addr[15] = gps_get_status() > 0 ? gps_get_course() : ' ';
 
 		fb_addr[16] = '\0';
 
@@ -1668,4 +1683,3 @@ obd_init(void)
 
 	return 0;
 }
-
