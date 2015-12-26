@@ -25,6 +25,9 @@ static int fdi, fdo;
 /* crc checksum */
 static unsigned short crc;
 
+/* 'force' flag set */
+static BOOL fl_force = FALSE;
+
 /* local functions */
 static BOOL block_is_empty(dlfs_file_t *);
 
@@ -33,7 +36,7 @@ static void
 usage(void)
 {
 	(void) fprintf(stderr,
-	    "Usage: dlfsdump -f file\n");
+	    "Usage: dlfsdump [-F] -f file\n");
 }
 
 /* Gracefully aborts. */
@@ -152,6 +155,79 @@ block_is_db(dlfs_file_t *df)
 	    DLFS_MAGIC_DB, DLFS_MAGIC_SIZE) == 0;
 }
 
+/*
+ * Moves to the next inode slot.
+ */
+static void
+move_to_next_inode_slot(void)
+{
+	/* Number of bytes per inode. */
+	off_t bpi = DLFS_SECS_PER_INODE * DLFS_SECTOR_SIZE;
+	off_t p;
+
+	/* Get current position first. */
+	p = lseek(fdi, 0, SEEK_CUR);
+	if (p == -1) {
+		perror("Failed to lseek current pos");
+		gracefully_abort();
+	}
+
+	/* Now move to the next inode slot. */
+	p = lseek (fdi, ((p + bpi - DLFS_SECTOR_SIZE) / bpi) * bpi, SEEK_SET);
+	if (p == -1 ) {
+		perror("Failed to lseek next inode");
+		gracefully_abort();
+	}
+}
+
+/*
+ * Finds next inode.
+ * Returns TRUE if inode has been found; FALSE otherwise.
+ */
+static BOOL
+find_next_inode(void) {
+	BOOL seek_done, inode_found;
+	dlfs_file_t dlfs_file;
+	off_t p;
+
+	seek_done = FALSE;
+	inode_found = FALSE;
+	while (!seek_done) {
+		/* Move to the next inode slot. */
+		move_to_next_inode_slot();
+
+		/* Read dlfs block. */
+		read_block(&dlfs_file);
+
+		if (block_is_empty(&dlfs_file)) {
+		/* Block is empty, we are done. */
+			seek_done = TRUE;
+		} else if (block_is_inode(&dlfs_file)) {
+		/* Next inode found. */
+			seek_done = TRUE;
+			inode_found = TRUE;
+		} else if (!block_is_db(&dlfs_file)) {
+		/*
+		 * Block is not empty, inode or data block,
+		 * thus something is wrong with the filesystem.
+		 */  
+			(void) fprintf(stderr,
+			    "\nFilesystem corrupted.\n");
+
+			gracefully_abort();
+		}
+	}
+
+	/* "Unprocess" the block. */
+	p = lseek(fdi, -DLFS_SECTOR_SIZE, SEEK_CUR);
+	if (p == -1) {
+		perror("failed to seek previous block");
+		gracefully_abort();
+	}
+
+	return inode_found;
+}
+
 /* global functions */
 int
 main(int argc, char *argv[])
@@ -163,20 +239,21 @@ main(int argc, char *argv[])
 	char ofname[1024];
 	BOOL done, is_db;
 	int fnum;
-	unsigned long long blk_num;
 	dlfs_file_t dlfs_file;
 	off_t pos;
 	time_t inode_time;
 	struct tm *inode_tm;
-	/* Number of bytes per inode. */
-	off_t bpi = DLFS_SECS_PER_INODE * DLFS_SECTOR_SIZE;
 
 	/* Invalidate file descriptors. */
 	fdi = fdo = -1;
 
 	/* Process options and arguments. */
-	while ((c = getopt(argc, argv, "f:")) != EOF) {
+	while ((c = getopt(argc, argv, "Ff:")) != EOF) {
 		switch(c) {
+		case 'F':
+			fl_force = TRUE;
+			break;
+
 		case 'f':
 			fpath = optarg;
 			break;
@@ -211,22 +288,22 @@ main(int argc, char *argv[])
 	 */
 	done = FALSE;
 	fnum = 0;
-	blk_num = 0;
 	while (!done) {
+		int oflag;
+
 		/* Read dlfs block. */
 		read_block(&dlfs_file);
 
 		/*
 		 * It can be either inode or empty slot.
-		 * If it is empty slot, then we are done.
+		 * If it is an empty slot, then we are done.
 		 */
 		if (block_is_empty(&dlfs_file)) {
 			done = TRUE;
 			continue;
 		} else if (!block_is_inode(&dlfs_file)) {
 			(void) fprintf(stderr,
-			    "Filesystem corrupted, invalid block %llu.\n",
-			    blk_num);
+			    "Filesystem corrupted.\n");
 			gracefully_abort();
 		}
 
@@ -246,14 +323,36 @@ main(int argc, char *argv[])
 		    inode_tm->tm_mday, inode_tm->tm_hour, inode_tm->tm_min,
 		    inode_tm->tm_sec);
 
-		printf("Dumping file %s... ", ofname);
+		/*
+		 * If the file is already extracted, do not overwrite it
+		 * unless force flag is set.
+		 */
+		oflag = O_CREAT | O_TRUNC | O_WRONLY;
+		if (!fl_force) {
+			oflag |= O_EXCL;
+		}
 
 		/* Create output file. */
-		if ((fdo = open(ofname, O_CREAT | O_TRUNC | O_WRONLY, 0644)) ==
-		    -1) {
-			perror("failed to create output file");
-			gracefully_abort();
+		if ((fdo = open(ofname, oflag, 0644)) == -1) {
+			if (fl_force || errno != EEXIST) {
+				perror("failed to create output file");
+				gracefully_abort();
+			}
+
+			/* File already extracted, move to the next inode. */
+			printf("File %s already extracted, skipping it...\n",
+			    ofname);
+
+			/*
+			 * Move to the next inode.
+			 */
+			find_next_inode();
+
+			/* Proceed with extract next file if there is any. */
+			continue;
 		}
+
+		printf("Dumping file %s... ", ofname);
 
 		is_db = TRUE;
 		while (is_db) {
@@ -326,24 +425,8 @@ main(int argc, char *argv[])
 		close(fdo);
 		fdo = -1;
 
-		/*
-		 * Move to the block which is supposed
-		 * to contain next inode.
-		 */
-		/* Get current position first. */
-		pos = lseek(fdi, 0, SEEK_CUR);
-		if (pos == -1) {
-			perror("Failed to lseek current pos");
-			gracefully_abort();
-		}
-
-		/* Now move to the next inode slot. */
-		pos = lseek (fdi, ((pos + bpi - DLFS_SECTOR_SIZE) / bpi) * bpi,
-		    SEEK_SET);
-		if (pos == -1 ) {
-			perror("Failed to lseek next inode");
-			gracefully_abort();
-		}
+		/* Move to the block which is supposed to contain next inode. */
+		move_to_next_inode_slot();
 	}
 
 	printf("Fileystem processed.\n");

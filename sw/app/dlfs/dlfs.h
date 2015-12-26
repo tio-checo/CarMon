@@ -27,6 +27,8 @@
 
 /* Number of sectors between two subsequent inodes */
 #define	DLFS_SECS_PER_INODE	(1024 * 1024 / DLFS_SECTOR_SIZE)
+/* Size of inode slot. */
+#define	DLFS_INODE_SLOT_SIZE	(DLFS_SECS_PER_INODE * DLFS_SECTOR_SIZE)
 /* Space reserved to account for concept of fdisk partitions */
 #define	DLFS_FDISK_SECTORS	DLFS_SECS_PER_INODE
 /* Sector holding super-block */
