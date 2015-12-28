@@ -85,7 +85,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[2] Bluetooth module\n\r" \
     "[3] Read Memory\n\r" \
     "[4] Display kstats\n\r" \
-    "[c] Clear kstats\n\r" \
+    "[C] Clear kstats\n\r" \
     "[5] Status of USB\n\r" \
     "[d] Detach USB\n\r" \
     "[D] Disable USB\n\r" \
@@ -118,7 +118,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[2] List of log files\n\r" \
     "[3] Display inode table\n\r" \
     "[4] Print IO statistics\n\r" \
-    "[5] Clear IO statistics\n\r" \
+    "[C] Clear IO statistics\n\r" \
     "[9] Format SD card\n\r" \
     "[0] Back\n\r" \
     "------------------------\n\r"
@@ -375,7 +375,7 @@ mon_main_menu(unsigned char ch)
 		break;
 
 	/* Clear RT kstats. */
-	case 'c':
+	case 'C':
 		rtl_svc_clear_kstats();
 		break;
 
@@ -784,7 +784,7 @@ mon_sd_menu(unsigned char ch)
 		break;
 
 	/* Clear IO statistics */
-	case '5':
+	case 'C':
 		dlfs_kstat_clear();
 		break;
 

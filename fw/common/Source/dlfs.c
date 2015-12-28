@@ -133,8 +133,19 @@ static BOOL dlfs_media_mounted;
 /* array of file descriptors */
 static dlfs_file_t	dlfs_files[1];
 
-/* data block currently being flushed to the media. */
-static dlfs_flush_t	dlfs_flush_sec;
+/*
+ * Index of buffer cache lower currently being filled
+ * by dlfs_write() calls.
+ */
+static int	dlfs_ll_write_buf_num;
+/*
+ * Index of buffer cache currently monitored by upper layer
+ * service (taking care of flushing buffers to the media).
+ */
+static int	dlfs_ul_flush_buf_num;
+
+/* buffer cache - array of dlfs_cache_buf_entry_t structures */
+static dlfs_buf_cache_entry_t dlfs_buf_cache[DLFS_BUF_CACHE_SIZE];
 
 /* local functions */
 
@@ -439,37 +450,39 @@ dlfs_find_first_free_inode(void)
 /*
  * Commence process of flushing current data block to the media.
  * Returns: 0     - success
- *          EBUSY - still busy with previous operation
+ *          EBUSY - run out of free buffers
  */
 static int
 dlfs_flush(unsigned long long sec, BOOL write_eof_mark, BOOL update_inode_time)
 {
 	int fd = 0;
+	int cbi = dlfs_ll_write_buf_num;
+	int nbi = (cbi + 1) % DLFS_BUF_CACHE_SIZE;
 
 	/* Update statistics. */
 	dlfs_kstat.fln++;
 
-	/* Previous operation still in progress, do not interrupt it. */
-	if (dlfs_flush_sec.dirty) {
+	/*
+	 * Return EBUSY if subsequent buffer is not available.
+	 * That means we ran out of free buffers.
+	 */
+	if (dlfs_buf_cache[nbi].dirty) {
 		/* Update statistics. */
 		dlfs_kstat.fen++;
 
 		return EBUSY;
 	}
 
-	/* Save pointer to the sector buffer to be flushed. */
-	dlfs_flush_sec.sbufp = dlfs_files[fd].sbuf + dlfs_files[fd].sbuf_num;
-	/* Switch to the free sector buffer. */
-	dlfs_files[fd].sbuf_num = (dlfs_files[fd].sbuf_num + 1) %
-	    DLFS_SEC_BUF_NUM;
-	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf + dlfs_files[fd].sbuf_num;
+	/* Move to the next free sector buffer. */
+	dlfs_files[fd].sbufp = &dlfs_buf_cache[nbi].sbuf;
+	dlfs_ll_write_buf_num = nbi;
 
-	dlfs_flush_sec.sec = sec;
-	dlfs_flush_sec.write_eof_mark = write_eof_mark;
-	dlfs_flush_sec.update_inode_time = update_inode_time;
+	dlfs_buf_cache[cbi].sec = sec;
+	dlfs_buf_cache[cbi].write_eof_mark = write_eof_mark;
+	dlfs_buf_cache[cbi].update_inode_time = update_inode_time;
 
-	/* Start the process. */
-	dlfs_flush_sec.dirty = TRUE;
+	/* Mark current buffer 'dirty', i.e. to be flushed. */
+	dlfs_buf_cache[cbi].dirty = TRUE;
 
 	return 0; 
 }
@@ -487,6 +500,7 @@ int
 dlfs_init(void)
 {
 	int fd = 0;
+	int i;
 
 	/* Assume backend storage is not available. */
 	dlfs_media_ready = FALSE;
@@ -495,9 +509,16 @@ dlfs_init(void)
 	/* Initialize file descriptor. */
 	dlfs_files[fd].sec = 0;
 	dlfs_files[fd].pos = 0;
-	/* Current sector buffer. */
-	dlfs_files[fd].sbuf_num = 0;
-	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf;
+	/*
+	 * Initialize buffer cache framework.
+	 */
+	dlfs_ll_write_buf_num = 0;
+	dlfs_ul_flush_buf_num = 0;
+	for (i = 0; i < DLFS_BUF_CACHE_SIZE; i++) {
+		dlfs_buf_cache[i].dirty = FALSE;
+	}
+	/* Pointer to buffer cache */
+	dlfs_files[fd].sbufp = &dlfs_buf_cache[0].sbuf;
 
 	/* Initialize structure for measuring IO statistics. */
 	dlfs_kstat_clear();
@@ -524,13 +545,6 @@ dlfs_init(void)
 	if (dlfs_mount() != 0) {
 		return EINVAL;
 	}
-
-	/*
-	 * Initialize backend taking care of flushing sectors
-	 * to the media.
-	 */
-	dlfs_flush_sec.sec = 0;
-	dlfs_flush_sec.dirty = FALSE;
 
 	return 0;
 }
@@ -608,9 +622,6 @@ dlfs_open(const char *path, int oflag)
 	/* Initialize file descriptor. */
 	dlfs_files[fd].sec = inode_sec + 1;
 	dlfs_files[fd].pos = 0;
-	/* Current sector buffer. */
-	dlfs_files[fd].sbuf_num = 0;
-	dlfs_files[fd].sbufp = dlfs_files[fd].sbuf;
 
 	/* Clean up data buffer. */
 	dlfs_clean_db_data(&dlfs_files[fd].sbufp->db);
@@ -722,33 +733,47 @@ dlfs_write(int fildes, const void *buf, size_t nbyte)
 void
 dlfs_flush_ul_svc(void)
 {
+	int cbi;
+
 	/* Wait until core services are initialized. */
 	if (!pcore_svc_online()) {
 		return;
 	}
 
-	/* Nothing to be done. */
-	if (!dlfs_flush_sec.dirty) {
+	cbi = dlfs_ul_flush_buf_num;
+
+	/*
+	 * Nothing to be done.
+	 * Atomic operation, since 'dirty' flag is set from interrupt context.
+	 */
+	if (!dlfs_buf_cache[cbi].dirty) {
 		return;
 	}
 	
 	/* Write EOF mark if required. */
-	if (dlfs_flush_sec.write_eof_mark) {
-		dlfs_write_sector(dlfs_flush_sec.sec + 1,
+	if (dlfs_buf_cache[cbi].write_eof_mark) {
+		dlfs_write_sector(dlfs_buf_cache[cbi].sec + 1,
 		    (void *)dlfs_empty_sec, FALSE);
 	}
 
 	/* Update inode time if desired. */
-	if (dlfs_flush_sec.update_inode_time) {
-		dlfs_flush_sec.sbufp->inode.ctime =
+	if (dlfs_buf_cache[cbi].update_inode_time) {
+		dlfs_buf_cache[cbi].sbuf.inode.ctime =
 		    (unsigned long long)time(NULL);
 	}
 
 	/* Now write data. */
-	dlfs_write_sector(dlfs_flush_sec.sec, dlfs_flush_sec.sbufp->buf, TRUE);
+	dlfs_write_sector(dlfs_buf_cache[cbi].sec, dlfs_buf_cache[cbi].sbuf.buf,
+	    TRUE);
 
-	/* Let lower layer know we are done. */
-	dlfs_flush_sec.dirty = FALSE;
+	/* Monitor next cache entry. */
+	dlfs_ul_flush_buf_num = (cbi + 1) % DLFS_BUF_CACHE_SIZE;
+
+	/*
+	 * Buffer flushed to the media, mark it as 'available'.
+	 * Atomic operation, since 'dirty' flag is set from interrupt context.
+	 */
+	dlfs_buf_cache[cbi].dirty = FALSE;
 }
 
 /*
@@ -899,6 +924,7 @@ void
 dlfs_display_kstat(int (*print_str)(const char *))
 {
 	char s[81];
+	long fep;
 
 	/* header */
 	print_str("-------------------------------------\n\r");
@@ -925,7 +951,14 @@ dlfs_display_kstat(int (*print_str)(const char *))
 	/* Write statistics. */
 	snprintf(s, sizeof (s), "flush calls: %ld\n\r", dlfs_kstat.fln);
 	print_str(s);
-	snprintf(s, sizeof (s), "flush errors: %ld\n\r", dlfs_kstat.fen);
+
+	if (dlfs_kstat.fln != 0) {
+		fep = (1000L * dlfs_kstat.fen) / dlfs_kstat.fln;
+	} else {
+		fep = 0;
+	}
+	snprintf(s, sizeof (s), "flush errors: %ld (%ld.%ld%%)\n\r",
+	    dlfs_kstat.fen, fep / 10L, fep % 10L);
 	print_str(s);
 	
 	snprintf(s, sizeof (s), "open calls: %ld\n\r", dlfs_kstat.ocn);

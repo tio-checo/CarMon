@@ -47,8 +47,8 @@
 /* Unused data payload */
 #define	DLFS_DATA_UNUSED	((unsigned long)-1)
 
-/* number of sector buffers */
-#define	DLFS_SEC_BUF_NUM	2
+/* number of cached sector buffers */
+#define	DLFS_BUF_CACHE_SIZE	3
 
 /* types */
 
@@ -89,17 +89,14 @@ typedef union {
 typedef struct {
 	unsigned long long	sec;	/* current sector number */
 	unsigned short		pos;	/* current position within sector */
-	unsigned short		sbuf_num; /* number of current sector buffer */
-	dlfs_sec_buf_t		*sbufp;	/* pointer to current sector buffer */
-
-	dlfs_sec_buf_t		sbuf[DLFS_SEC_BUF_NUM];	/* sector buffers */
+	dlfs_sec_buf_t		*sbufp;	/* pointer to sector buffer */
 } dlfs_file_t;
 
 /* structure holding data block to be flushed to the media */
 typedef struct {
 	/*
-	 * Setting 'dirty'to TRUE triggers flushing process.
-	 * It is reset to false once sector is written to the media.
+	 * TRUE indicates that sector should be flushed to the media.
+	 * Reset to FALSE once sector is written to the media.
 	 */
 	BOOL			dirty;
 	/* Setting to TRUE writes empty sector after data one as EOF mark. */
@@ -107,8 +104,9 @@ typedef struct {
 	/* Setting to TRUE update inode time stamp before inode is written. */
 	BOOL			update_inode_time;
 	unsigned long long	sec;	/* sector number */
-	dlfs_sec_buf_t		*sbufp;	/* pointer to sector buffer */
-} dlfs_flush_t;
+
+	dlfs_sec_buf_t		sbuf;	/* sector buffer */
+} dlfs_buf_cache_entry_t;
 
 /* macros */
 /* Calculates theoretical maximum number of inodes for mounted media. */

@@ -68,6 +68,7 @@ typedef enum _cm_conf_state_t {
 /* States in 'Autonomous' mode */
 typedef enum _cm_auto_state_t {
 	CM_AUTO_ST_IDLE,
+	CM_AUTO_ST_WAIT4CORESVC,
 	CM_AUTO_ST_INIT,
 	CM_AUTO_ST_RUNNING,
 	CM_AUTO_ST_WAIT4IDLE
@@ -252,6 +253,16 @@ cm_autonomous_svc(void)
 	switch (cm_auto_st) {
 	/* Idle mode. */
 	case CM_AUTO_ST_IDLE:
+		break;
+
+	/* Wait until core services are up and running */
+	case CM_AUTO_ST_WAIT4CORESVC:
+		if (!pcore_svc_online()) {
+			break;
+		}
+
+		cm_auto_st = CM_AUTO_ST_INIT;
+
 		break;
 
 	/*
@@ -574,7 +585,7 @@ cm_init(void)
 {
 	/* Enter 'autonomous mode' after power up. */
 	cm_conf_st = CM_CONF_ST_INIT;
-	cm_auto_st = CM_AUTO_ST_INIT;
+	cm_auto_st = CM_AUTO_ST_WAIT4CORESVC;
 	cm_assist_st = CM_ASSIST_ST_INIT;
 	cm_next_mode_send_ack = FALSE;
 	cm_mode = cm_next_mode = CM_MODE_AUTONOMOUS;
