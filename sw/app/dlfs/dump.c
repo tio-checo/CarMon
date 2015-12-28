@@ -290,6 +290,7 @@ main(int argc, char *argv[])
 	fnum = 0;
 	while (!done) {
 		int oflag;
+		BOOL ofile_is_empty;
 
 		/* Read dlfs block. */
 		read_block(&dlfs_file);
@@ -354,6 +355,12 @@ main(int argc, char *argv[])
 
 		printf("Dumping file %s... ", ofname);
 
+		/*
+		 * Assume resulting file is empty - empty files are to be
+		 * removed.
+		 */
+		ofile_is_empty = TRUE;
+
 		is_db = TRUE;
 		while (is_db) {
 			/* Read dlfs block. */
@@ -395,6 +402,12 @@ main(int argc, char *argv[])
 				}
 
 				/*
+				 * File is no longer empty. since some data
+				 * just have been written.
+				 */
+				ofile_is_empty = FALSE;
+
+				/*
 				 * Only last data block in log record could
 				 * be incomplete.
 				 * Move to the next inode in such case.
@@ -424,6 +437,16 @@ main(int argc, char *argv[])
 		/* Close the output file. */
 		close(fdo);
 		fdo = -1;
+
+		/* Remove empty files - they do not carry any data. */
+		if (ofile_is_empty) {
+			printf("%s is empty, removing... ", ofname);
+			if (unlink(ofname) == 0) {
+				printf("done\n");
+			} else {
+				perror("failed");
+			}
+		}
 
 		/* Move to the block which is supposed to contain next inode. */
 		move_to_next_inode_slot();
