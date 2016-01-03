@@ -137,6 +137,8 @@ long2str(long n, char *out, int ln, BOOL lz)
 	if (n < 0) {
 		n = -n;
 		display_minus = TRUE;
+	} else {
+		display_minus = FALSE;
 	}
 
 	for (i = ln - 1; i >= 0; i--) {
