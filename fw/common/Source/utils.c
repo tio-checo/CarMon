@@ -133,8 +133,11 @@ long2str(long n, char *out, int ln, BOOL lz)
 	int i;
 	BOOL display_minus;
 
-	/* Display minus sign for negative numbers. */
-	display_minus = n < 0;
+	/* Preprocess negative numbers. */
+	if (n < 0) {
+		n = -n;
+		display_minus = TRUE;
+	}
 
 	for (i = ln - 1; i >= 0; i--) {
 		/*
