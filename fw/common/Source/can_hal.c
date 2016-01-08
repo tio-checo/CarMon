@@ -128,8 +128,7 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 /* state machine handling packets received from CAN module */
 static enum {
 	CAN_RX_ST_IDLE = 0,	/* idle */
-	CAN_RX_ST_WAIT4PKT,	/* wait for received frame */
-	CAN_RX_ST_PASS2CONSUMER	/* passes received frame to upper layer */
+	CAN_RX_ST_RECEIVEPKT	/* receive frame */
 } can_rx_st;
 
 /* state machine handling packets transmitted by CAN module */
@@ -341,9 +340,10 @@ can_rx_svc(void)
 		break;
 
 	/* Wait for received message. */
-	case CAN_RX_ST_WAIT4PKT:
-		if ((rxm = CANGetRxMessage(CAN1, CAN_RX_CHANNEL)) == NULL)
+	case CAN_RX_ST_RECEIVEPKT:
+		if ((rxm = CANGetRxMessage(CAN1, CAN_RX_CHANNEL)) == NULL) {
 			break;
+		}
 
 		/* Let the received frame undergo process of analysis. */
 		can_snoop_process_frame(rxm);
@@ -355,27 +355,19 @@ can_rx_svc(void)
 		 */
 		obd_can_rx_cb(rxm);
 
-		/* Proceed with passing received frame to upper layer. */
-		can_rx_st = CAN_RX_ST_PASS2CONSUMER;
-
-		break;
-
-	/*
-	 * Pass received message to upper layer.
-	 * Discard the frame if upper layer is not done with processing
-	 * previously received frame.
-	 */
-	case CAN_RX_ST_PASS2CONSUMER:
+		/*
+		 * Pass received message to upper layer.
+		 * Discard the frame if upper layer is not done with processing
+		 * previously received frame.
+		 */
 		if (!can_frame_received) {
 			can_rx_frame = rxm;
+
+			can_frame_received = TRUE;
 		}
 
-		can_frame_received = TRUE;
-
-		/* Wait for another message. */
+		/* Get CAN receiver ready for another message. */
 		CANUpdateChannel(CAN1, CAN_RX_CHANNEL);
-
-		can_rx_st = CAN_RX_ST_WAIT4PKT;
 
 		break;
 
@@ -846,7 +838,7 @@ can_init(void)
 	can_hw_init();
 
 	/* Initialize state machine for receiving CAN frames. */
-	can_rx_st = CAN_RX_ST_WAIT4PKT;
+	can_rx_st = CAN_RX_ST_RECEIVEPKT;
 	can_frame_received = FALSE;
 
 	/* Initialize state machine for transmitting CAN frames. */
