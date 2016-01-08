@@ -84,6 +84,12 @@
 #define	OBD_PID_DPFAR		0xDD
 
 /*
+ * Given raw packet received from ECU for PID 'DD', the macro extracts
+ * DPF rejuvenation status.
+ */
+#define OBD_GET_DPF_REJUV_STS(er)	(((er)[9]) & 0x02)
+
+/*
  * Given raw packet received from ECU for PID 'DD', the macro extracts value
  * of DPF accumulation ratio.
  */

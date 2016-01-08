@@ -1115,6 +1115,7 @@ static void
 obd_alarm_process(unsigned char *d, int ln)
 {
 	static int warn_phase = 0;
+	static int dpf_rejuv_sts = 0;
 	static int dpf_ar = 0;
 	static int water = 0;
 	int egt11, egt12;
@@ -1212,8 +1213,9 @@ obd_alarm_process(unsigned char *d, int ln)
 		 * Update terminal with new data
 		 *  - Coolant temperature
 		 *  - Exhaust gas temperature EGT12
+		 *  - DPF rejuvenation status
 		 *  - DPF accumulation ratio
-		 *  - status of GPS device
+		 *  - GPS course
 		 */
 
 		/*
@@ -1232,7 +1234,8 @@ obd_alarm_process(unsigned char *d, int ln)
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
 		 */
-		fb_addr[0] = fb_addr[5] = fb_addr[10] = ' ';
+		fb_addr[0] = dpf_rejuv_sts ? 'R' : ' ';
+		fb_addr[5] = fb_addr[10] = ' ';
 		long2str(water, fb_addr + 1, 3, FALSE);
 		fb_addr[4] = 0xb2;
 		long2str(egt11, fb_addr + 6, 3, FALSE);
@@ -1250,7 +1253,7 @@ obd_alarm_process(unsigned char *d, int ln)
 		break;
 
 	/*
-	 * DPF accumulation ratio.
+	 * DPF accumulation ratio & DPF rejuvenation status.
 	 *
 	 * Just save the received value. It is later send to terminal
 	 * when EGT information is obtained. 
@@ -1258,6 +1261,7 @@ obd_alarm_process(unsigned char *d, int ln)
 	case OBD_PID_DPFAR:
 		/* Pass pointer to the data payload (skip PID number). */
 		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
+		dpf_rejuv_sts = OBD_GET_DPF_REJUV_STS(d + 1);
 		break;
 
 	/*
