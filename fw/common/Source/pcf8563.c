@@ -76,7 +76,6 @@ static enum {
 
 	PCF8563_ST_GETTIME1,	/* Get time and date */
 	PCF8563_ST_GETTIME2,
-	PCF8563_ST_GETTIME3,
 
 	PCF8563_ST_SETTIME1,	/* Set time and date */
 	PCF8563_ST_SETTIME2
@@ -94,8 +93,6 @@ static unsigned char pcf8563_data[16 + 1];
 static int
 pcf8563_svc(void)
 {
-	static unsigned char buf[1];
-
 	switch (pcf8563_st) {
 	/* service idle */
 	case PCF8563_ST_IDLE:
@@ -110,31 +107,17 @@ pcf8563_svc(void)
 		if (i2csw_request_bus() != 0)
 			break;
 
-		/* Prepare data */
-		buf[0] = PCF8563_REG_VL_SECONDS;
-
 		pcf8563_st = PCF8563_ST_GETTIME2;
 		break;
 
 	/*
 	 * Get time and date - phase 2
 	 *
-	 * Initialize address pointer.
-	 */
-	case PCF8563_ST_GETTIME2:
-		if (i2csw_write(PCF8563_I2C_ADDRESS, buf, 1) == EAGAIN)
-			break;
-
-		pcf8563_st = PCF8563_ST_GETTIME3;
-		break;
-
-	/*
-	 * Get time and date - phase 3
-	 *
 	 * Read time and date from RTC.
 	 */
-	case PCF8563_ST_GETTIME3:
-		if (i2csw_read(PCF8563_I2C_ADDRESS, pcf8563_data, 7) == EAGAIN)
+	case PCF8563_ST_GETTIME2:
+		if (i2csw_random_read(PCF8563_I2C_ADDRESS,
+		    PCF8563_REG_VL_SECONDS, pcf8563_data, 7) == EAGAIN)
 			break;
 
 		/* Release I2C bus */

@@ -48,7 +48,8 @@
 /* local types */
 /* I2C message */
 typedef struct i2csw_msg_s {
-	unsigned char addr;	/* device address */
+	unsigned char dev_addr;	/* device address */
+	unsigned char data_addr;	/* data address */
 	unsigned char *buf;	/* pointer to data buffer */
 	int ln;		/* # of bytes to be read or written */
 } i2csw_msg_t;
@@ -65,9 +66,10 @@ static enum {
 	I2CSW_I2C_LL_ST_IDLE = 0,	/* state machine idle */
 
 	I2CSW_I2C_LL_ST_TXSTART,	/* Initiate transmit process */
-	I2CSW_I2C_LL_ST_TXL,		/* SCLK __/-- */
+	I2CSW_I2C_LL_ST_TXSTARTLD,	/* Start condition - SDA --\__ */
+	I2CSW_I2C_LL_ST_TXL,		/* SCLK --\__ */
 	I2CSW_I2C_LL_ST_TXD,		/* move data bit to SDA */
-	I2CSW_I2C_LL_ST_TXH,		/* SCLK --\__ */
+	I2CSW_I2C_LL_ST_TXH,		/* SCLK __/-- */
 
 	I2CSW_I2C_LL_ST_ACKL,		/* receive ACK - low clk */
 	I2CSW_I2C_LL_ST_ACKR,		/* receive ACK - release bus */
@@ -75,16 +77,13 @@ static enum {
 	I2CSW_I2C_LL_ST_ACKD,		/* receive ACK - read data */
 
 	I2CSW_I2C_LL_ST_RXSTART,	/* Initiate receive process */
-	I2CSW_I2C_LL_ST_RXL,		/* SCLK --\__ */
-	I2CSW_I2C_LL_ST_RXR,		/* release bus */
 	I2CSW_I2C_LL_ST_RXH,		/* SCLK __/-- */
 	I2CSW_I2C_LL_ST_RXD,		/* receive data */
 
-	I2CSW_I2C_LL_ST_RXACKL,	/* transmit ACK/NAK - low clk */
 	I2CSW_I2C_LL_ST_RXACKD,	/* transmit ACK/NAK - set SDA */
 	I2CSW_I2C_LL_ST_RXACKH,	/* transmit ACK/NAK - high clk */
+	I2CSW_I2C_LL_ST_RXACKL,	/* transmit ACK/NAK - low clk */
 
-	I2CSW_I2C_LL_ST_STOPLC,	/* stop condition - low clk */
 	I2CSW_I2C_LL_ST_STOPLD,	/* stop condition - low data */
 	I2CSW_I2C_LL_ST_STOPHC,	/* stop condition - high clk */
 	I2CSW_I2C_LL_ST_STOPHD	/* stop condition - high data */
@@ -97,8 +96,10 @@ static enum {
 	I2CSW_I2C_UL_ST_WRITE2,
 	I2CSW_I2C_UL_ST_WRITE3,
 
-	I2CSW_I2C_UL_ST_READ1,		/* Read bytes from device */
-	I2CSW_I2C_UL_ST_READ2
+	I2CSW_I2C_UL_ST_RANDOM_READ1,	/* Read bytes from given address */
+	I2CSW_I2C_UL_ST_RANDOM_READ2,
+	I2CSW_I2C_UL_ST_CURRENT_READ1,	/* Read bytes from current address */
+	I2CSW_I2C_UL_ST_CURRENT_READ2
 } i2csw_i2c_ul_st;
 
 /* lower layer data buffer */
@@ -218,16 +219,38 @@ i2csw_i2c_ll_svc(void)
 		break;
 
 	/*
-	 * Initializes transmission process.
-	 * Preconditions: SCLK is high
+	 * Transmitter
+	 *
+	 * Initial state:
+	 *  - before the 1st write:     SDA high, SCL high
+	 *  - before subsequent writes: SDA high, SCL low
+	 *
+	 * Request to generate start condition is valid
+	 * in both scenarios, so account for that.
 	 */
 	case I2CSW_I2C_LL_ST_TXSTART:
 		d = i2csw_i2c_ll_data;
 		bit_mask = 1 << (i2csw_i2c_ll_bits - 1);
 
-		/* Generate start condition if desired. */
-		if (i2csw_i2c_ll_send_start)
-			I2CSW_SDA_CLR;
+		/*
+		 * Generate start condition if desired.
+	 	 * Preconditions: SDA is high
+		 */
+		if (i2csw_i2c_ll_send_start) {
+			/* SCLK __/-- */
+			I2CSW_SCLK_SET;
+
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_TXSTARTLD;
+		} else {
+			/* SCLK --\__ */
+			I2CSW_SCLK_CLR;
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_TXD;
+		}
+		break;
+
+	/* SDA --\__ */ 
+	case I2CSW_I2C_LL_ST_TXSTARTLD:
+		I2CSW_SDA_CLR;
 
 		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_TXL;
 		break;
@@ -290,34 +313,28 @@ i2csw_i2c_ll_svc(void)
 	case I2CSW_I2C_LL_ST_ACKD:
 		i2csw_i2c_ll_ack = I2CSW_PORT & I2CSW_SDA_MASK;
 
+		/* SCLK --\__ */
+		I2CSW_SCLK_CLR;
+
 		/* Generate stop condition if desired. */
 		if (i2csw_i2c_ll_send_stop)
-			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_STOPLC;
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_STOPLD;
 		else
 			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_IDLE;
-
 		break;
 
 	/*
-	 * Initializes receiving process.
-	 * Preconditions: SCLK is high
+	 * Receiver
+	 *
+	 * Initial state:
+	 *  - after write (1st read):    SDA high, SCL low
+	 *  - after read (ACK was sent): SDA low,  SCL low
 	 */
 	case I2CSW_I2C_LL_ST_RXSTART:
 		d = 0;
 		bit_mask = 1 << (i2csw_i2c_ll_bits - 1);
 
-		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXL;
-		break;
-
-	/* SCLK --\__ */
-	case I2CSW_I2C_LL_ST_RXL:
-		I2CSW_SCLK_CLR;
-
-		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXR;
-		break;
-
-	/* Make sure that bus is released. */
-	case I2CSW_I2C_LL_ST_RXR:
+		/* Make sure that bus is released. */
 		I2CSW_SDA_SET;
 
 		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXH;
@@ -338,26 +355,19 @@ i2csw_i2c_ll_svc(void)
 		/* Move to the next bit. */
 		bit_mask >>= 1;
 
+		/* SCLK --\__ */
+		I2CSW_SCLK_CLR;
+
 		/*
 		 * If all bits have been received, pass received data to upper
 		 * layer and proceed with transmitting ACK/NAK.
 		 */
 		if (bit_mask == 0) {
-			i2csw_i2c_ll_data = d;
-			i2csw_i2c_ll_rx_data_ready = TRUE;
-
-			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXACKL;
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXACKD;
 		} else {
-			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXL;
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXH;
 		}
 
-		break;
-
-	/* SCLK --\__ */
-	case I2CSW_I2C_LL_ST_RXACKL:
-		I2CSW_SCLK_CLR;
-
-		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXACKD;
 		break;
 
 	/* transmit ACK/NAK */
@@ -374,21 +384,24 @@ i2csw_i2c_ll_svc(void)
 	case I2CSW_I2C_LL_ST_RXACKH:
 		I2CSW_SCLK_SET;
 
+		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_RXACKL;
+		break;
+
+	/* Finish transmitting ACK/NAK */
+	/* SCLK --\__ */
+	case I2CSW_I2C_LL_ST_RXACKL:
+		/* Make data available to upper layer */
+		i2csw_i2c_ll_data = d;
+		i2csw_i2c_ll_rx_data_ready = TRUE;
+
+		I2CSW_SCLK_CLR;
 		/* Continue with generating stop condition if desired. */
 		if (i2csw_i2c_ll_send_stop)
-			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_STOPLC;
+			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_STOPLD;
 		else
 			i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_IDLE;
 		break;
 
-	/* Generate stop condition - low clk */
-	case I2CSW_I2C_LL_ST_STOPLC:
-		I2CSW_SCLK_CLR;
-
-		i2csw_i2c_ll_st = I2CSW_I2C_LL_ST_STOPLD;
-
-		break;
-	
 	/* Generate stop condition - low data */
 	case I2CSW_I2C_LL_ST_STOPLD:
 		I2CSW_SDA_CLR;
@@ -441,7 +454,7 @@ i2csw_i2c_ul_svc(void)
 		if (i2csw_i2c_bus_busy())
 			break;
 
-		i2csw_i2c_send((i2csw_msg.addr << 1) | 0, 8, TRUE,
+		i2csw_i2c_send((i2csw_msg.dev_addr << 1) | 0, 8, TRUE,
 		    FALSE);
 
 		/* Initialize byte counter. */
@@ -490,27 +503,61 @@ i2csw_i2c_ul_svc(void)
 		break;
 
 	/*
-	 * Read bytes from device - phase 1.
+	 * Read bytes from random address - phase 1.
 	 *
-	 * Address the device - RW bit is one (read operation).
+	 * Address the device - RW bit is zero, since
+	 * next data address is to be written.
 	 * Let lower layer generate I2C start condition.
 	 */
-	case I2CSW_I2C_UL_ST_READ1:
+	case I2CSW_I2C_UL_ST_RANDOM_READ1:
 		/* Make sure that I2C bus is idle */
 		if (i2csw_i2c_bus_busy())
 			break;
 
-		i2csw_i2c_send((i2csw_msg.addr << 1) | 1, 8, TRUE,
+		i2csw_i2c_send((i2csw_msg.dev_addr << 1) | 0, 8, TRUE,
+		    FALSE);
+
+		i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_RANDOM_READ2;
+		break;
+
+	/*
+	 * Read bytes from random address - phase 2.
+	 *
+	 * Write data address to the device.
+	 * Then proceed with "current read" operation.
+	 */
+	case I2CSW_I2C_UL_ST_RANDOM_READ2:
+		/* Make sure that I2C bus is idle */
+		if (i2csw_i2c_bus_busy())
+			break;
+
+		i2csw_i2c_send(i2csw_msg.data_addr, 8, FALSE, FALSE);
+
+		i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_CURRENT_READ1;
+		break;
+
+	/*
+	 * Read bytes from current address - phase 1.
+	 *
+	 * Address the device - RW bit is one (read operation).
+	 * Let lower layer generate I2C start condition.
+	 */
+	case I2CSW_I2C_UL_ST_CURRENT_READ1:
+		/* Make sure that I2C bus is idle */
+		if (i2csw_i2c_bus_busy())
+			break;
+
+		i2csw_i2c_send((i2csw_msg.dev_addr << 1) | 1, 8, TRUE,
 		    FALSE);
 
 		/* Initialize byte counter. */
 		cnt = 0;
 
-		i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_READ2;
+		i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_CURRENT_READ2;
 		break;
 
 	/* Read one byte from the device. */
-	case I2CSW_I2C_UL_ST_READ2: {
+	case I2CSW_I2C_UL_ST_CURRENT_READ2: {
 		BOOL last = (cnt + 1 == i2csw_msg.ln);
 
 		/*
@@ -667,7 +714,7 @@ i2csw_write(unsigned char addr, unsigned char *data, int ln)
 		return 0;
 
 	/* Prepare I2C message */
-	i2csw_msg.addr = addr;
+	i2csw_msg.dev_addr = addr;
 	i2csw_msg.buf = data;
 	i2csw_msg.ln = ln;
 
@@ -679,7 +726,7 @@ i2csw_write(unsigned char addr, unsigned char *data, int ln)
 }
 
 /*
- * Reads data from I2C device.
+ * Reads data sequentially from I2C device starting from current address.
  * It is a non-blocking function to be called periodically until
  * communication layer finishes reading.
  *
@@ -696,7 +743,7 @@ i2csw_write(unsigned char addr, unsigned char *data, int ln)
  *  EAGAIN - reading now in progress
  */
 int
-i2csw_read(unsigned char addr, unsigned char *data, int ln)
+i2csw_current_read(unsigned char addr, unsigned char *data, int ln)
 {
 	static BOOL read_in_progress = FALSE;
 
@@ -722,14 +769,88 @@ i2csw_read(unsigned char addr, unsigned char *data, int ln)
 		return 0;
 
 	/* Prepare I2C message */
-	i2csw_msg.addr = addr;
+	i2csw_msg.dev_addr = addr;
 	i2csw_msg.buf = data;
 	i2csw_msg.ln = ln;
 
 	/* Kick off reading process. */
-	i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_READ1;
+	i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_CURRENT_READ1;
 	read_in_progress = TRUE;
 
 	return EAGAIN;
 }
 
+/*
+ * Reads data sequentially from I2C device starting from given address.
+ * It is a non-blocking function to be called periodically until
+ * communication layer finishes reading.
+ *
+ * master: <S><DA><W> <BA> <S><DA><R>     <A>  <A> ...    <N><P>
+ * slave:           <A>  <A>        <A><D1> <D2>   ... <Dn>
+ *
+ * where
+ *
+ * <S>  - start condition
+ * <P>  - stop condition
+ * <A>  - ACK
+ * <N>  - NAK
+ * <W>  - R/W bit set to 0 (write operation)
+ * <R>  - R/W bit set to 1 (read operation)
+ * <DA> - 7bit device I2C address
+ * <BA> - data (byte) address
+ * <Dx> - data
+ *
+ * Parameters:
+ *  addr - I2C address of the device
+ *  data_addr - data address
+ *  data - pointer to data buffer
+ *  ln   - number of bytes to be read from the device
+ *
+ * Return values:
+ *  0      - reading finished, buffer contains valid data
+ *  EPERM  - Bus not granted to the consumer
+ *  ENXIO  - No device responded to specified address
+ *  EIO    - Communication error
+ *  EAGAIN - reading now in progress
+ */
+int
+i2csw_random_read(unsigned char addr, unsigned char data_addr,
+    unsigned char *data, int ln)
+{
+	static BOOL read_in_progress = FALSE;
+
+	/* Bus is not granted, do not commence an operation. */
+	if (!i2csw_bus_granted) {
+		return EPERM;
+	}
+
+	/* If operation is in progress, check if it finished. */
+	if (read_in_progress) {
+		/* Operation not finished yet, return. */
+		if (i2csw_i2c_ul_busy())
+			return EAGAIN;
+
+		/* Operation finished */
+		read_in_progress = FALSE;
+
+		return 0;
+	}
+
+	/* New reading should be commenced. */
+	/* It is no-op if there are no bytes to be read. */
+	if (ln <= 0) {
+		return 0;
+	}
+
+	/* Prepare I2C message */
+	i2csw_msg.dev_addr = addr;
+	i2csw_msg.data_addr = data_addr;
+	i2csw_msg.buf = data;
+	i2csw_msg.ln = ln;
+
+	/* Kick off reading process. */
+	i2csw_i2c_ul_st = I2CSW_I2C_UL_ST_RANDOM_READ1;
+	read_in_progress = TRUE;
+
+	return EAGAIN;
+}

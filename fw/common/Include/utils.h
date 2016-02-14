@@ -29,12 +29,14 @@ extern unsigned long dec2ulong(char *, int);
 extern int long2str(long, char *, int, BOOL);
 
 /* Initializes CRC calculation algorithm */
-extern void crc_init(void);
+extern void crc_init(unsigned short *);
 
 /* Calculates 16bit CRC */
-extern void crc_calc(unsigned char);
+extern void crc_calc(unsigned short *, unsigned char);
 
 /* Returns calculated CRC */
-extern unsigned short crc_finalize(void);
+extern void crc_finalize(unsigned short *);
 
+/* Calculates CRC for given array of bytes */
+extern unsigned short crc_calc_array(void *, int);
 #endif /* __UTILS_H */

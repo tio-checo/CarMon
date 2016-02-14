@@ -190,10 +190,10 @@ extern int obd_can_rx_cb(CANRxMessageBuffer *);
 extern int obd_autoscan_conf_mode(BOOL);
 
 /* Configures PID groups for autoscan mode. */
-extern int obd_autoscan_conf_pid_groups(char *, int);
+extern int obd_autoscan_conf_pidg(void *, int, BOOL);
 
 /* Configures sample rate for PID autoscan mode. */
-extern int obd_autoscan_conf_sample_rate(char *);
+extern int obd_autoscan_conf_sr(void *, BOOL);
 
 /* Instructs OBD module to enter idle mode. */
 extern int obd_goto_idle(void);

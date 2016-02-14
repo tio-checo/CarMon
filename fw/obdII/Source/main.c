@@ -47,6 +47,10 @@
 #include "obd.h"
 #endif
 
+#ifdef EE24_MODULE
+#include "ee24.h"
+#endif
+
 #include "pic_core.h"
 #include "rt_light.h"
 #include "usb_app.h"
@@ -194,6 +198,10 @@ main(int argc, char **argv)
 
 #ifdef GPS_MODULE
 	gps_init();
+#endif
+
+#ifdef EE24_MODULE
+	ee24_init();
 #endif
 
 	/* All services are initialized, thus enable main service handler. */

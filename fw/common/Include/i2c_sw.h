@@ -55,7 +55,7 @@ extern int i2csw_release_bus(void);
 extern int i2csw_write(unsigned char, unsigned char *, int);
 
 /*
- * Reads data from I2C device.
+ * Reads data sequentially from I2C device starting from current address.
  * It is a non-blocking function to be called periodically until
  * communication layer finishes reading.
  *
@@ -71,7 +71,27 @@ extern int i2csw_write(unsigned char, unsigned char *, int);
  *  EIO    - Communication error
  *  EAGAIN - reading now in progress
  */
-extern int i2csw_read(unsigned char, unsigned char *, int);
+extern int i2csw_current_read(unsigned char, unsigned char *, int);
 
+/*
+ * Reads data sequentially from I2C device starting from given address.
+ * It is a non-blocking function to be called periodically until
+ * communication layer finishes reading.
+ *
+ * Parameters:
+ *  addr - I2C address of the device
+ *  data_addr - data address
+ *  data - pointer to data buffer
+ *  ln   - number of bytes to be read from the device
+ *
+ * Return values:
+ *  0      - reading finished, buffer contains valid data
+ *  EPERM  - Bus not granted to the consumer
+ *  ENXIO  - No device responded to specified address
+ *  EIO    - Communication error
+ *  EAGAIN - reading now in progress
+ */
+extern int i2csw_random_read(unsigned char, unsigned char, unsigned char *,
+    int);
 #endif /* __I2CSW_H */
 

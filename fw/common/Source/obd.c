@@ -1335,29 +1335,49 @@ obd_can_rx_cb(CANRxMessageBuffer *rxm)
 
 /*
  * Configures sample rate for PID autoscan mode.
+ *
+ * If ascii is TRUE, data are expected in form of HEX ASCII string;
+ * as byte array otherwise.
+ *
  * Returns:
  *        0 - configuration succeeded
  *   EINVAL - input data invalid
  */
 int
-obd_autoscan_conf_sample_rate(char *data)
+obd_autoscan_conf_sr(void *data, BOOL ascii)
 {
 	/* Get [ms] sample rate and convert it to [us]. */
-	obd_sr = hex2ulong(data, 4) * 1000;
+	if (ascii) {
+		obd_sr = hex2ulong((char *)data, 4);
+	} else {
+		unsigned char *ba = data;
+
+		obd_sr = 256 * (unsigned long)ba[0] + (unsigned long)ba[1];
+	}
+
+	/* ms -> us */
+	obd_sr *= 1000;
 
 	return 0;
 }
 
 /*
  * Configures PID groups for autoscan mode.
+ *
+ * If ascii is TRUE, data are expected in form of HEX ASCII string;
+ * as byte array otherwise.
+ *
  * Returns:
  *        0 - configuration succeeded
  *   EINVAL - input data invalid
  */
 int
-obd_autoscan_conf_pid_groups(char *data, int ln)
+obd_autoscan_conf_pidg(void *data, int ln, BOOL ascii)
 {
 	int i;
+	char *ca = data;
+	unsigned char *ba = data;
+	int numpids = ascii ? (ln / 2) - 3 : ln - 3;
 
 	/*
 	 * Populate group information and list of scanned PIDs.
@@ -1367,8 +1387,8 @@ obd_autoscan_conf_pid_groups(char *data, int ln)
 	obd_pid_groups.num = 0;
 	for (i = 0; i < OBD_PID_GROUP_NUM; i++) {
 		/* Get number of PIDs in a group. */
-		obd_pid_groups.group[i].num =
-		    hex2ulong(&data[2 * i], 2);
+		obd_pid_groups.group[i].num = ascii ?
+		    hex2ulong(&ca[2 * i], 2) : ba[i];
 
 		obd_pid_groups.num +=
 		    obd_pid_groups.group[i].num;
@@ -1399,11 +1419,17 @@ obd_autoscan_conf_pid_groups(char *data, int ln)
 	 * Total number of PIDs does not match summ
 	 * of PIDs in particular groups, abort.
 	 */
-	if (obd_pid_groups.num != (ln - 6) / 2) {
+	if (obd_pid_groups.num != numpids) {
 		return EINVAL;
 	}
 
-	hex2ucharbuf(&data[6], obd_pid_groups.list, ln - 6);
+	if (ascii) {
+		hex2ucharbuf(&ca[6], obd_pid_groups.list, ln - 6);
+	} else {
+		for (i = 0; i < ln - 3; i++) {
+			obd_pid_groups.list[i] = ba[i + 3];
+		}
+	}
 
 	/* Asking for current, not "freeze frame" data. */
 	obd_freeze_frame_num = -1;
@@ -1582,14 +1608,14 @@ obd_process_query(char *data, int ln)
 			}
 
 			/* Set PID sample rate. */
-			err = obd_autoscan_conf_sample_rate(&data[2]);
+			err = obd_autoscan_conf_sr(&data[2], TRUE);
 			if (err != 0) {
 				respond_with_ack = FALSE;
 				break;
 			}
 
 			/* Populate PID groups. */
-			err = obd_autoscan_conf_pid_groups(&data[6], ln - 6);
+			err = obd_autoscan_conf_pidg(&data[6], ln - 6, TRUE);
 			if (err != 0) {
 				respond_with_ack = FALSE;
 				break;

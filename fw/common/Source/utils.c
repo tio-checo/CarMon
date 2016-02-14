@@ -21,10 +21,6 @@ static const unsigned short crc_table[16] = {
     0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef
 };
 
-/* local variables */
-/* crc checksum */
-static unsigned short crc;
-
 /*
  * Converts given number of bytes of unsigned int to ASCII HEX string.
  * Start with MSB.
@@ -174,30 +170,30 @@ long2str(long n, char *out, int ln, BOOL lz)
  * Initializes 16bit CRC-CCITT calculation algorithm
  */
 void
-crc_init(void)
+crc_init(unsigned short *crc)
 {
-	crc = 0xffff;
+	*crc = 0xffff;
 }
 
 /*
  * Calculates 16bit CRC-CCITT
  */
 void
-crc_calc(unsigned char data)
+crc_calc(unsigned short *crc, unsigned char data)
 {
 	unsigned short i;
 
-	i = (crc >> 12) ^ (data >> 4);
-	crc = crc_table[i & 0x0F] ^ (crc << 4);
-	i = (crc >> 12) ^ (data >> 0);
-	crc = crc_table[i & 0x0F] ^ (crc << 4);
+	i = (*crc >> 12) ^ (data >> 4);
+	*crc = crc_table[i & 0x0F] ^ (*crc << 4);
+	i = (*crc >> 12) ^ (data >> 0);
+	*crc = crc_table[i & 0x0F] ^ (*crc << 4);
 }
 
 /*
  * Finishes calculation of CRC-CCITT and returns resulting value.
  */
-unsigned short
-crc_finalize(void)
+void
+crc_finalize(unsigned short *crc)
 {
 	/*
 	 * Per standard, empty messages should be appended
@@ -205,9 +201,28 @@ crc_finalize(void)
 	 * as we do not deal with empty messages at all.
 	 */
 /*
-	crc_calc(0);
-	crc_calc(0);
+	crc_calc(crc, 0);
+	crc_calc(crc, 0);
 */
+}
+
+/*
+ * Calculates CRC for given array of bytes
+ */
+unsigned short
+crc_calc_array(void *buf, int ln)
+{
+	unsigned short crc;
+	int i;
+	unsigned char *barray = (unsigned char *)buf;
+
+	crc_init(&crc);
+	for (i = 0; i < ln; i++) {
+		crc_calc(&crc, barray[i]);
+	}
+
+	crc_finalize(&crc);
+
 	return crc;
 }
 

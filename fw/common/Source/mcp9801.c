@@ -143,7 +143,7 @@ mcp9801_svc(void)
 	 * Read 2 bytes from the sensor.
 	 */
 	case MCP9801_ST_GETTEMP2:
-		if (i2csw_read(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
+		if (i2csw_current_read(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
 			break;
 
 		/* Move obtained temperature to resulting buffer. */

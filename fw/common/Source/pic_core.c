@@ -22,6 +22,10 @@
 #include "pcf8563.h"
 #endif
 
+#ifdef EE24_MODULE
+#include "ee24.h"
+#endif
+
 #include "helpers.h"
 #include "pic_core.h"
 #include "rt_light.h"
@@ -87,6 +91,7 @@ pcore_send_data_response_to_master(void *buf, int ln, int type)
 	    buf, type, ln, MCOM_DONT_FRAGMENT);
 
 	fl_send_data = TRUE;
+	fl_send_ack_nak = FALSE;
 
 	return 0;
 }
@@ -101,7 +106,15 @@ pcore_svc(void)
 	time_t t;
 	struct tm newtm;
 	struct timeval newtv;
+#endif
 
+	/* Update time of the day. */
+	updatetimeofday(RTL_SERVICE_PERIOD);
+
+	/* Handle communication service. */
+	pcore_comm_svc();
+
+#ifdef PCF8563_MODULE
 	/* initialize time from RTC */
 	if (!pcore_time_initialized) {
 		switch (pcf8563_gettime(&newtm)) {
@@ -128,12 +141,6 @@ pcore_svc(void)
 		} /*switch*/
 	}
 #endif
-
-	/* Update time of the day. */
-	updatetimeofday(RTL_SERVICE_PERIOD);
-
-	/* Handle communication service. */
-	pcore_comm_svc();
 
 	return 0;
 }
@@ -232,8 +239,7 @@ pcore_process_query(char *data, int ln)
 {
 	static unsigned short temp_us;
 
-	int err, i;
-	BOOL respond_with_ack = TRUE;
+	int err = 0;
 	char *tds;
 
 	/* Assume ACK/NAK will be sent to master */
@@ -246,7 +252,6 @@ pcore_process_query(char *data, int ln)
 			/* Verify packet length */
 			if (ln != 3) {
 				err = MCOM_NAK_EINVAL;
-				respond_with_ack = FALSE;
 			} else {
 				mcom_chsum_configure(hex2ulong(data + 1, 2));
 			}
@@ -256,8 +261,10 @@ pcore_process_query(char *data, int ln)
 		case MCOMM_PCORE_CMD_SETTIME:
 			/* Update both sw and hw clock. */
 			err = pcore_settime(data + 1, ln - 1, TRUE, TRUE);
-			if (err != 0)
-				respond_with_ack = FALSE;
+			/* The only error returned is EINVAL for now. */
+			if (err != 0) {
+				err = MCOM_NAK_EINVAL;
+			}
 			break;
 
 		/* Get time and date */
@@ -267,8 +274,6 @@ pcore_process_query(char *data, int ln)
 			pcore_send_data_response_to_master(tds, strlen(tds),
 			    MCOM_DATA_TYPE_ASCII);
 
-			/* Data will be sent to master instead of ACK/NAK */
-			fl_send_ack_nak = FALSE;
 			break;
 
 #ifdef MCP9801_MODULE
@@ -279,43 +284,71 @@ pcore_process_query(char *data, int ln)
 			pcore_send_data_response_to_master(&temp_us, 1,
 			    MCOM_DATA_TYPE_WORD);
 
-			/* Data will be sent to master instead of ACK/NAK */
-			fl_send_ack_nak = FALSE;
 		break;
 #endif
 
-		/* Calculate 16bit CRC-CCITT checksum for given data */
-		case MCOMM_PCORE_CMD_CALCCRC:
-			crc_init();
+#ifdef EE24_MODULE
+		/* Get EEPROM parameter */
+		case MCOMM_PCORE_CMD_GETEEPAR: {
+			int size;
+			unsigned char *pvalue;
 
-			for (i = 1; i < ln; i++) {
-				crc_calc(data[i]);
+			err = ee24_getpar(hex2ulong(data + 1, 2), &size,
+			    &pvalue);
+			/* The only error returned is EINVAL. */
+			if (err != 0) {
+				err = MCOM_NAK_EINVAL;
+			} else {
+				pcore_send_data_response_to_master(pvalue, size,
+				    MCOM_DATA_TYPE_BYTE);
 			}
+		} break;
 
-			temp_us = crc_finalize();
+		/* Set EEPROM parameter */
+		case MCOMM_PCORE_CMD_SETEEPAR: {
+			/*
+			 * At least parameter number and one byte of value has
+			 * to be provided.
+			 */
+			if (ln < 5 || (ln % 2 == 0)) {
+				err = MCOM_NAK_EINVAL;
+			} else {
+				err = ee24_setpar(hex2ulong(data + 1, 2),
+				    ln - 3, data + 3);
+
+				/* The only error returned is EINVAL. */
+				if (err != 0) {
+					err = MCOM_NAK_EINVAL;
+				}
+			}
+		} break;
+#endif
+
+		/* Calculate 16bit CRC-CCITT checksum for given data */
+		case MCOMM_PCORE_CMD_CALCCRC: {
+			temp_us = crc_calc_array(data, ln);
 
 			pcore_send_data_response_to_master(&temp_us, 1,
 			    MCOM_DATA_TYPE_WORD);
-
-			/* Data will be sent to master instead of ACK/NAK */
-			fl_send_ack_nak = FALSE;
-		break;
+		} break;
 
 		/* unknown command */
 		default:
 			err = MCOM_NAK_UNKNOWN_IDCMD;
-			respond_with_ack = FALSE;
 
 			break;
 	}
 
-	/*
-	 * Send response to master indicating that command was processed.
-	 */
-	if (respond_with_ack) {
-		mcom_prepare_ack_response(&pcore_resp_ack_nak);
-	} else {
-		mcom_prepare_nak_response(&pcore_resp_ack_nak, err);
+	if (fl_send_ack_nak) {
+		/*
+		 * Send response to master indicating
+		 * that command was processed.
+		 */
+		if (err == 0) {
+			mcom_prepare_ack_response(&pcore_resp_ack_nak);
+		} else {
+			mcom_prepare_nak_response(&pcore_resp_ack_nak, err);
+		}
 	}
 
 	return 0;
@@ -371,6 +404,11 @@ pcore_gettime(void)
 BOOL
 pcore_svc_online(void)
 {
-	/* Only time service checked at this point. */
-	return pcore_time_initialized;
+#ifdef EE24_MODULE
+	/* Both time as well as EEPROM parameters must be initialized. */
+	return (pcore_time_initialized && ee24_eepars_initialized());
+#else
+	/* Time service must be initialized. */
+	return (pcore_time_initialized);
+#endif
 }

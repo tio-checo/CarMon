@@ -21,6 +21,7 @@
 
 #include "carmon.h"
 #include "dlfs.h"
+#include "ee24.h"
 #include "master_comm.h"
 #include "obd.h"
 #include "pic_core.h"
@@ -30,6 +31,10 @@
 #include <errno.h>
 
 /* constants */
+/*
+ * Defaults values for periodic acquisition mode.
+ * Used in case EEPROM parameters are invalid.
+ */
 /*
  * Activates periodic acquisition of PID values.
  *  - sample rate:  20ms
@@ -56,6 +61,11 @@
  */
 #define	CM_AUTOSCAN_SR		"0014"
 #define	CM_AUTOSCAN_PIDG	"0405060C1023EF040B0D2C49050F3378ADDD"
+
+/* "sample rate" EEPROM parameter number */
+#define CM_EEPAR_SR		1
+/* "PID groups" EEPROM parameter number */
+#define CM_EEPAR_PIDG		2
 
 /* types */
 /* States in 'Configuration' mode */
@@ -269,11 +279,25 @@ cm_autonomous_svc(void)
 	 * Prepare the device for working in autonomous mode.
 	 * Switch to 'assisted mode' in case initialization fails.
 	 */
-	case CM_AUTO_ST_INIT:
-		/* Configure PID autoscan mode. */
-		if ((obd_autoscan_conf_sample_rate(CM_AUTOSCAN_SR) == 0) &&
-		    (obd_autoscan_conf_pid_groups(CM_AUTOSCAN_PIDG,
-		    sizeof (CM_AUTOSCAN_PIDG) - 1) == 0) &&
+	case CM_AUTO_ST_INIT: {
+		int sr_ln, pidg_ln;
+		unsigned char *sr_pv, *pidg_pv;
+
+		/*
+		 * Configure PID autoscan mode from EEPROM parameters.
+		 * Fallback to default values in case EEPROM content is invalid.
+		 */
+		if ((ee24_getpar(CM_EEPAR_SR, &sr_ln, &sr_pv) == 0) &&
+		    (ee24_getpar(CM_EEPAR_PIDG, &pidg_ln, &pidg_pv) == 0) &&
+		    (obd_autoscan_conf_sr(sr_pv, FALSE) == 0) &&
+		    (obd_autoscan_conf_pidg(pidg_pv, pidg_ln, FALSE) == 0) &&
+		    (obd_autoscan_conf_mode(TRUE) == 0)) {
+			/* Autonomous mode successfully initialized. */
+			err = 0;
+			cm_auto_st = CM_AUTO_ST_RUNNING;
+		} else if ((obd_autoscan_conf_sr(CM_AUTOSCAN_SR, TRUE) == 0) &&
+		    (obd_autoscan_conf_pidg(CM_AUTOSCAN_PIDG,
+		    sizeof (CM_AUTOSCAN_PIDG) - 1, TRUE) == 0) &&
 		    (obd_autoscan_conf_mode(TRUE) == 0)) {
 
 			/* Autonomous mode successfully initialized. */
@@ -288,7 +312,7 @@ cm_autonomous_svc(void)
 		/* Send result of the operation to the master. */
 		cm_send_change_mode_result_to_master(err);
 
-		break;
+	} break;
 
 	/*
 	 * Autonomous mode running...

@@ -246,7 +246,7 @@ mcom_decode_packet(void)
 	 */
 	if (mcom_use_chsum && !(mcom_co.rx_buf[0] == MCOMM_PIC_ID &&
 	    mcom_co.rx_buf[1] == MCOMM_PCORE_CMD_CALCCRC)) {
-		int i;
+		unsigned short crc;
 		unsigned short chsum = hex2ulong(mcom_co.rx_buf + ln - 4, 4);
 
 		/* Verify we have at least received CRC and some data. */
@@ -258,13 +258,10 @@ mcom_decode_packet(void)
 		}
 
 		/* Calculate checksum. */
-		crc_init();
-		for (i = 0; i < ln - 4; i++) {
-			crc_calc(mcom_co.rx_buf[i]);
-		}
+		crc = crc_calc_array(mcom_co.rx_buf, ln - 4);
 
 		/* Verify checksum. */
-		if (chsum != crc_finalize()) {
+		if (chsum != crc) {
 			mcom_prepare_nak_response(&mcom_resp,
 			    MCOM_NAK_CRC_ERROR);
 
@@ -631,6 +628,7 @@ mcom_tx_st(void)
 	static unsigned char ch;
 	static char tmp_buf[4];
 	static unsigned int item_ln, item_index, buf_ln, buf_index;
+	static unsigned short crc;
 	unsigned int d;
 	mcom_response_t *r;
 
@@ -653,7 +651,7 @@ mcom_tx_st(void)
 	} 
 
 	/* Re-calculate CRC. */
-	crc_calc(ch);
+	crc_calc(&crc, ch);
 
 	switch (mcom_st_tx) {
 	/* machine is IDLE */
@@ -663,7 +661,7 @@ mcom_tx_st(void)
 	/* send SOF */
 	case MCOM_ST_TX_SOF:
 		/* Initialize CRC calculator. */
-		crc_init();
+		crc_init(&crc);
 
 		buf_index = 0;
 
@@ -716,7 +714,8 @@ mcom_tx_st(void)
 				/* send the checksum */
 				item_index = 0;
 				item_ln = 4;
-				uint2hex(crc_finalize(), tmp_buf, 2);
+				crc_finalize(&crc);
+				uint2hex(crc, tmp_buf, 2);
 
 				ch = tmp_buf[0];
 				mcom_st_tx = MCOM_ST_TX_CHSUM;
@@ -794,7 +793,8 @@ mcom_tx_st(void)
 				/* send the checksum */
 				item_index = 0;
 				item_ln = 4;
-				uint2hex(crc_finalize(), tmp_buf, 2);
+				crc_finalize(&crc);
+				uint2hex(crc, tmp_buf, 2);
 
 				ch = tmp_buf[0];
 				mcom_st_tx = MCOM_ST_TX_CHSUM;

@@ -40,6 +40,10 @@
 #include "pcf8563.h"
 #endif
 
+#ifdef EE24_MODULE
+#include "ee24.h"
+#endif
+
 /* type declarations */
 /* Groups menu and related handler together. */
 typedef struct mon_map_st2menu {
@@ -91,6 +95,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[D] Disable USB\n\r" \
     "[a] Attach USB\n\r" \
     "[g] GPS\n\r" \
+    "[e] Dump EEPROM\n\r" \
     "[t] Display time of the day\n\r" \
     "[T] Set date to 04/10/2013 17:00:00\n\r" \
     "[r] Read pcf8563 registers\n\r" \
@@ -481,6 +486,15 @@ mon_main_menu(unsigned char ch)
 		gps_print_diag_info(mon_print_str);
 #else
 		mon_print_str("GPS not available\r\n");
+#endif
+		break;
+
+	/* EEPROM */
+	case 'e':
+#ifdef EE24_MODULE
+		ee24_print_diag_info(mon_print_str);
+#else
+		mon_print_str("EEPROM not available\r\n");
 #endif
 		break;
 

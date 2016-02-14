@@ -180,20 +180,13 @@ dlfs_crc_valid(void *d)
 static void
 dlfs_calc_crc(unsigned char *buff)
 {
-	int i;
-	unsigned short c;
+	unsigned short crc;
 
-	crc_init();
-
-	for (i = 0; i < DLFS_SECTOR_SIZE - DLFS_CRC_SIZE; i++) {
-		crc_calc(buff[i]);
-	}
-
-	c = crc_finalize();
+	crc = crc_calc_array(buff, DLFS_SECTOR_SIZE - DLFS_CRC_SIZE);
 
 	/* LSB first */
-	buff[DLFS_SECTOR_SIZE - 2] = c & 0xff;
-	buff[DLFS_SECTOR_SIZE - 1] = c >> 8;
+	buff[DLFS_SECTOR_SIZE - 2] = crc & 0xff;
+	buff[DLFS_SECTOR_SIZE - 1] = crc >> 8;
 }
 
 /*

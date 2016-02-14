@@ -16,6 +16,8 @@
 #define	MCOMM_PCORE_CMD_GETTEMP	't'	/* get temperature from MCP9801 */
 #define	MCOMM_PCORE_CMD_COMCFG	'C'	/* configure communication parameters */
 #define	MCOMM_PCORE_CMD_CALCCRC	'c'	/* calculate CRC-CCITT checksum */
+#define	MCOMM_PCORE_CMD_SETEEPAR	'E'	/* set EEPROM parameter */
+#define	MCOMM_PCORE_CMD_GETEEPAR	'e'	/* get EEPROM parameter */
 
 /* types */
 

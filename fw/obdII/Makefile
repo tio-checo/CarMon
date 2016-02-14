@@ -21,7 +21,7 @@ HEADER_DIRS= -I. -I./Include -I./Source/ -I./Include/HardwareProfile/ \
 CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DOBD_MODULE -DCANHAL_MODULE \
 -DCARMON_MODULE -DI2CSW_MODULE -DPCF8563_MODULE -DLCDTERM_MODULE -DDLFS_MODULE \
--DGPS_MODULE \
+-DGPS_MODULE -DEE24_MODULE \
 -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
@@ -59,7 +59,8 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/lcd_term.o \
     $(BUILD_DIR)/dlfs.o \
     $(BUILD_DIR)/pcf8563.o \
-    $(BUILD_DIR)/gps.o
+    $(BUILD_DIR)/gps.o \
+    $(BUILD_DIR)/ee24.o
 
 APPNAME= main
 
@@ -91,6 +92,9 @@ $(APPNAME).sym: $(BUILD_DIR)/$(APPNAME).elf
 	$(NM) -S -n $? > $(BUILD_DIR)/$@
 
 $(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/ee24.o: ../common/Source/ee24.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/bt.o: ../common/Source/bt.c
