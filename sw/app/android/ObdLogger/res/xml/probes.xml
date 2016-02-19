@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <!DOCTYPE ProbeList [
 
-<!ELEMENT ProbeList (ObdProbes, PicProbes) >
+<!ELEMENT ProbeList (ObdProbes, PicProbes, CompoundProbes) >
 <!ELEMENT ObdProbes (Pid)+ >
 <!ELEMENT PicProbes (Pid)+ >
+<!ELEMENT CompoundProbes (CompoundPid)+ >
 <!ELEMENT Pid (Id, Description, Label, Units, RawToPhysAdd, RawToPhysMul,
     PhysToPbAdd, PhysToPbMul, PhysToString) >
+<!ELEMENT CompoundPid (Id, Description, Label, Units, ObdPid, Pos, Length,
+    RawToPhysAdd, RawToPhysMul, PhysToPbAdd, PhysToPbMul, PhysToString) >
 <!ELEMENT Id (#PCDATA) >
 <!ELEMENT Description (#PCDATA) >
 <!ELEMENT Label (#PCDATA) >
 <!ELEMENT Units (#PCDATA) >
+<!ELEMENT ObdPid (#PCDATA) >
+<!ELEMENT Pos (#PCDATA) >
+<!ELEMENT Length (#PCDATA) >
 <!ELEMENT RawToPhysAdd (#PCDATA) >
 <!ELEMENT RawToPhysMul (#PCDATA) >
 <!ELEMENT PhysToPbAdd (#PCDATA) >
@@ -276,6 +282,19 @@
         <PhysToString>%.0f</PhysToString>
     </Pid>
 
+    <!-- 24 - O2S1_WR_lambda -->
+    <Pid>
+        <Id>24</Id>
+        <Description>O2S1 lambda</Description>
+        <Label>O2S1u</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.000015259</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
     <!-- 2C - Commanded EGR -->
     <Pid>
         <Id>2C</Id>
@@ -360,6 +379,20 @@
         <PhysToString>%.0f</PhysToString>
     </Pid>
 
+    <!-- 34 - O2S1_WR_lambda -->
+    <Pid>
+        <Id>34</Id>
+        <Description>O2S1 lambda</Description>
+        <Label>O2S1i</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.000015259</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- 2C - Commanded EGR -->
     <!-- 40 - PIDs supported [41 - 60] -->
     <Pid>
         <Id>40</Id>
@@ -739,4 +772,233 @@
         <PhysToString>%.0f</PhysToString>
     </Pid>
 </PicProbes>
+<CompoundProbes>
+    <!-- O2S11A - Lambda equivalence ratio -->
+    <CompoundPid>
+        <Id>O2S11Ae</Id>
+        <Description>O2S11A equivalence ratio</Description>
+        <Label>O2S11Ae</Label>
+        <Units>-</Units>
+        <ObdPid>24</ObdPid>
+        <Pos>0</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.000030518</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>
+
+    <!-- O2S11A - Lambda voltage -->
+    <CompoundPid>
+        <Id>O2S11Au</Id>
+        <Description>O2S11A voltage</Description>
+        <Label>O2S11Au</Label>
+        <Units>V</Units>
+        <ObdPid>24</ObdPid>
+        <Pos>2</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.00012207</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>
+
+    <!-- O2S11B - Lambda equivalence ratio -->
+    <CompoundPid>
+        <Id>O2S11Be</Id>
+        <Description>O2S11B equivalence ratio</Description>
+        <Label>O2S11Be</Label>
+        <Units>-</Units>
+        <ObdPid>34</ObdPid>
+        <Pos>0</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.000030518</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>
+
+    <!-- O2S11B - Lambda current -->
+    <CompoundPid>
+        <Id>O2S11Bi</Id>
+        <Description>O2S11B current</Description>
+        <Label>O2S11Bi</Label>
+        <Units>mA</Units>
+        <ObdPid>34</ObdPid>
+        <Pos>2</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-32768.0</RawToPhysAdd>
+        <RawToPhysMul>0.00390625</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>
+
+    <!-- EGT11 - Exhaust Gas Temperature bank 1, sensor 1 -->
+    <CompoundPid>
+        <Id>EGT11</Id>
+        <Description>Exhaust Gas Temperature bank 1, sensor 1</Description>
+        <Label>EGT11</Label>
+        <Units>stC</Units>
+        <ObdPid>78</ObdPid>
+        <Pos>1</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-400.0</RawToPhysAdd>
+        <RawToPhysMul>0.1</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- EGT12 - Exhaust Gas Temperature bank 1, sensor 2 -->
+    <CompoundPid>
+        <Id>EGT12</Id>
+        <Description>Exhaust Gas Temperature bank 1, sensor 2</Description>
+        <Label>EGT12</Label>
+        <Units>stC</Units>
+        <ObdPid>78</ObdPid>
+        <Pos>3</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-400.0</RawToPhysAdd>
+        <RawToPhysMul>0.1</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- EGT13 - Exhaust Gas Temperature bank 1, sensor 3 -->
+<!--
+    <CompoundPid>
+        <Id>EGT13</Id>
+        <Description>Exhaust Gas Temperature bank 1, sensor 3</Description>
+        <Label>EGT13</Label>
+        <Units>stC</Units>
+        <ObdPid>78</ObdPid>
+        <Pos>5</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-400.0</RawToPhysAdd>
+        <RawToPhysMul>0.1</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+-->
+
+    <!-- EGT14 - Exhaust Gas Temperature bank 1, sensor 4 -->
+<!--
+    <CompoundPid>
+        <Id>EGT14</Id>
+        <Description>Exhaust Gas Temperature bank 1, sensor 4</Description>
+        <Label>EGT14</Label>
+        <Units>stC</Units>
+        <ObdPid>78</ObdPid>
+        <Pos>7</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-400.0</RawToPhysAdd>
+        <RawToPhysMul>0.1</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+-->
+
+    <!-- InjFb1 - Injector Feedback Value 1 -->
+    <CompoundPid>
+        <Id>Inj1</Id>
+        <Description>Injector Feedback Value 1</Description>
+        <Label>Inj1</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>17</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- InjFb2 - Injector Feedback Value 2 -->
+    <CompoundPid>
+        <Id>Inj2</Id>
+        <Description>Injector Feedback Value 2</Description>
+        <Label>Inj2</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>18</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- InjFb3 - Injector Feedback Value 3 -->
+    <CompoundPid>
+        <Id>Inj3</Id>
+        <Description>Injector Feedback Value 3</Description>
+        <Label>Inj3</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>19</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- InjFb4 - Injector Feedback Value 4 -->
+    <CompoundPid>
+        <Id>Inj4</Id>
+        <Description>Injector Feedback Value 4</Description>
+        <Label>Inj4</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>20</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- DPFar - DPF accumulation ratio -->
+    <CompoundPid>
+        <Id>DPFar</Id>
+        <Description>DPF accumulation ratio</Description>
+        <Label>DPFar</Label>
+        <Units>%</Units>
+        <ObdPid>DD</ObdPid>
+        <Pos>21</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>2.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- DPFrs - DPF rejuvenation status -->
+    <CompoundPid>
+        <Id>DPFrs</Id>
+        <Description>DPF rejuvenation status</Description>
+        <Label>DPFrs</Label>
+        <Units>-</Units>
+        <ObdPid>DD</ObdPid>
+        <Pos>9</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.5</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+</CompoundProbes>
 </ProbeList>

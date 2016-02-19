@@ -231,114 +231,12 @@ class TurboProbe(Probe):
         return True
 
 
-class EgtProbe(Probe):
-    """
-    Represents EGT probe, extends Probe class.
-    Adds following attributes:
-
-    mObdPid - OBD pid carrying information about particular EGT sensor.
-    mEgtNum - EGT sensor number (one OBD PID can carry information about
-              up to 4 EGT sensors).
-    mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
-                                   when converting raw value to physical one
-    """
-    def __init__(self, egtName, obdPid, egtNum):
-        super(EgtProbe, self).__init__(egtName, "stC", egtName, egtName,
-                                       "%.0f")
-
-        self.mObdPid = obdPid
-        self.mEgtNum = egtNum
-
-        self.mRawToPhysAdd = -400.0
-        self.mRawToPhysMul = 0.1
-
-    def get_obd_pid(self):
-        """ Returns obd PID used to calculate value of this probe. """
-        return self.mObdPid
-
-    def update(self, raw):
-        """ Recalculates value from given raw data.
-        Returns True if value has been recalculated; False otherwise.
-        """
-        #
-        # Malformed data - do not check for now./
-        #
-        # if len(raw) != 9:
-        #     return False
-        #
-
-        # Specified EGT sensor not supported.
-        if raw[0] & (1 << self.mEgtNum) == 0:
-            return False
-
-        self.mCurrY = 256.0 * raw[self.mEgtNum * 2 + 1] + \
-                      raw[(self.mEgtNum + 1) * 2]
-
-        self.mCurrY += self.mRawToPhysAdd
-        self.mCurrY *= self.mRawToPhysMul
-
-        self.mCurrYValid = True
-
-        return True
-
-
-class InjFbProbe(Probe):
-    """
-    Represents 'Injector Feedback Value' Toyota  probe, extends Probe class.
-    Adds following attributes:
-
-    mObdPid   - OBD pid carrying information about particular Injector FB.
-    mInjNum   - injector num (0..3)- PID carries information about 4 injectors.
-    mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
-                                   when converting raw value to physical one
-    """
-    def __init__(self, injName, obdPid, injNum):
-        super(InjFbProbe, self).__init__(injName, "-", injName, injName, "%.0f")
-
-        self.mObdPid = obdPid
-        self.mInjNum = injNum
-
-        self.mRawToPhysAdd = -64.0
-        self.mRawToPhysMul = 1.0
-
-    def get_obd_pid(self):
-        """ Returns obd PID used to calculate value of this probe. """
-        return self.mObdPid
-
-    def update(self, raw):
-        """ Recalculates value from given raw value.
-        Returns True if value has been recalculated; False otherwise.
-        """
-        #
-        # Malformed data - do not check for now.
-        #
-        # if len(raw) != 29:
-        #     return False
-        #
-
-        #
-        # If packet has less than 17 bytes,
-        # then we are operating in debug mode.
-        #
-        if len(raw) < 17:
-            self.mCurrY = raw[0 + self.mInjNum]
-        else:
-            self.mCurrY = raw[17 + self.mInjNum]
-
-        self.mCurrY += self.mRawToPhysAdd
-        self.mCurrY *= self.mRawToPhysMul
-
-        self.mCurrYValid = True
-
-
 class CompoundProbe(Probe):
     """
     Represents 'compound probe', extends Probe class.
     Compound probes handle cases when more logical probes are delivered
     within one physical ECU probe.
     The design is still work in progress.
-    Currently it is used to extract information about
-    DPF PM Accumulation Ratio from Toyota PID 'DD'
 
     CompoundProbe Adds following attributes:
 
@@ -348,16 +246,17 @@ class CompoundProbe(Probe):
     mRawToPhysAdd, mRawToPhysMul - additive and multiplicative constant used
                                    when converting raw value to physical one
     """
-    def __init__(self, probeName, obdPid, pos, size):
-        super(CompoundProbe, self).__init__(probeName, "%", probeName,
-                                            probeName, "%.0f")
+    def __init__(self, probeName, units, desc, label, formatString, kAdd,
+                 kMul, obdPid, pos, size):
+        super(CompoundProbe, self).__init__(probeName, units, desc, label,
+                                            formatString)
 
         self.mObdPid = obdPid
-        self.mPos = pos
-        self.mSize = size
+        self.mPos = int(pos)
+        self.mSize = int(size)
 
-        self.mRawToPhysAdd = 0.0
-        self.mRawToPhysMul = 2.0
+        self.mRawToPhysAdd = kAdd
+        self.mRawToPhysMul = kMul
 
     def get_obd_pid(self):
         """ Returns obd PID used to calculate value of this probe. """
@@ -368,22 +267,24 @@ class CompoundProbe(Probe):
         Returns True if value has been recalculated; False otherwise.
         """
         #
-        # Malformed data - do not check for now.
-        #
-        # if len(raw) != 22:
-        #     return False
-        #
-
-        #
         # Re-calculate current value.
-        # Hardcoded for now for DPF PMar PID - last byte
-        # of ECU PID carries that information.
         #
-        self.mCurrY = raw[-1] * 2.0
+        self.mCurrY = 0.0
+
+        for i in range(self.mSize):
+            self.mCurrY *= 256.0
+            self.mCurrY += raw[self.mPos + i]
+
+        self.mCurrY += self.mRawToPhysAdd
+        self.mCurrY *= self.mRawToPhysMul
 
         self.mCurrYValid = True
 
         return True
+
+    def adjust_raw_to_phys_mul(self, mulCorr):
+        """ Applies correction to mRawToPhysMul multiplicative constant. """
+        self.mRawToPhysMul *= mulCorr
 
 
 class ProbePool(object):
@@ -408,18 +309,21 @@ class ProbePool(object):
         for probe_list_el in tree.getroot():
             if probe_list_el.tag == "ObdProbes":
                 # <ObdProbes> list
-                is_obd_probe = True
+                probe_type = "obd"
             elif probe_list_el.tag == "PicProbes":
                 # <PicProbes> list
-                is_obd_probe = False
+                probe_type = "pic"
+            elif probe_list_el.tag == "CompoundProbes":
+                # <CompoundProbes> list
+                probe_type = "compound"
             else:
-                # Unkonown probes, discard them
+                # Unknown probes, discard them
                 continue
 
             # Iterate over particular probes and add them to the probe pool
             for probe_el in probe_list_el.iterchildren():
                 # Discard comments and elements not describing probes
-                if probe_el.tag != "Pid":
+                if probe_el.tag != "Pid" and probe_el.tag != "CompoundPid" :
                     continue
 
                 # Obtain properties for particular probe
@@ -438,22 +342,40 @@ class ProbePool(object):
                         raw_to_phys_mul = float(probe_prop_el.text)
                     elif probe_prop_el.tag == "PhysToString":
                         phys_to_string = probe_prop_el.text
+                    elif probe_prop_el.tag == "Pos":
+                        compound_pos = probe_prop_el.text
+                    elif probe_prop_el.tag == "Length":
+                        compound_ln = probe_prop_el.text
+                    elif probe_prop_el.tag == "ObdPid":
+                        compound_obd_pid = probe_prop_el.text
 
-                if is_obd_probe:
+                if probe_type == "obd":
                     new_probe = ObdProbe(pid, units, description, label,
                                          phys_to_string, raw_to_phys_add,
                                          raw_to_phys_mul)
-                else:
+                elif probe_type == "pic":
                     new_probe = PicProbe(pid, units, description, label,
                                          phys_to_string, raw_to_phys_add,
                                          raw_to_phys_mul)
+                else:
+                    new_probe = CompoundProbe(pid, units, description, label,
+                                         phys_to_string, raw_to_phys_add,
+                                         raw_to_phys_mul, compound_obd_pid,
+                                         compound_pos, compound_ln)
 
                 # Add probe to the probe pool
                 ProbePool.mProbePool[pid] = new_probe
 
         #
+        # Adjust multiplication constant for O2 equivalence probes.
+        # Hardcoded for now - should be obtained from the 1st byte of PID '4F'.
+        #
+        ProbePool.mProbePool['O2S11Ae'].adjust_raw_to_phys_mul(8.0 / 2.0)
+        ProbePool.mProbePool['O2S11Be'].adjust_raw_to_phys_mul(8.0 / 2.0)
+
+        #
         # Adjust multiplication constant for '0B' probe - hardcoded for now.
-        # Adjustment should be obtained from PID '4F'.
+        # Hardcoded for now - should be obtained from the 4th byte of PID '4F'.
         #
         ProbePool.mProbePool['0B'].adjust_raw_to_phys_mul(10.0 * 32 / 255.0)
 
@@ -464,19 +386,6 @@ class ProbePool(object):
         # ratio.
         #
         ProbePool.mProbePool['Turbo'] = TurboProbe()
-
-        # EGT probes
-        ProbePool.mProbePool['EGT11'] = EgtProbe('EGT11', '78', 0)
-        ProbePool.mProbePool['EGT12'] = EgtProbe('EGT12', '78', 1)
-
-        # Injector Feedback Values
-        ProbePool.mProbePool['Inj1'] = InjFbProbe('Inj1', 'AD', 0)
-        ProbePool.mProbePool['Inj2'] = InjFbProbe('Inj2', 'AD', 1)
-        ProbePool.mProbePool['Inj3'] = InjFbProbe('Inj3', 'AD', 2)
-        ProbePool.mProbePool['Inj4'] = InjFbProbe('Inj4', 'AD', 3)
-
-        # DPF PM Accumulation Ratio probe.
-        ProbePool.mProbePool['DPFar'] = CompoundProbe('DPFar', 'DD', 21, 1)
 
         ProbePool.mPoolInitialized = True
 

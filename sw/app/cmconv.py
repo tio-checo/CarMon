@@ -123,20 +123,51 @@ def main():
     # Generate list of logged probes from the list of logged PIDs
     probe_list = []
     for pid in pid_list:
+        is_obd_probe = True;
+
         if probe_pool.get_probe('EGT11').get_obd_pid() == pid:
+            is_obd_probe = False;
+
             # EGT probes logged
             probe_list.append('EGT11')
             probe_list.append('EGT12')
-        elif probe_pool.get_probe('Inj1').get_obd_pid() == pid:
+
+        if probe_pool.get_probe('Inj1').get_obd_pid() == pid:
+            is_obd_probe = False;
+
             # Inj probes logged
             probe_list.append('Inj1')
             probe_list.append('Inj2')
             probe_list.append('Inj3')
             probe_list.append('Inj4')
-        elif probe_pool.get_probe('DPFar').get_obd_pid() == pid:
+
+        if probe_pool.get_probe('DPFar').get_obd_pid() == pid:
+            is_obd_probe = False;
+
             # DPFar probe logged
             probe_list.append('DPFar')
-        else:
+
+        if probe_pool.get_probe('DPFrs').get_obd_pid() == pid:
+            is_obd_probe = False;
+
+            # DPFrs probe logged
+            probe_list.append('DPFrs')
+
+        if probe_pool.get_probe('O2S11Ae').get_obd_pid() == pid:
+            is_obd_probe = False;
+
+            # O2S1A probes logged
+            probe_list.append('O2S11Ae')
+            probe_list.append('O2S11Au')
+
+        if probe_pool.get_probe('O2S11Be').get_obd_pid() == pid:
+            is_obd_probe = False;
+
+            # O2S1B probes logged
+            probe_list.append('O2S11Be')
+            probe_list.append('O2S11Bi')
+
+        if is_obd_probe:
             # Standard OBD probe
             probe_list.append(pid)
 
@@ -189,7 +220,10 @@ def main():
         # then it is used to calculate value of one of
         # "synthetic" probes.
         #
+        pid_recognized = False
         if pid in probe_list:
+            pid_recognized = True
+
             probe = probe_pool.get_probe(pid)
             probe.update(value_list)
             conv_record[pid] = probe.phys_to_log()
@@ -198,8 +232,12 @@ def main():
             turbo_probe = probe_pool.get_probe('Turbo')
             if turbo_probe.update(probe):
                 conv_record['Turbo'] = turbo_probe.phys_to_log()
-        elif probe_pool.get_probe('EGT11').get_obd_pid() == pid:
-            # Update EGT Probes
+
+	# Compound probes
+        # Update EGT Probes
+        if probe_pool.get_probe('EGT11').get_obd_pid() == pid:
+            pid_recognized = True
+
             probe = probe_pool.get_probe('EGT11')
             probe.update(value_list)
             conv_record['EGT11'] = probe.phys_to_log()
@@ -207,8 +245,11 @@ def main():
             probe = probe_pool.get_probe('EGT12')
             probe.update(value_list)
             conv_record['EGT12'] = probe.phys_to_log()
-        elif probe_pool.get_probe('Inj1').get_obd_pid() == pid:
-            # Update Injector Probes
+
+        # Update Injector Probes
+        if probe_pool.get_probe('Inj1').get_obd_pid() == pid:
+            pid_recognized = True
+
             probe = probe_pool.get_probe('Inj1')
             probe.update(value_list)
             conv_record['Inj1'] = probe.phys_to_log()
@@ -224,13 +265,47 @@ def main():
             probe = probe_pool.get_probe('Inj4')
             probe.update(value_list)
             conv_record['Inj4'] = probe.phys_to_log()
-        elif probe_pool.get_probe('DPFar').get_obd_pid() == pid:
-            # Update DPF accumulation ratio
+        # Update DPF accumulation ratio
+        if probe_pool.get_probe('DPFar').get_obd_pid() == pid:
+            pid_recognized = True
+
             probe = probe_pool.get_probe('DPFar')
             probe.update(value_list)
             conv_record['DPFar'] = probe.phys_to_log()
-        else:
-            sys.stderr.writeline('Unknown PID')
+        # Update DPF rejuvenation status
+        if probe_pool.get_probe('DPFrs').get_obd_pid() == pid:
+            pid_recognized = True
+
+            probe = probe_pool.get_probe('DPFrs')
+            probe.update(value_list)
+            conv_record['DPFrs'] = probe.phys_to_log()
+
+        # Update O2S11A probes
+        if probe_pool.get_probe('O2S11Ae').get_obd_pid() == pid:
+            pid_recognized = True
+
+            probe = probe_pool.get_probe('O2S11Ae')
+            probe.update(value_list)
+            conv_record['O2S11Ae'] = probe.phys_to_log()
+
+            probe = probe_pool.get_probe('O2S11Au')
+            probe.update(value_list)
+            conv_record['O2S11Au'] = probe.phys_to_log()
+
+        # Update O2S11B probes
+        if probe_pool.get_probe('O2S11Be').get_obd_pid() == pid:
+            pid_recognized = True
+
+            probe = probe_pool.get_probe('O2S11Be')
+            probe.update(value_list)
+            conv_record['O2S11Be'] = probe.phys_to_log()
+
+            probe = probe_pool.get_probe('O2S11Bi')
+            probe.update(value_list)
+            conv_record['O2S11Bi'] = probe.phys_to_log()
+
+        if not pid_recognized:
+            sys.stderr.write('Unknown PID\n')
 
         # Flush the temporary buffer to the log record if appropriate
         if pid == group_fast_list[-1]:
