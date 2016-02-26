@@ -737,7 +737,8 @@ dlfs_flush_ul_svc(void)
 
 	/*
 	 * Nothing to be done.
-	 * Atomic operation, since 'dirty' flag is set from interrupt context.
+	 * Check must be atomic operation, since 'dirty' flag
+	 * is also manipulated from interrupt context.
 	 */
 	if (!dlfs_buf_cache[cbi].dirty) {
 		return;
@@ -764,7 +765,8 @@ dlfs_flush_ul_svc(void)
 
 	/*
 	 * Buffer flushed to the media, mark it as 'available'.
-	 * Atomic operation, since 'dirty' flag is set from interrupt context.
+	 * Set must be atomic operation, since 'dirty' flag
+	 * is also manipulated from interrupt context.
 	 */
 	dlfs_buf_cache[cbi].dirty = FALSE;
 }

@@ -48,7 +48,7 @@
 #define	DLFS_DATA_UNUSED	((unsigned long)-1)
 
 /* number of cached sector buffers */
-#define	DLFS_BUF_CACHE_SIZE	3
+#define	DLFS_BUF_CACHE_SIZE	8
 
 /* types */
 
