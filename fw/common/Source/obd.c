@@ -53,6 +53,9 @@
 /* Type of lower communication layer */
 static OBD_COMM_MODE obd_comm_mode;
 
+/* TRUE if OBD layer received CAN frame; FALSE otherwise. */
+static BOOL obd_can_frame_received;
+
 /* pointer to lower layer functions for sending/receiving OBD packet */
 static int (*obd_send)(unsigned char *data, int ln);
 static int (*obd_recv)(unsigned char **data, int *ln);
@@ -77,6 +80,9 @@ static enum {
 	OBD_ECU_ST_GETPID,	/* ask for PID value */
 	OBD_ECU_ST_SENDPID,	/* send PID value to master */
 	OBD_ECU_ST_NEXTPID,	/* move to the next PID */
+	OBD_ECU_ST_WAIT4CANACTIVE1,	/* wait on activity on CAN bus */
+	OBD_ECU_ST_WAIT4CANACTIVE2,
+	OBD_ECU_ST_WAIT4CANACTIVE3,
 	OBD_ECU_ST_WAIT4SAMPLETIME,	/* wait for sample time */
 	OBD_ECU_ST_GETPERMDTC,	/* get confirmed DTC */
 	OBD_ECU_ST_SENDDTC,	/* send DTC to master */
@@ -746,19 +752,96 @@ obd_comm_ecu_svc(void)
 	/*
 	 * If operating in auto-scan mode, process next PID.
 	 * But only if value of current PID has been successfully
-	 * obtained; otherwise re-try.
+	 * obtained.
+	 * If there was a failure when obtaining the PID value,
+	 * assume that we lost connection with ECU due to power
+	 * outage. In such case wait until traffic on CAN bus
+	 * is detected, then resume the operation.
 	 */
 	case OBD_ECU_ST_NEXTPID:
 		if (obd_autoscan_run) {
 			if (ret == 0) {
 				obd_autoscan_move_to_next_pid();
-			}
+				obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
+			} else {
+				int err;
 
-			obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
+				/*
+				 * Wait for CAN frames within range of 2c0-2cf.
+				 * Those CAN frames are known to occur on CAN
+				 * bus when CAN bus is active.
+				 */
+				err = can_configure(MODE_LISTEN_ONLY,
+				    SPEED_500k, 0x01, 0x2c0, 0x7f0, FALSE);
+
+				/* If cannot reconfigure CAN, re-try send. */
+				if (err == 0) {
+					obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE1;
+				} else {
+					obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
+				}
+			}
 		} else {
 			obd_ecu_st = OBD_ECU_ST_IDLE;
 		}
 
+		break;
+
+	/* Wait until CAN enters 'monitor' mode. */
+	case OBD_ECU_ST_WAIT4CANACTIVE1:
+		if (can_configuration_in_progress()) {
+			break;
+		}
+
+		/*
+		 * Clear flag indicating that OBD layer has been provided
+		 * with received CAN frame. Flag is set in obd_can_rx_cb()
+		 * callback function.
+		 */
+		obd_can_frame_received = FALSE;
+
+		obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE2;
+		break;
+
+	/* Wait until CAN bus becomes active (CAN frame is received). */
+	case OBD_ECU_ST_WAIT4CANACTIVE2: {
+		int err;
+
+		if (!obd_can_frame_received) {
+			break;
+		}
+
+		/* Can frame received. Switch CAN to OBD mode. */
+		err = can_configure(MODE_NORMAL,
+		    SPEED_500k, 0x01, 0x7df, 0x7c0, FALSE);
+
+		/*
+		 * If cannot reconfigure CAN, make an attempt
+		 * to obtain PID value.
+		 */
+		if (err == 0) {
+			obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE3;
+		} else {
+			/* Re-initialize sample rate timer. */
+			rtl_timer_init(&obd_timer, obd_sr);
+
+			obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
+		}
+
+	} break;
+
+	/* Wait until reconfiguration is done, then resume. */
+	case OBD_ECU_ST_WAIT4CANACTIVE3:
+		if (can_configuration_in_progress()) {
+			break;
+		}
+
+		/* Re-initialize sample rate timer. */
+		rtl_timer_init(&obd_timer, obd_sr);
+
+		/* And wait until it expires, then resume. */
+		obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
+		
 		break;
 
 	/* Send DTC to master. */
@@ -1293,6 +1376,12 @@ obd_can_rx_cb(CANRxMessageBuffer *rxm)
 	int id = CAN_GET_ID(rxm);
 	int mapln = sizeof (obd_can_map_verso) / sizeof (struct obd_can_map);
 	const struct obd_can_map *map = obd_can_map_verso;
+
+	/*
+	 * Set flag that CAN frame has been received.
+	 * Used when module is idle waiting for activityon CAN bus.
+	 */
+	obd_can_frame_received = TRUE;
 
 	/*
 	 * There is nothing to do if we are not operating

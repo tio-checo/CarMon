@@ -734,7 +734,9 @@ can_configure_decode(char *data, int ln)
  */
 BOOL
 can_configuration_in_progress(void) {
-	return (can_tx_st == CAN_TX_ST_CONF1 || can_tx_st == CAN_TX_ST_CONF2);
+	return (can_tx_st == CAN_TX_ST_CONF1 ||
+	    can_tx_st == CAN_TX_ST_CONF2 ||
+	    can_tx_st == CAN_TX_ST_CONF3);
 }
 
 /*
