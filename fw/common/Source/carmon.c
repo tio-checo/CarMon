@@ -19,6 +19,7 @@
 #include "GenericTypeDefs.h"
 #include "xc.h"
 
+#include "bt.h"
 #include "carmon.h"
 #include "dlfs.h"
 #include "ee24.h"
@@ -643,6 +644,19 @@ cm_get_mode(void)
 void
 cm_obd_pid_callback(unsigned char *d, int ln)
 {
+	static BOOL bt_suspended = FALSE;
+
+	/*
+	 * Communication with ECU established - turn off Bluetooth module
+	 * if operating in autonomous mode.
+	 */
+	if (!bt_suspended &&
+	    cm_get_mode() == CM_MODE_AUTONOMOUS) {
+		bt_suspended = TRUE;
+
+		bt_suspend();
+	}
+
 	/* Log PID to log device if available. */
 	if (cm_log_available) {
 		cm_log_pid(d, ln);

@@ -43,6 +43,8 @@
 #define	BT_GPS_MAC	"0012-6F-2249A9"
 
 /* local variables */
+/* TRUE if module is suspended; FALSE otherwise. */
+static BOOL bt_is_suspended;
 /* state of receive state machine */
 static int bt_st_rx;
 /* TRUE indicates that BT module is connected */
@@ -164,6 +166,11 @@ bt_getchar_raw(unsigned char *ch)
 {
 	unsigned char dummy;
 
+	/* There is no point to query UART if module is suspended. */
+	if (bt_is_suspended) {
+		return EAGAIN;
+	}
+
 	/* handle receive errors */
 	if (U2STA & 0x000E) {
 		/* dummy read to clear FERR/PERR */
@@ -231,6 +238,9 @@ bt_init(void)
 	/* Let receive state machine wait for a connection from master. */
 	bt_st_rx = BT_ST_RX_MSG_SOF1;
 
+	/* Module is up and running. */
+	bt_is_suspended = FALSE;
+
 	return 0;
 }
 
@@ -263,6 +273,8 @@ bt_suspend(void)
 	 */
 	TRISBSET = 0x4000;
 
+	bt_is_suspended = TRUE;
+
 	return 0;
 }
 
@@ -276,6 +288,11 @@ bt_suspend(void)
 int
 bt_putchar(unsigned char ch, BOOL block)
 {
+	/* There is no point to touch the UART if module is suspended. */
+	if (bt_is_suspended) {
+		return EAGAIN;
+	}
+
 	/* Not connected to the master, discard character. */
 	if (!bt_is_paired()) {
 		return 0;
@@ -335,7 +352,7 @@ bt_getchar_master(unsigned char *ch)
 BOOL
 bt_is_paired(void)
 {
-	return (bt_paired);
+	return (bt_paired && !bt_is_suspended);
 }
 
 
@@ -346,5 +363,5 @@ bt_is_paired(void)
 BOOL
 bt_is_paired_with_gps(void)
 {
-	return (bt_paired && bt_paired_with_gps);
+	return (bt_is_paired() && bt_paired_with_gps);
 }

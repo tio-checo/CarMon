@@ -94,6 +94,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[d] Detach USB\n\r" \
     "[D] Disable USB\n\r" \
     "[a] Attach USB\n\r" \
+    "[b] Suspend Bluetooth module\n\r" \
     "[g] GPS\n\r" \
     "[e] Dump EEPROM\n\r" \
     "[t] Display time of the day\n\r" \
@@ -334,6 +335,13 @@ mon_main_menu(unsigned char ch)
 			next_st = -2;
 		else
 			next_st = MON_ST_BLUETOOTH;
+		break;
+
+	/*
+	 * Suspend Bluetooth module.
+	 */
+	case 'b':
+		bt_suspend();
 		break;
 
 	/* Read memory - for now just print content of config regs */
