@@ -20,7 +20,7 @@
 
 /* constants */
 /* I2C address of 24Cxx EEPROM chip */
-#define EE24_I2C_ADDRESS	0x50
+#define EE24_I2C_ADDRESS	0x54
 
 /* size of 24C02 EEPROM */
 #define EE24_MEM_SIZE		64
