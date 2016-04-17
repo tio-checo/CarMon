@@ -1,0 +1,15 @@
+    <!-- InjFb3 - Injector Feedback Value 3 -->
+    <CompoundPid>
+        <Id>Inj3</Id>
+        <Description>Injector Feedback Value 3</Description>
+        <Label>Inj3</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>19</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>

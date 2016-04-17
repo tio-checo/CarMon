@@ -1,0 +1,15 @@
+    <!-- O2S11B - Lambda current -->
+    <CompoundPid>
+        <Id>O2S11Bi</Id>
+        <Description>O2S11B current</Description>
+        <Label>O2S11Bi</Label>
+        <Units>mA</Units>
+        <ObdPid>34</ObdPid>
+        <Pos>2</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-32768.0</RawToPhysAdd>
+        <RawToPhysMul>0.00390625</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>

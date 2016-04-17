@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<!DOCTYPE ProbeList SYSTEM "probe_list.dtd" [
+<!ENTITY obd_probes SYSTEM "probes_obd.xml">
+<!ENTITY pic_probes SYSTEM "probes_pic.xml">
+<!ENTITY o2s11ae_probe SYSTEM "probe_o2s11ae.xml">
+<!ENTITY o2s11au_probe SYSTEM "probe_o2s11au.xml">
+<!ENTITY o2s11be_probe SYSTEM "probe_o2s11be.xml">
+<!ENTITY o2s11bi_probe SYSTEM "probe_o2s11bi.xml">
+<!ENTITY egt11_probe SYSTEM "probe_egt11.xml">
+<!ENTITY egt12_probe SYSTEM "probe_egt12.xml">
+<!ENTITY inj1_probe SYSTEM "probe_inj1.xml">
+<!ENTITY inj2_probe SYSTEM "probe_inj2.xml">
+<!ENTITY inj3_probe SYSTEM "probe_inj3.xml">
+<!ENTITY inj4_probe SYSTEM "probe_inj4.xml">
+]>
+
+<ProbeList>
+
+&obd_probes;
+&pic_probes;
+
+<CompoundProbes>
+    <!-- O2S11A - Lambda equivalence ratio -->
+    &o2s11ae_probe;
+
+    <!-- O2S11A - Lambda voltage -->
+    &o2s11au_probe;
+
+    <!-- O2S11B - Lambda equivalence ratio -->
+    &o2s11be_probe;
+
+    <!-- O2S11B - Lambda current -->
+    &o2s11bi_probe;
+
+    <!-- EGT11 - Exhaust Gas Temperature bank 1, sensor 1 -->
+    &egt11_probe;
+
+    <!-- EGT12 - Exhaust Gas Temperature bank 1, sensor 2 -->
+    &egt12_probe;
+
+    <!-- InjFb1 - Injector Feedback Value 1 -->
+    &inj1_probe;
+
+    <!-- InjFb2 - Injector Feedback Value 2 -->
+    &inj2_probe;
+
+    <!-- InjFb3 - Injector Feedback Value 3 -->
+    &inj3_probe;
+
+    <!-- InjFb4 - Injector Feedback Value 4 -->
+    &inj4_probe;
+
+    <!-- DPFar - DPF accumulation ratio -->
+    <CompoundPid>
+        <Id>DPFar</Id>
+        <Description>DPF accumulation ratio</Description>
+        <Label>DPFar</Label>
+        <Units>%</Units>
+        <ObdPid>DD</ObdPid>
+        <Pos>21</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>2.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+
+    <!-- DPFrs - DPF rejuvenation status -->
+    <CompoundPid>
+        <Id>DPFrs</Id>
+        <Description>DPF rejuvenation status</Description>
+        <Label>DPFrs</Label>
+        <Units>-</Units>
+        <ObdPid>DD</ObdPid>
+        <Pos>9</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.5</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>
+</CompoundProbes>
+</ProbeList>

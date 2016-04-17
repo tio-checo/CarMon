@@ -1,0 +1,187 @@
+<PicProbes>
+    <!-- Vst - Battery voltage -->
+    <Pid>
+        <Id>Vst</Id>
+        <Description>Battery voltage</Description>
+        <Label>Vst</Label>
+        <Units>V</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.01837</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (0.01837 * 1024 -->
+        <PhysToPbMul>0.053160724</PhysToPbMul>
+        <PhysToString>%.1f</PhysToString>
+    </Pid>
+
+    <!-- Vrms - RMS battery voltage -->
+    <Pid>
+        <Id>Vrms</Id>
+        <Description>RMS battery voltage</Description>
+        <Label>Vrms</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- Vmin - Min battery voltage -->
+    <Pid>
+        <Id>Vmin</Id>
+        <Description>Min battery voltage</Description>
+        <Label>Vmin</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- Vmax - Max battery voltage -->
+    <Pid>
+        <Id>Vmax</Id>
+        <Description>Max battery voltage</Description>
+        <Label>Vmax</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <!-- 1.0 / (1.0 * 1024 -->
+        <PhysToPbMul>0.000976562</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F1 - Frequency 1 -->
+    <Pid>
+        <Id>F1</Id>
+        <Description>Frequency 1</Description>
+        <Label>F1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M1 - Amplitude 1 -->
+    <Pid>
+        <Id>M1</Id>
+        <Description>Amplitude 1</Description>
+        <Label>M1</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F2 - Frequency 2 -->
+    <Pid>
+        <Id>F2</Id>
+        <Description>Frequency 2</Description>
+        <Label>F2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M2 - Amplitude 2 -->
+    <Pid>
+        <Id>M2</Id>
+        <Description>Amplitude 2</Description>
+        <Label>M2</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F3 - Frequency 3 -->
+    <Pid>
+        <Id>F3</Id>
+        <Description>Frequency 3</Description>
+        <Label>F3</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M3 - Amplitude 3 -->
+    <Pid>
+        <Id>M3</Id>
+        <Description>Amplitude 3</Description>
+        <Label>M3</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F4 - Frequency 4 -->
+    <Pid>
+        <Id>F4</Id>
+        <Description>Frequency 4</Description>
+        <Label>F4</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M4 - Amplitude 4 -->
+    <Pid>
+        <Id>M4</Id>
+        <Description>Amplitude 4</Description>
+        <Label>M4</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- F5 - Frequency 5 -->
+    <Pid>
+        <Id>F5</Id>
+        <Description>Frequency 5</Description>
+        <Label>F5</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+
+    <!-- M5 - Amplitude 5 -->
+    <Pid>
+        <Id>M5</Id>
+        <Description>Amplitude 5</Description>
+        <Label>M5</Label>
+        <Units>-</Units>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </Pid>
+</PicProbes>

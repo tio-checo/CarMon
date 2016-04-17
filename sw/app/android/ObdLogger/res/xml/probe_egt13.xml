@@ -1,0 +1,15 @@
+    <!-- EGT13 - Exhaust Gas Temperature bank 1, sensor 3 -->
+    <CompoundPid>
+        <Id>EGT13</Id>
+        <Description>Exhaust Gas Temperature bank 1, sensor 3</Description>
+        <Label>EGT13</Label>
+        <Units>stC</Units>
+        <ObdPid>78</ObdPid>
+        <Pos>5</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>-400.0</RawToPhysAdd>
+        <RawToPhysMul>0.1</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>

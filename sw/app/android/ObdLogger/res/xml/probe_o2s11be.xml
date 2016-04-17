@@ -1,0 +1,15 @@
+    <!-- O2S11B - Lambda equivalence ratio -->
+    <CompoundPid>
+        <Id>O2S11Be</Id>
+        <Description>O2S11B equivalence ratio</Description>
+        <Label>O2S11Be</Label>
+        <Units>-</Units>
+        <ObdPid>34</ObdPid>
+        <Pos>0</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.000030518</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>

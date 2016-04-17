@@ -1,0 +1,15 @@
+    <!-- O2S11A - Lambda voltage -->
+    <CompoundPid>
+        <Id>O2S11Au</Id>
+        <Description>O2S11A voltage</Description>
+        <Label>O2S11Au</Label>
+        <Units>V</Units>
+        <ObdPid>24</ObdPid>
+        <Pos>2</Pos>
+        <Length>2</Length>
+        <RawToPhysAdd>0.0</RawToPhysAdd>
+        <RawToPhysMul>0.00012207</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.3f</PhysToString>
+    </CompoundPid>

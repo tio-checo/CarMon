@@ -1,0 +1,20 @@
+<!ELEMENT ProbeList (ObdProbes, PicProbes, CompoundProbes) >
+<!ELEMENT ObdProbes (Pid)+ >
+<!ELEMENT PicProbes (Pid)+ >
+<!ELEMENT CompoundProbes (CompoundPid)+ >
+<!ELEMENT Pid (Id, Description, Label, Units, RawToPhysAdd, RawToPhysMul,
+    PhysToPbAdd, PhysToPbMul, PhysToString) >
+<!ELEMENT CompoundPid (Id, Description, Label, Units, ObdPid, Pos, Length,
+    RawToPhysAdd, RawToPhysMul, PhysToPbAdd, PhysToPbMul, PhysToString) >
+<!ELEMENT Id (#PCDATA) >
+<!ELEMENT Description (#PCDATA) >
+<!ELEMENT Label (#PCDATA) >
+<!ELEMENT Units (#PCDATA) >
+<!ELEMENT ObdPid (#PCDATA) >
+<!ELEMENT Pos (#PCDATA) >
+<!ELEMENT Length (#PCDATA) >
+<!ELEMENT RawToPhysAdd (#PCDATA) >
+<!ELEMENT RawToPhysMul (#PCDATA) >
+<!ELEMENT PhysToPbAdd (#PCDATA) >
+<!ELEMENT PhysToPbMul (#PCDATA) >
+<!ELEMENT PhysToString (#PCDATA) >

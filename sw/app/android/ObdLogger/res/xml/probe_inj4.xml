@@ -1,0 +1,15 @@
+    <!-- InjFb4 - Injector Feedback Value 4 -->
+    <CompoundPid>
+        <Id>Inj4</Id>
+        <Description>Injector Feedback Value 4</Description>
+        <Label>Inj4</Label>
+        <Units>-</Units>
+        <ObdPid>AD</ObdPid>
+        <Pos>20</Pos>
+        <Length>1</Length>
+        <RawToPhysAdd>-64.0</RawToPhysAdd>
+        <RawToPhysMul>1.0</RawToPhysMul>
+        <PhysToPbAdd>0.0</PhysToPbAdd>
+        <PhysToPbMul>1.0</PhysToPbMul>
+        <PhysToString>%.0f</PhysToString>
+    </CompoundPid>

@@ -290,20 +290,25 @@ class CompoundProbe(Probe):
 class ProbePool(object):
     """ Pool of all available Probes.
     """
-    # Path to XML file describing available probes
-    PROBE_XML_PATH = "./android/ObdLogger/res/xml/probes.xml"
+    # Path to directory with XML files describing available probes
+    PROBE_XML_DIR = "./android/ObdLogger/res/xml/"
 
     # True once pool of probes is initialized
     mPoolInitialized = False
     mProbePool = {}
 
-    def __init__(self):
+    # Dictionary mapping OBD PIDs to compound probes
+    mObdPid2Compound = {}
+
+    def __init__(self, probe_def='2adftv'):
         # Initialize only once.
         if ProbePool.mPoolInitialized:
             return
 
+        probe_fname = 'probes_' + probe_def + '.xml'
+
         # Commence parsing of XML file describing probes
-        tree = etree.parse(ProbePool.PROBE_XML_PATH)
+        tree = etree.parse(ProbePool.PROBE_XML_DIR + probe_fname)
 
         # Iterate over children of <ProbeList> root tag
         for probe_list_el in tree.getroot():
@@ -363,6 +368,12 @@ class ProbePool(object):
                                          raw_to_phys_mul, compound_obd_pid,
                                          compound_pos, compound_ln)
 
+                    # Save relationship between compound probe and OBD PID
+                    if (ProbePool.mObdPid2Compound.has_key(compound_obd_pid)):
+                        ProbePool.mObdPid2Compound[compound_obd_pid].append(pid)
+                    else:
+                        ProbePool.mObdPid2Compound[compound_obd_pid] = [pid]
+
                 # Add probe to the probe pool
                 ProbePool.mProbePool[pid] = new_probe
 
@@ -392,3 +403,11 @@ class ProbePool(object):
     def get_probe(self, pid):
         """Returns probe for specified PID."""
         return ProbePool.mProbePool[pid]
+
+    def is_compound_probe(self, pid):
+        """Returns True if given OBD PID carries compound probe(s)"""
+        return ProbePool.mObdPid2Compound.has_key(pid)
+
+    def get_compound_list(self, pid):
+        """Returns list of compound probes for given OBD PID."""
+        return ProbePool.mObdPid2Compound[pid]
