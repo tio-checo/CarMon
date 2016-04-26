@@ -329,8 +329,8 @@
     <Pid>
         <Id>31</Id>
         <Description>Distance traveled since codes cleared</Description>
-        <Label>km</Label>
-        <Units>-</Units>
+        <Label>CCd</Label>
+        <Units>km</Units>
         <RawToPhysAdd>0.0</RawToPhysAdd>
         <RawToPhysMul>1.0</RawToPhysMul>
         <PhysToPbAdd>0.0</PhysToPbAdd>
