@@ -10,13 +10,11 @@
 #include "bt.h"
 #include "can_hal.h"
 #include "carmon.h"
-#include "gps.h"
 
 #ifdef KWP2K_MODULE
 #include "kwp2k.h"
 #endif
 
-#include "lcd_term.h"
 #include "master_comm.h"
 #include "obd.h"
 #include "utils.h"
@@ -156,8 +154,6 @@ static struct obd_dtc_cache_t {
 } obd_dtc_cache;
 
 /* local functions */
-
-static void obd_alarm_process(unsigned char *, int);
 
 /*
  * Sends data packet to master.
@@ -313,12 +309,10 @@ obd_ecu_get_pid(int mode, int pid, unsigned char **d, int *ln)
 		*ln = obd_ln - lln;
 
 		/*
-		 * Let current PID value to be processed
-		 * by 'alarm' framework and 'carmon' service.
+		 * Let current PID value to be processed by 'carmon' service.
 		 * Pass PID number as well.
 		 */
 		if (!OBD_IS_FREEZE_FRAME) {
-			obd_alarm_process(obd_data + 1, obd_ln - 1);
 			cm_obd_pid_callback(obd_data + 1, obd_ln - 1);
 		}
 
@@ -1185,183 +1179,6 @@ obd_conf(char *data, int ln)
 	err = obd_set_comm_mode(mode);
 
 	return err;
-}
-
-/*
- * Alarm service.
- * Every time OBD layer receives current PID value,
- * that value is passed to alarm framework which
- * detects events interesting to user and indicates
- * (e.g. via heartbeat LED) such event occurred.
- */
-static void
-obd_alarm_process(unsigned char *d, int ln)
-{
-	static int warn_phase = 0;
-	static int dpf_rejuv_sts = 0;
-	static int dpf_ar = 0;
-	static int water = 0;
-	int egt11, egt12;
-	char *fb_addr;
-	int fb_size;
-
-	/* Take desired action based on PID value received. */
-	switch (d[0]) {
-	/*
-	 * EGT bank 1
-	 *
-	 * Update terminal with new data.
-	 *
-	 * Inform user via LED if there is an active DPF regeneration
-	 * currently in progress.
-	 */
-	case OBD_PID_EGT1:
-		/*
-		 * Extract value of EGT11 and EGT12 sensors from raw ECU data.
-		 * Skip PID number and byte containing mask of supported EGT
-		 * sensors. Result is in degree Celsius.
-		 */
-		egt11 = OBD_GET_EGT_VALUE(d + 2, 1);
-		egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
-
-		/*
-		 * State machine.
-		 * Indicate EGT12 temperature on heartbeat LED.
-		 * egt12 > 400 - LED blinking slowly
-		 * egt12 > 500 - LED blinking quickly
-		 * egt12 > 550 - LED permanently ON
-		 */
-		switch (warn_phase) {
-		/* Initialization phase. */
-		case 0:
-			rtl_hb_mode(HB_MODE_OFF, 0, 0);
-			warn_phase = 1;
-			break;
-
-		/* Warning off. */
-		case 1:
-			if (egt12 > 400) {
-				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
-
-				warn_phase = 2;
-			}
-			break;
-
-		/* Warning phase 1 - LED slowly blinking. */
-		case 2:
-			if (egt12 < 380) {
-				rtl_hb_mode(HB_MODE_OFF, 0, 0);
-
-				warn_phase = 1;
-			}
-
-			if (egt12 > 500) {
-				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
-
-				warn_phase = 3;
-			}
-			break;
-
-		/* Warning phase 2 - LED blinking quickly. */
-		case 3:
-			if (egt12 < 480) {
-				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
-
-				warn_phase = 2;
-			}
-
-			if (egt12 > 550) {
-				rtl_hb_mode(HB_MODE_ON, 0, 0);
-
-				warn_phase = 4;
-			}
-			break;
-
-		/* Warning phase 3 - LED permanently ON. */
-		case 4:
-			if (egt12 < 530) {
-				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
-
-				warn_phase = 3;
-			}
-			break;
-
-		/* Something went wrong - start from the scratch. */
-		default:
-			warn_phase = 0;
-			break;
-		} /* switch */
-
-		/*
-		 * Update terminal with new data
-		 *  - Coolant temperature
-		 *  - Exhaust gas temperature EGT12
-		 *  - DPF rejuvenation status
-		 *  - DPF accumulation ratio
-		 *  - GPS course
-		 */
-
-		/*
-		 * Obtain information about framebuffer.
-		 * If that fails, then terminal is unavailable,
-		 * in which case there is no point to proceed
-		 * with the update.
-		 */
-		if (lcdterm_fb_info(&fb_addr, &fb_size) != 0) {
-			break;
-		}
-
-		/*
-		 * Make sure string has exactly 16 characters
-		 * (which is size of LCD display).
-		 * If string was shorter null terminator would
-		 * be displayed as well (as bogus character).
-		 */
-		fb_addr[0] = dpf_rejuv_sts ? 'R' : ' ';
-		fb_addr[5] = fb_addr[10] = ' ';
-		long2str(water, fb_addr + 1, 3, FALSE);
-		fb_addr[4] = 0xb2;
-		long2str(egt11, fb_addr + 6, 3, FALSE);
-		fb_addr[9] = 0xb2;
-		long2str(dpf_ar, fb_addr + 11, 3, FALSE);
-		fb_addr[14] = '%';
-
-		fb_addr[15] = gps_get_status() > 0 ? gps_get_course() : ' ';
-
-		fb_addr[16] = '\0';
-
-		/* Write framebuffer to the terminal. */
-		lcdterm_fb_write();
-
-		break;
-
-	/*
-	 * DPF accumulation ratio & DPF rejuvenation status.
-	 *
-	 * Just save the received value. It is later send to terminal
-	 * when EGT information is obtained. 
-	 */
-	case OBD_PID_DPFAR:
-		/* Pass pointer to the data payload (skip PID number). */
-		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
-		dpf_rejuv_sts = OBD_GET_DPF_REJUV_STS(d + 1);
-		break;
-
-	/*
-	 * Engine coolant temperature
-	 *
-	 * Just save the received value. It is later send to terminal
-	 * when EGT information is obtained. 
-	 */
-	case OBD_PID_WATER:
-		/* Pass pointer to the data payload (skip PID number). */
-		water = OBD_GET_WATER_VALUE(d + 1);
-		break;
-
-	/* No action is to be taken for provided PID. */
-	default:
-		break;
-	}
 }
 
 /* global functions */

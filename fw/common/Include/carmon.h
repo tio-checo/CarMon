@@ -12,6 +12,11 @@
 /* Carmon module commands */
 #define	CM_CMD_CONF		'C'	/* configure the module */
 
+/* Car states */
+#define CM_ENGINE_RUNNING	0x01	/* engine running */
+#define CM_ENGINE_WARMED	0x02	/* coolant warmed */
+#define CM_VEHICLE_MOVING	0x04	/* vehicle is moving */
+
 /* types */
 /* Operating modes. */
 typedef enum _cm_mode_t {

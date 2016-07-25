@@ -43,6 +43,26 @@
 #define OBD_GET_WATER_VALUE(er)	(((er)[0]) - 40)
 
 /*
+ * Engine RPM
+ */
+#define	OBD_PID_RPM		0x0c
+/*
+ * Given raw packet received from ECU for PID '0C', the macro extracts value
+ * of engine RPM.
+ */
+#define OBD_GET_RPM_VALUE(er)	((256 * ((er)[0]) + ((er)[1])) / 4)
+
+/*
+ * Vehicle speed
+ */
+#define	OBD_PID_SPEED		0x0d
+/*
+ * Given raw packet received from ECU for PID '0D', the macro extracts value
+ * of vehicle speed.
+ */
+#define OBD_GET_SPEED_VALUE(er)	((er)[0])
+
+/*
  * Exhaust Gas temperature (EGT) Bank 1
  * A request for this PID will return 9 bytes of data.
  * The first byte is a bit encoded field indicating
@@ -94,6 +114,17 @@
  * of DPF accumulation ratio.
  */
 #define OBD_GET_DPFAR_VALUE(er)	(2 * ((er)[21]))
+
+/*
+ * Injector Feedback Value #1, #2, #3, #4
+ */
+#define	OBD_PID_INJFB		0xAD
+
+/*
+ * Given raw packet received from ECU, the macro extracts value
+ * of 'n'th injector feedback value.
+ */
+#define OBD_GET_INJFB_VALUE(er, n)	((er)[(n) - 1 + 17] - 64)
 
 /* max number of PIDs scanned in auto-scan mode */
 #define	OBD_PID_LIST_LN		50

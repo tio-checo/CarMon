@@ -23,6 +23,8 @@
 #include "carmon.h"
 #include "dlfs.h"
 #include "ee24.h"
+#include "gps.h"
+#include "lcd_term.h"
 #include "master_comm.h"
 #include "obd.h"
 #include "pic_core.h"
@@ -68,6 +70,12 @@
 /* "PID groups" EEPROM parameter number */
 #define CM_EEPAR_PIDG		2
 
+/* local macros */
+/* sets car state */
+#define CM_CAR_SET_STATE(st)	cm_car_state |= (st)
+/* clears car state */
+#define CM_CAR_CLR_STATE(st)	cm_car_state &= (~(st))
+
 /* types */
 /* States in 'Configuration' mode */
 typedef enum _cm_conf_state_t {
@@ -93,6 +101,8 @@ typedef enum _cm_assisted_state_t {
 } cm_assist_state_t;
 
 /* local variables */
+/* car state - bit mask */
+static unsigned int cm_car_state;
 /* structure holding ACK/NAK response to master */
 static mcom_response_t cm_resp_ack_nak;
 /* current mode of operation */
@@ -123,6 +133,260 @@ static BOOL cm_log_available;
 static BOOL cm_ecu_pid_logged;
 
 /* local functions */
+
+/*
+ * Car state machine.
+ * Determines current car state from available data.
+ * Used by 'alarm' service to determine what kind of information
+ * should be presented to user.
+ */
+static void
+cm_update_car_state(unsigned char *d, int ln)
+{
+	/* Take desired action based on PID value received. */
+	switch (d[0]) {
+	/* Engine RPM */
+	case OBD_PID_RPM:
+		/*
+		 * Engine is considered running for RPM > 200.
+		 * If engine is stopped, clear 'engine warmed' flag.
+		 */
+		if (OBD_GET_RPM_VALUE(d + 1) > 200) {
+			CM_CAR_SET_STATE(CM_ENGINE_RUNNING);
+		} else {
+			CM_CAR_CLR_STATE(CM_ENGINE_RUNNING);
+			CM_CAR_CLR_STATE(CM_ENGINE_WARMED);
+		}
+		break;
+
+	/* Vehicle speed */
+	case OBD_PID_SPEED:
+		/* Vehicle is considered moving for SPEED > 0. */
+		if (OBD_GET_SPEED_VALUE(d + 1) > 0) {
+			CM_CAR_SET_STATE(CM_VEHICLE_MOVING);
+		} else {
+			CM_CAR_CLR_STATE(CM_VEHICLE_MOVING);
+		}
+		break;
+
+	/*
+	 * Engine coolant temperature
+	 */
+	case OBD_PID_WATER:
+		/*
+		 * Engine is considered warmed once coolant temperature
+		 * reaches 90 Celsius degrees.
+		 * Reset when engine is stopped.
+		 */
+		if (OBD_GET_WATER_VALUE(d + 1) >= 90) {
+			CM_CAR_SET_STATE(CM_ENGINE_WARMED);
+		}
+		break;
+	}
+}
+
+/*
+ * Alarm service.
+ * Every time OBD layer receives current PID value,
+ * that value is passed to alarm framework which
+ * detects events interesting to user and indicates
+ * (e.g. via heartbeat LED) such event occurred.
+ */
+static void
+cm_alarm_process(unsigned char *d, int ln)
+{
+	static int warn_phase = 0;
+	static int dpf_rejuv_sts = 0;
+	static int dpf_ar = 0;
+	static int water = 0;
+	static int egt11 = 0;
+	static int egt12 = 0;
+	char *fb_addr;
+	int fb_size;
+
+	/* Take desired action based on PID value received. */
+	switch (d[0]) {
+	/*
+	 * EGT bank 1
+	 *
+	 * Inform user via LED if there is an active DPF regeneration
+	 * currently in progress.
+	 */
+	case OBD_PID_EGT1:
+		/*
+		 * Extract value of EGT11 and EGT12 sensors from raw ECU data.
+		 * Skip PID number and byte containing mask of supported EGT
+		 * sensors. Result is in degree Celsius.
+		 */
+		egt11 = OBD_GET_EGT_VALUE(d + 2, 1);
+		egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
+
+		/*
+		 * State machine.
+		 * Indicate EGT12 temperature on heartbeat LED.
+		 * egt12 > 400 - LED blinking slowly
+		 * egt12 > 500 - LED blinking quickly
+		 * egt12 > 550 - LED permanently ON
+		 */
+		switch (warn_phase) {
+		/* Initialization phase. */
+		case 0:
+			rtl_hb_mode(HB_MODE_OFF, 0, 0);
+			warn_phase = 1;
+			break;
+
+		/* Warning off. */
+		case 1:
+			if (egt12 > 400) {
+				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
+
+				warn_phase = 2;
+			}
+			break;
+
+		/* Warning phase 1 - LED slowly blinking. */
+		case 2:
+			if (egt12 < 380) {
+				rtl_hb_mode(HB_MODE_OFF, 0, 0);
+
+				warn_phase = 1;
+			}
+
+			if (egt12 > 500) {
+				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
+
+				warn_phase = 3;
+			}
+			break;
+
+		/* Warning phase 2 - LED blinking quickly. */
+		case 3:
+			if (egt12 < 480) {
+				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
+
+				warn_phase = 2;
+			}
+
+			if (egt12 > 550) {
+				rtl_hb_mode(HB_MODE_ON, 0, 0);
+
+				warn_phase = 4;
+			}
+			break;
+
+		/* Warning phase 3 - LED permanently ON. */
+		case 4:
+			if (egt12 < 530) {
+				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
+
+				warn_phase = 3;
+			}
+			break;
+
+		/* Something went wrong - start from the scratch. */
+		default:
+			warn_phase = 0;
+			break;
+		} /* switch */
+
+		break;
+
+	/*
+	 * DPF accumulation ratio & DPF rejuvenation status.
+	 *
+	 * Just save the received value. It is later send to terminal
+	 * when EGT information is obtained. 
+	 */
+	case OBD_PID_DPFAR:
+		/* Pass pointer to the data payload (skip PID number). */
+		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
+		dpf_rejuv_sts = OBD_GET_DPF_REJUV_STS(d + 1);
+		break;
+
+	/*
+	 * Engine coolant temperature
+	 *
+	 * Just save the received value. It is later send to terminal
+	 * when EGT information is obtained. 
+	 */
+	case OBD_PID_WATER:
+		/* Pass pointer to the data payload (skip PID number). */
+		water = OBD_GET_WATER_VALUE(d + 1);
+		break;
+
+	/*
+	 * Injector feedback value #1, #2, #3, #4
+	 *
+	 * Refresh terminal.
+	 *
+	 * If engine is running AND vehicle is stopped
+	 * display injector feedback values.
+	 *
+	 * Otherwise display following information:
+	 *
+	 *  - Coolant temperature
+	 *  - Exhaust gas temperature EGT12
+	 *  - DPF rejuvenation status
+	 *  - DPF accumulation ratio
+	 *  - GPS course
+	 */
+	case OBD_PID_INJFB:
+		/*
+		 * Obtain information about framebuffer.
+		 * If that fails, then terminal is unavailable,
+		 * in which case there is no point to proceed
+		 * with the update.
+		 */
+		if (lcdterm_fb_info(&fb_addr, &fb_size) != 0) {
+			break;
+		}
+
+		/*
+		 * Make sure string has exactly 16 characters
+		 * (which is size of LCD display).
+		 * If string was shorter null terminator would
+		 * be displayed as well (as bogus character).
+		 */
+		if ((cm_car_state & CM_ENGINE_RUNNING) &&
+		    !(cm_car_state & CM_VEHICLE_MOVING)) {
+			fb_addr[0] = ' ';
+			long2str(OBD_GET_INJFB_VALUE(d + 1, 1), fb_addr + 1, 3,
+			    FALSE);
+			fb_addr[4] = ' ';
+			long2str(OBD_GET_INJFB_VALUE(d + 1, 2), fb_addr + 5, 3,
+			    FALSE);
+			fb_addr[8] = ' ';
+			long2str(OBD_GET_INJFB_VALUE(d + 1, 3), fb_addr + 9, 3,
+			    FALSE);
+			fb_addr[12] = ' ';
+			long2str(OBD_GET_INJFB_VALUE(d + 1, 4), fb_addr + 13, 3,
+			    FALSE);
+		} else {
+			fb_addr[0] = dpf_rejuv_sts ? 'R' : ' ';
+			fb_addr[5] = fb_addr[10] = ' ';
+			long2str(water, fb_addr + 1, 3, FALSE);
+			fb_addr[4] = 0xb2;
+			long2str(egt11, fb_addr + 6, 3, FALSE);
+			fb_addr[9] = 0xb2;
+			long2str(dpf_ar, fb_addr + 11, 3, FALSE);
+			fb_addr[14] = '%';
+
+			fb_addr[15] = gps_get_status() > 0 ?
+			    gps_get_course() : ' ';
+		}
+
+		fb_addr[16] = '\0';
+
+		/* Write framebuffer to the terminal. */
+		lcdterm_fb_write();
+
+		break;
+
+	/* No action is to be taken for provided PID. */
+	default:
+		break;
+	}
+}
 
 /*
  * Initiates transition to another operating mode.
@@ -627,6 +891,9 @@ cm_init(void)
 	/* Clear IO statistics. */
 	dlfs_kstat_clear();
 
+	/* Reset car state. */
+	cm_car_state = 0;
+
 	/* Register and enable main service routine. */
 	rtl_svc_init("CarMon", cm_main_svc, TRUE, TRUE);
 
@@ -663,6 +930,12 @@ cm_obd_pid_callback(unsigned char *d, int ln)
 
 		cm_ecu_pid_logged = TRUE;
 	}
+
+	/* Update car state. */
+	cm_update_car_state(d, ln);
+
+	/* Pass received PID value to alarm framework. */
+	cm_alarm_process(d, ln);
 }
 
 /*
