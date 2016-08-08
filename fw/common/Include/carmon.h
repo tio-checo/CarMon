@@ -16,6 +16,8 @@
 #define CM_ENGINE_RUNNING	0x01	/* engine running */
 #define CM_ENGINE_WARMED	0x02	/* coolant warmed */
 #define CM_VEHICLE_MOVING	0x04	/* vehicle is moving */
+#define CM_DPF_REJUV_INPROGRESS	0x08	/* DPF rejuvenation in progress */
+#define CM_DISPLAY_DPF_DIST	0x10	/* display DPF distance since rejuv. */
 
 /* types */
 /* Operating modes. */

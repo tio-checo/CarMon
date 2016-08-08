@@ -75,6 +75,11 @@
 #define CM_CAR_SET_STATE(st)	cm_car_state |= (st)
 /* clears car state */
 #define CM_CAR_CLR_STATE(st)	cm_car_state &= (~(st))
+/* returns TRUE is particular state is set */
+#define CM_STATE_IS_SET(st)	(cm_car_state & (st))
+
+/* DPF distance conversion constant */
+#define CM_DPF_DIST_CONV	360000UL
 
 /* types */
 /* States in 'Configuration' mode */
@@ -103,6 +108,19 @@ typedef enum _cm_assisted_state_t {
 /* local variables */
 /* car state - bit mask */
 static unsigned int cm_car_state;
+
+/* car state values */
+static struct {
+	int		water;		/* water coolant temperature */
+	int		egt11;		/* exhaust gas temperature bank 11 */
+	int		egt12;		/* exhaust gas temperature bank 12 */
+	unsigned long	dpf_dt;		/* time in [us] since last speed info */
+	unsigned long	dpf_speed;	/* last speed in [km/h] */
+	unsigned long	dpf_dist;	/* distance since last DPF rejuv. */
+	unsigned long	dpf_dist_saved;	/* last distance since last DPF rejuv.*/
+	unsigned int	dpf_ar;		/* DPF accumulation ratio */
+} cm_stv;
+
 /* structure holding ACK/NAK response to master */
 static mcom_response_t cm_resp_ack_nak;
 /* current mode of operation */
@@ -152,37 +170,123 @@ cm_update_car_state(unsigned char *d, int ln)
 		 * If engine is stopped, clear 'engine warmed' flag.
 		 */
 		if (OBD_GET_RPM_VALUE(d + 1) > 200) {
+			/*
+			 * Clear volatile state values if engine
+			 * has just been started.
+			 */
+			if (!CM_STATE_IS_SET(CM_ENGINE_RUNNING)) {
+				cm_stv.dpf_dt = 0;
+				cm_stv.dpf_speed = 0;
+			}
+
 			CM_CAR_SET_STATE(CM_ENGINE_RUNNING);
 		} else {
+			/*
+			 * If engine has just been stopped, then
+			 *  - clear 'engine warmed' flag
+			 *  - save nv state to EEPROM
+			 */
+			if (CM_STATE_IS_SET(CM_ENGINE_RUNNING)) {
+				unsigned char *nv_state = ee24_get_nv_state();
+				unsigned int dist = cm_stv.dpf_dist /
+				    CM_DPF_DIST_CONV;
+
+				/*
+				 * Save km since the last DPF rejuvenation,
+				 * MSB first.
+				 */
+				nv_state[0] = dist / 256;
+				nv_state[1] = dist & 255;
+				ee24_save_nv_state();
+
+				CM_CAR_CLR_STATE(CM_ENGINE_WARMED);
+			}
+
 			CM_CAR_CLR_STATE(CM_ENGINE_RUNNING);
-			CM_CAR_CLR_STATE(CM_ENGINE_WARMED);
 		}
 		break;
 
 	/* Vehicle speed */
-	case OBD_PID_SPEED:
+	case OBD_PID_SPEED: {
+		unsigned int curr_speed = OBD_GET_SPEED_VALUE(d + 1);
+
 		/* Vehicle is considered moving for SPEED > 0. */
-		if (OBD_GET_SPEED_VALUE(d + 1) > 0) {
+		if (curr_speed > 0) {
 			CM_CAR_SET_STATE(CM_VEHICLE_MOVING);
 		} else {
 			CM_CAR_CLR_STATE(CM_VEHICLE_MOVING);
 		}
-		break;
+
+		/*
+		 * Re-calculate distance since last DPF rejuvenation.
+		 * But only if engine is running.
+		 */
+		if (CM_STATE_IS_SET(CM_ENGINE_RUNNING)) {
+			cm_stv.dpf_dist += ((cm_stv.dpf_speed + curr_speed) *
+			    cm_stv.dpf_dt) / 2000UL;
+
+			/* Update state values. */
+			cm_stv.dpf_speed = curr_speed;
+			cm_stv.dpf_dt = 0;
+		}
+	} break;
 
 	/*
 	 * Engine coolant temperature
 	 */
 	case OBD_PID_WATER:
+		cm_stv.water = OBD_GET_WATER_VALUE(d + 1);
+
 		/*
 		 * Engine is considered warmed once coolant temperature
 		 * reaches 90 Celsius degrees.
 		 * Reset when engine is stopped.
 		 */
-		if (OBD_GET_WATER_VALUE(d + 1) >= 90) {
+		if (cm_stv.water >= 90) {
 			CM_CAR_SET_STATE(CM_ENGINE_WARMED);
 		}
 		break;
-	}
+
+	/*
+	 * DPF accumulation ratio & DPF rejuvenation status.
+	 */
+	case OBD_PID_DPFAR:
+		/* DPF accumulation ratio */
+		cm_stv.dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
+
+		/* DPF rejuvenation status */
+		if (OBD_GET_DPF_REJUV_STS(d + 1)) {
+			CM_CAR_SET_STATE(CM_DPF_REJUV_INPROGRESS);
+		} else {
+			/*
+			 * If rejuvenation has just finished,
+			 * let alarm module know it should display
+			 * "distance since the last DPF rejuvenation"
+			 * and reset it.
+			 */
+			if (CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS) &&
+			    cm_stv.dpf_ar == 0) {
+				cm_stv.dpf_dist_saved = cm_stv.dpf_dist;
+				CM_CAR_SET_STATE(CM_DISPLAY_DPF_DIST);
+
+				cm_stv.dpf_dist = 0;
+			}
+
+			/*
+			 * "distance since the last DPF rejuvenation"
+			 * is displayed right after DPF rejuvenation
+			 * finishes as long as DPF accumulation ratio
+			 * stays at 0%.
+			 */
+			if (CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST) &&
+			    cm_stv.dpf_ar > 0) {
+				CM_CAR_CLR_STATE(CM_DISPLAY_DPF_DIST);
+			}
+
+			CM_CAR_CLR_STATE(CM_DPF_REJUV_INPROGRESS);
+		}
+		break;
+	} /* switch */
 }
 
 /*
@@ -196,11 +300,6 @@ static void
 cm_alarm_process(unsigned char *d, int ln)
 {
 	static int warn_phase = 0;
-	static int dpf_rejuv_sts = 0;
-	static int dpf_ar = 0;
-	static int water = 0;
-	static int egt11 = 0;
-	static int egt12 = 0;
 	char *fb_addr;
 	int fb_size;
 
@@ -218,8 +317,8 @@ cm_alarm_process(unsigned char *d, int ln)
 		 * Skip PID number and byte containing mask of supported EGT
 		 * sensors. Result is in degree Celsius.
 		 */
-		egt11 = OBD_GET_EGT_VALUE(d + 2, 1);
-		egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
+		cm_stv.egt11 = OBD_GET_EGT_VALUE(d + 2, 1);
+		cm_stv.egt12 = OBD_GET_EGT_VALUE(d + 2, 2);
 
 		/*
 		 * State machine.
@@ -237,7 +336,7 @@ cm_alarm_process(unsigned char *d, int ln)
 
 		/* Warning off. */
 		case 1:
-			if (egt12 > 400) {
+			if (cm_stv.egt12 > 400) {
 				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
 
 				warn_phase = 2;
@@ -246,13 +345,13 @@ cm_alarm_process(unsigned char *d, int ln)
 
 		/* Warning phase 1 - LED slowly blinking. */
 		case 2:
-			if (egt12 < 380) {
+			if (cm_stv.egt12 < 380) {
 				rtl_hb_mode(HB_MODE_OFF, 0, 0);
 
 				warn_phase = 1;
 			}
 
-			if (egt12 > 500) {
+			if (cm_stv.egt12 > 500) {
 				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
 
 				warn_phase = 3;
@@ -261,13 +360,13 @@ cm_alarm_process(unsigned char *d, int ln)
 
 		/* Warning phase 2 - LED blinking quickly. */
 		case 3:
-			if (egt12 < 480) {
+			if (cm_stv.egt12 < 480) {
 				rtl_hb_mode(HB_MODE_TICKS, 500, 1);
 
 				warn_phase = 2;
 			}
 
-			if (egt12 > 550) {
+			if (cm_stv.egt12 > 550) {
 				rtl_hb_mode(HB_MODE_ON, 0, 0);
 
 				warn_phase = 4;
@@ -276,7 +375,7 @@ cm_alarm_process(unsigned char *d, int ln)
 
 		/* Warning phase 3 - LED permanently ON. */
 		case 4:
-			if (egt12 < 530) {
+			if (cm_stv.egt12 < 530) {
 				rtl_hb_mode(HB_MODE_TICKS, 125, 1);
 
 				warn_phase = 3;
@@ -292,29 +391,6 @@ cm_alarm_process(unsigned char *d, int ln)
 		break;
 
 	/*
-	 * DPF accumulation ratio & DPF rejuvenation status.
-	 *
-	 * Just save the received value. It is later send to terminal
-	 * when EGT information is obtained. 
-	 */
-	case OBD_PID_DPFAR:
-		/* Pass pointer to the data payload (skip PID number). */
-		dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
-		dpf_rejuv_sts = OBD_GET_DPF_REJUV_STS(d + 1);
-		break;
-
-	/*
-	 * Engine coolant temperature
-	 *
-	 * Just save the received value. It is later send to terminal
-	 * when EGT information is obtained. 
-	 */
-	case OBD_PID_WATER:
-		/* Pass pointer to the data payload (skip PID number). */
-		water = OBD_GET_WATER_VALUE(d + 1);
-		break;
-
-	/*
 	 * Injector feedback value #1, #2, #3, #4
 	 *
 	 * Refresh terminal.
@@ -324,9 +400,10 @@ cm_alarm_process(unsigned char *d, int ln)
 	 *
 	 * Otherwise display following information:
 	 *
-	 *  - Coolant temperature
-	 *  - Exhaust gas temperature EGT12
 	 *  - DPF rejuvenation status
+	 *  - Coolant temperature
+	 *  - Exhaust gas temperature EGT11
+	 *    or distance since the last DPF rejuvenaiton
 	 *  - DPF accumulation ratio
 	 *  - GPS course
 	 */
@@ -347,8 +424,8 @@ cm_alarm_process(unsigned char *d, int ln)
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
 		 */
-		if ((cm_car_state & CM_ENGINE_RUNNING) &&
-		    !(cm_car_state & CM_VEHICLE_MOVING)) {
+		if ((CM_STATE_IS_SET(CM_ENGINE_RUNNING)) &&
+		    !(CM_STATE_IS_SET(CM_VEHICLE_MOVING))) {
 			fb_addr[0] = ' ';
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 1), fb_addr + 1, 3,
 			    FALSE);
@@ -362,13 +439,26 @@ cm_alarm_process(unsigned char *d, int ln)
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 4), fb_addr + 13, 3,
 			    FALSE);
 		} else {
-			fb_addr[0] = dpf_rejuv_sts ? 'R' : ' ';
-			fb_addr[5] = fb_addr[10] = ' ';
-			long2str(water, fb_addr + 1, 3, FALSE);
+			fb_addr[0] = CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS) ?
+			    'R' : ' ';
+			long2str(cm_stv.water, fb_addr + 1, 3, FALSE);
 			fb_addr[4] = 0xb2;
-			long2str(egt11, fb_addr + 6, 3, FALSE);
-			fb_addr[9] = 0xb2;
-			long2str(dpf_ar, fb_addr + 11, 3, FALSE);
+			fb_addr[5] = ' ';
+
+			if (CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST)) {
+				long2str(cm_stv.dpf_dist_saved /
+				    (CM_DPF_DIST_CONV * 10), fb_addr + 6, 3,
+				    FALSE);
+
+				fb_addr[9]= 'k';
+				fb_addr[10]= 'm';
+			} else {
+				long2str(cm_stv.egt11, fb_addr + 6, 3, FALSE);
+				fb_addr[9] = 0xb2;
+				fb_addr[10] = ' ';
+			}
+
+			long2str(cm_stv.dpf_ar, fb_addr + 11, 3, FALSE);
 			fb_addr[14] = '%';
 
 			fb_addr[15] = gps_get_status() > 0 ?
@@ -548,6 +638,15 @@ cm_autonomous_svc(void)
 		int sr_ln, pidg_ln;
 		unsigned char *sr_pv, *pidg_pv;
 
+		/* Re-load nv state from EEPROM. */
+		if (ee24_nv_state_valid()) {
+			unsigned char *nv_state = ee24_get_nv_state();
+
+			/* Distance in km since the last DPF rejuvenation. */
+			cm_stv.dpf_dist = (nv_state[0] * 256 + nv_state[1]) *
+			    CM_DPF_DIST_CONV;
+		}
+
 		/*
 		 * Configure PID autoscan mode from EEPROM parameters.
 		 * Fallback to default values in case EEPROM content is invalid.
@@ -664,6 +763,9 @@ cm_assisted_svc(void)
 static int
 cm_main_svc(void)
 {
+	/* Re-calculate time since last speed OBD PID was received. */
+	cm_stv.dpf_dt += RTL_SERVICE_PERIOD;
+
 	/*
 	 * Invoke appropriate service routine.
 	 */
@@ -893,6 +995,9 @@ cm_init(void)
 
 	/* Reset car state. */
 	cm_car_state = 0;
+	cm_stv.dpf_dt = 0;
+	cm_stv.dpf_speed = 0;
+	cm_stv.dpf_dist = 0;
 
 	/* Register and enable main service routine. */
 	rtl_svc_init("CarMon", cm_main_svc, TRUE, TRUE);
@@ -946,7 +1051,7 @@ void
 cm_gps_callback(char *d)
 {
 	/*
-	 * Start loggin NMEA sentence to the log device
+	 * Start logging NMEA sentences to the log device
 	 * only after at least one ECU PID value has been logged.
 	 * That assures that log inode is not wasted in case
 	 * connection to ECU is not established before the logger

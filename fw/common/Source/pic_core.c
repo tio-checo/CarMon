@@ -406,7 +406,7 @@ pcore_svc_online(void)
 {
 #ifdef EE24_MODULE
 	/* Both time as well as EEPROM parameters must be initialized. */
-	return (pcore_time_initialized && ee24_eepars_initialized());
+	return (pcore_time_initialized && ee24_initialized());
 #else
 	/* Time service must be initialized. */
 	return (pcore_time_initialized);
