@@ -3,7 +3,7 @@
 ; File: MCOM.INC
 ; Author: Jan Damborsky
 ; Created: 9.3.2016
-; Last modified: 18.3.2016
+; Last modified: 17.8.2016
 ; Changelog:
 ;
 ; Power management.
@@ -28,7 +28,7 @@ vPwr_12vTimerL	EQU 0x35 ; 12V timer - low
 cPWR_LOOPS_PER_SEC	EQU (1000000 / MAIN_LOOP_TIME)
 ; timeouts in seconds
 cPWR_5VTOUT		EQU	2*60*60	; 2 hours
-cPWR_12VTOUT	EQU	1		; 1 second
+cPWR_12VTOUT	EQU	10		; 10 seconds
 
 ; 5V control signal
 cPWR_PORT5V		EQU PORTA
