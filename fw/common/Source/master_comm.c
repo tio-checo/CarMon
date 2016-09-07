@@ -49,6 +49,7 @@
 #endif
 
 #include "rt_light.h"
+#include "usb_app.h"
 #include "utils.h"
 
 #include <errno.h>
@@ -166,6 +167,33 @@ static int
 mcom_rx_st(void)
 {
 	unsigned char ch;
+
+	/*
+	 * It is assumed after power on that master is to be connected via USB.
+	 * However, it can also connect via Bluetooth. In that case, we need to
+	 * redirect 'putchar' and 'getchar' routines appropriately.  
+	 * Though in order to prevent collisions, the switch is done when we are
+	 * waiting for a new packet.
+	 * And once we switch to Bluetooth, we never switch back to USB.
+	 */
+	if (mcom_co.getchar != bt_getchar_master) {
+		unsigned char dummy;
+
+		/*
+		 * Need to manually handle Bluetooth receiver state machine
+		 * as long as operating in USB mode.
+		 * Drain receive FIFO to make sure no character is lost.
+		 */
+		while (bt_getchar_master(&dummy) == 0)
+			;
+
+		if (bt_is_paired_with_master() &&
+		    ((mcom_co.getchar)(&ch) != 0) &&
+		    (mcom_st_rx == MCOM_ST_RX_W4SOF)) {
+			mcom_co.getchar = bt_getchar_master;
+			mcom_co.putchar = bt_putchar;
+		}
+	}
 
 	/*
 	 * Attempt to completely dry out HW receive buffer.
@@ -620,7 +648,9 @@ mcom_process_packet_st(void)
 }
 
 /*
- * Transmit packet to master.
+ * Transmit packet to master - one character at a time.
+ *
+ * Returns 0 if character was queued for transmission; EAGAIN otherwise.
  */
 static int
 mcom_tx_st(void)
@@ -632,9 +662,13 @@ mcom_tx_st(void)
 	unsigned int d;
 	mcom_response_t *r;
 
-	/* Module idle, return. */
+	/*
+	 * Module idle. Return EAGAIN to indicate that we are not processing
+	 * the data. That assures caller does not end up looping if assuming
+	 * that the transmitter is operating sending out characters.
+	 */
 	if (mcom_st_tx == MCOM_ST_TX_IDLE) {
-		return 0;
+		return EAGAIN;
 	}
 
 	/* Handle first character to be sent. */
@@ -643,11 +677,11 @@ mcom_tx_st(void)
 	}
 
 	/*
-	 * Wait until current character is queued for transmission.
+	 * Try to queue the character for transmission.
 	 * Do not block.
 	 */
 	if ((mcom_co.putchar)(ch, FALSE) != 0) {
-		return 0;
+		return EAGAIN;
 	} 
 
 	/* Re-calculate CRC. */
@@ -876,6 +910,13 @@ mcom_tx_st(void)
 			mcom_st_tx = MCOM_ST_TX_SOF;
 		}
 
+		/*
+		 * Transmission of the packet completed.
+		 * Return EAGAIN which preempt caller and provides other
+		 * services with their time quanta.
+		 */
+		return EAGAIN;
+
 		break;
 	}
 
@@ -888,14 +929,26 @@ mcom_tx_st(void)
 static int
 mcom_svc(void)
 {
+	int	i;
+
 	/* Receive packet from master */
 	mcom_rx_st();
 
 	/* Process a packet received from master. */
 	mcom_process_packet_st();
 
-	/* Transmit packet to master */
-	mcom_tx_st();
+	/*
+	 * Transmit packet to master. Loop as long as transmitter
+	 * accepts data to be sent.
+	 * Limit number of loops though to be on a safe side.
+	 * 64 was picked up, since that is max size of data payload
+	 * which can be sent via USB bulk transfer.
+	 */
+	for (i = 0; i < 64; i++) {
+		if (mcom_tx_st() != 0) {
+			break;
+		}
+	}
 
 	return 0;
 }
@@ -920,10 +973,13 @@ int
 mcom_init(void)
 {
 	/* Initialize main communication object */
- 	/* method for receiving char from master */
-	mcom_co.getchar = bt_getchar_master;
-	/* method for sending char to master */
-	mcom_co.putchar = bt_putchar;
+
+	/*
+	 * Methods for receiving and sending char from/to master.
+	 * Initially assume master is connected via USB CDC ACM.
+	 */
+	mcom_co.getchar = usbsacm_getchar;
+	mcom_co.putchar = usbsacm_putchars;
 
 	/* receive buffer */
 	/* rx buffer tail  */

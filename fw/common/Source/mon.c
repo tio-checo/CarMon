@@ -19,6 +19,7 @@
 #include "bt.h"
 #include "mon.h"
 #include "utils.h"
+#include "usb_app.h"
 #include "rt_light.h"
 
 #include <errno.h>
@@ -177,9 +178,17 @@ mon_getchar(unsigned char *ch, BOOL block)
 {
 	unsigned char dummy;
 
-	/* Bluetooth used as a communication device. */
-	if (mon_diag_mode == MON_DIAG_MODE_BT) {
-		/* Blocking in BT diag mode not supported. */
+	/*
+	 * USB used as a communication device.
+	 * Blocking in USB diag mode not supported.
+	 */
+	if (mon_diag_mode == MON_DIAG_MODE_USB) {
+		return usbsacm_getchar(ch);
+	} else if (mon_diag_mode == MON_DIAG_MODE_BT) {
+		/*
+		 * Bluetooth used as a communication device.
+		 * Blocking in BT diag mode not supported.
+		 */
 		return bt_getchar_master(ch);
 	} else {
 		/* UART used as a communication device. */
@@ -214,8 +223,24 @@ mon_putchar(unsigned char ch)
 {
 	unsigned char echo;
 
-	/* Bluetooth used as a communication device. */
-	if (mon_diag_mode == MON_DIAG_MODE_BT) {
+	/* USB used as a communication device. */
+	if (mon_diag_mode == MON_DIAG_MODE_USB) {
+		/* Wait until transmitter is ready. */
+		while (usbsacm_putchar(ch, FALSE) != 0) {
+			/*
+			 * Since we are called from a service, looping blocks
+			 * other services from running.
+			 * Thus, while looping we need to periodically call
+			 * services we depend upon, otherwise we would
+			 * end up in deadlock.
+			 * In this particular case, we give USB service its
+			 * time quanta, since it takes care of transmitting
+			 * the character to the host.
+			 */
+			uapp_svc();
+		}
+	} else if (mon_diag_mode == MON_DIAG_MODE_BT) {
+		/* Bluetooth used as a communication device. */
 		/* Block until character is sent out. */
 		return bt_putchar(ch, TRUE);
 	} else {
@@ -969,8 +994,11 @@ int
 mon_diag_enter(unsigned char mode)
 {
 	/* Validate the input */
-	if ((mode != MON_DIAG_MODE_BT) && (mode != MON_DIAG_MODE_SER))
+	if ((mode != MON_DIAG_MODE_BT) &&
+	    (mode != MON_DIAG_MODE_SER) &&
+	    (mode != MON_DIAG_MODE_USB)) {
 		return EINVAL;
+	}
 
 	mon_diag_mode = mode;
 

@@ -4,6 +4,7 @@
 /* constants */
 #define MON_DIAG_MODE_BT	'b'	/* Bluetooth used as diag device */
 #define MON_DIAG_MODE_SER	's'	/* UART used as diag device */
+#define MON_DIAG_MODE_USB	'u'	/* USB CDC ACM used as diag device */
 
 /* initialize monitor module */
 extern int mon_init(void);

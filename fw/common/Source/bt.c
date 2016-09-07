@@ -347,7 +347,7 @@ bt_getchar_master(unsigned char *ch)
 
 /*
  * Return TRUE if BT module is paired with remote BT end-point;
- * otherwise return FALSE.
+ * FALSE otherwise.
  */
 BOOL
 bt_is_paired(void)
@@ -358,10 +358,20 @@ bt_is_paired(void)
 
 /*
  * Return TRUE if BT module is paired with GPS module;
- * otherwise return FALSE.
+ * FALSE otherwise.
  */
 BOOL
 bt_is_paired_with_gps(void)
 {
 	return (bt_is_paired() && bt_paired_with_gps);
+}
+
+/*
+ * Return TRUE if BT module is paired with master module;
+ * FALSE otherwise.
+ */
+BOOL
+bt_is_paired_with_master(void)
+{
+	return (bt_is_paired() && !bt_paired_with_gps);
 }

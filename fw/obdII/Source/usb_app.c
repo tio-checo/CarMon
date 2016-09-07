@@ -5,6 +5,7 @@
  *********************************************************************/
 
 #include "HardwareProfile.h"
+#include "GenericTypeDefs.h"
 
 #include "usb.h"
 #include "usb_function_cdc.h"
@@ -73,7 +74,7 @@ static void UserInit(void)
  *******************************************************************/
 static void ProcessIO(void)
 {   
-    BYTE numBytesRead;
+//    BYTE numBytesRead;
 
     //Blink the LEDs according to the USB device status
 //    BlinkUSBStatus();
@@ -98,6 +99,7 @@ static void ProcessIO(void)
     }
 #endif
 
+# if 0
     if(USBUSARTIsTxTrfReady())
     {
 		numBytesRead = getsUSBUSART(USB_Out_Buffer,64);
@@ -123,14 +125,139 @@ static void ProcessIO(void)
 			putUSBUSART(USB_In_Buffer,numBytesRead);
 		}
 	}
+#endif
 
     CDCTxService();
 } //end ProcessIO
 
 /*
+ * Public CDC ACM putchar routine.
+ *
+ * Returns EAGAIN if transmitter is not ready to accept data; 0 otherwise.
+ */
+int
+usbsacm_putchar(unsigned char ch, BOOL block)
+{
+	/* USB not ready, return. */
+	if((USBDeviceState < CONFIGURED_STATE) || (USBSuspendControl == 1)) {
+		return EAGAIN;
+	}
+
+	if(!USBUSARTIsTxTrfReady()) {
+		return EAGAIN;
+	}
+
+	USB_In_Buffer[0] = ch;
+	putUSBUSART(USB_In_Buffer, 1);
+
+	return 0;
+}
+
+/*
+ * Public CDC ACM putchar routine.
+ *
+ * Sends the whole packet at once in order to utilize available bandwidth.
+ * If the packet does not fit one buffer, it is fragmented.
+ * Returns EAGAIN if there is no space in the transmit buffer.
+ * Returns 0 if character has been queued for transmission.
+ */
+int
+usbsacm_putchars(unsigned char ch, BOOL block)
+{
+	static int ln = 0;
+	int max_ln = sizeof (USB_In_Buffer);
+
+	/* USB not ready, return. */
+	if((USBDeviceState < CONFIGURED_STATE) || (USBSuspendControl == 1)) {
+		return EAGAIN;
+	}
+
+	if(!USBUSARTIsTxTrfReady()) {
+		return EAGAIN;
+	}
+
+	switch (ch) {
+	/* MCOM_PKT_SOF */
+	case '<':
+		ln = 0;
+		USB_In_Buffer[ln++] = ch;
+		break;
+
+	/* MCOM_PKT_EOF */
+	/* EOF always triggers sending of packet. */
+	case '>':
+		USB_In_Buffer[ln++] = ch;
+		putUSBUSART(USB_In_Buffer, ln);
+		ln = 0;
+		break;
+
+	/*
+	 * data payload
+	 * Fragment the packet if it does not fit the buffer.
+	 */
+	default:
+		USB_In_Buffer[ln++] = ch;
+		if (ln >= max_ln) {
+			putUSBUSART(USB_In_Buffer, ln);
+			ln = 0;
+		}
+		break;
+	} /* switch */
+
+	return 0;
+}
+
+/*
+ * Public CDC ACM getchar routine.
+ *
+ * Do not block if receive buffer is empty, return EAGAIN in that case.
+ * If there is a character in receive buffer, get it and return 0.
+ */
+int
+usbsacm_getchar(unsigned char *ch)
+{
+	static int processed = 0;
+	static int received = 0;
+
+	/* USB not ready, return. */
+	if((USBDeviceState < CONFIGURED_STATE) || (USBSuspendControl == 1)) {
+		return EAGAIN;
+	}
+
+	/* 
+	 * There are no buffered characters to be processed,
+	 * wait for new data first.
+	 */
+	if (received == 0) {
+		received = getsUSBUSART(USB_Out_Buffer,
+		    sizeof (USB_Out_Buffer));
+		
+		/* If there are no data available, return. */
+		if (received == 0) {
+			return EAGAIN;
+		}
+
+		processed = 0;
+	}
+
+	/* Pass received characters one-by-one to the caller. */
+	if (processed < received) {
+		*ch = USB_Out_Buffer[processed++];
+
+		/* All characters processed, next time wait for new data. */
+		if (processed == received) {
+			processed = received = 0;
+		}
+
+		return 0;
+	}
+
+	return EAGAIN;
+}
+
+/*
  * USB application service routine.
  */
-//static int
 int
 uapp_svc(void)
 {

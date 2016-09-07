@@ -26,8 +26,14 @@ extern int bt_getchar_master(unsigned char *);
 extern BOOL bt_is_paired(void);
 /*
  * Return TRUE if BT module is paired with GPS module;
- * FALS Eotherwise.
+ * FALSE otherwise.
  */
 extern BOOL bt_is_paired_with_gps(void);
+
+/*
+ * Return TRUE if BT module is paired with master module;
+ * FALSE otherwise.
+ */
+extern BOOL bt_is_paired_with_master(void);
 
 #endif /* __BT_H */
