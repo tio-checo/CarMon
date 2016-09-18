@@ -81,6 +81,10 @@
 /* DPF distance conversion constant */
 #define CM_DPF_DIST_CONV	360000UL
 
+/* Carmon Event IDs */
+/* Distance from the last DPF rejuvenation */
+#define CM_CME_ID_DPF_DIST	"DPFDIST"
+
 /* types */
 /* States in 'Configuration' mode */
 typedef enum _cm_conf_state_t {
@@ -151,6 +155,9 @@ static BOOL cm_log_available;
 static BOOL cm_ecu_pid_logged;
 
 /* local functions */
+
+/* Logs Carmon Event to log device. */
+static void cm_log_cme(char *, unsigned int, unsigned int);
 
 /*
  * Car state machine.
@@ -266,10 +273,16 @@ cm_update_car_state(unsigned char *d, int ln)
 			 */
 			if (CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS) &&
 			    cm_stv.dpf_ar == 0) {
-				cm_stv.dpf_dist_saved = cm_stv.dpf_dist;
+				cm_stv.dpf_dist_saved =
+				    cm_stv.dpf_dist / (CM_DPF_DIST_CONV * 10);
+				cm_stv.dpf_dist = 0;
 				CM_CAR_SET_STATE(CM_DISPLAY_DPF_DIST);
 
-				cm_stv.dpf_dist = 0;
+				/*
+				 * Log distance from the last DPF rejuvenation.
+				 */
+				cm_log_cme(CM_CME_ID_DPF_DIST,
+				    cm_stv.dpf_dist_saved, 2);
 			}
 
 			/*
@@ -446,8 +459,7 @@ cm_alarm_process(unsigned char *d, int ln)
 			fb_addr[5] = ' ';
 
 			if (CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST)) {
-				long2str(cm_stv.dpf_dist_saved /
-				    (CM_DPF_DIST_CONV * 10), fb_addr + 6, 3,
+				long2str(cm_stv.dpf_dist_saved, fb_addr + 6, 3,
 				    FALSE);
 
 				fb_addr[9]= 'k';
@@ -902,6 +914,54 @@ cm_log_gps(char *d)
 	strcat(log_record + 17, ",GPS,");
 	strcat(log_record + 22, d);
 	strcat(log_record, "\r\n");
+
+	/*
+	 * Write log record to log device.
+	 * dlfs_write() is non-blocking function, so can be called
+	 * from interrupt context.
+	 */
+	dlfs_write(0, log_record, strlen(log_record));
+}
+
+/* Logs Carmon Event to log device. */
+static void
+cm_log_cme(char *event_id, unsigned int value, unsigned int ln)
+{
+	size_t pos;
+	char *ts = pcore_gettime();
+
+	/*
+	 * Log record is in CSV format as specified in rfc4180:
+	 *
+	 * <timestamp>,CME,<event_id>,<value>CRLF
+	 *
+	 * format of <timestamp>: YYYYMMDDhhmmssmmm
+	 *
+	 */
+
+	/*
+	 * Log timestamp and Carmon Event mark first.
+	 * Resulting string fits the available buffer for sure,
+	 * so no need to check for buffer overflow.
+	 */
+	log_record[0] = '\0';
+	strcat(log_record, ts);
+	strcat(log_record + 17, ",CME,");
+
+	/* Append event ID. */
+	strcat(log_record + 22, event_id);
+
+	/* Append CSV separator followed by 32-bit event value. */
+	pos = 22 + strlen(event_id);
+	strcat(log_record + pos, ",");
+	pos++;
+	uint2hex(value, log_record + pos, ln);
+	pos += ln * 2;
+	
+	/* Append 'end of log record' marker. */
+	log_record[pos++] = '\r';
+	log_record[pos++] = '\n';
+	log_record[pos] = '\0';
 
 	/*
 	 * Write log record to log device.
