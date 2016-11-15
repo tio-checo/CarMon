@@ -354,6 +354,7 @@ main(int argc, char *argv[])
 		}
 
 		printf("Dumping file %s... ", ofname);
+		fflush(stdout);
 
 		/*
 		 * Assume resulting file is empty - empty files are to be
@@ -441,6 +442,7 @@ main(int argc, char *argv[])
 		/* Remove empty files - they do not carry any data. */
 		if (ofile_is_empty) {
 			printf("%s is empty, removing... ", ofname);
+			fflush(stdout);
 			if (unlink(ofname) == 0) {
 				printf("done\n");
 			} else {
