@@ -36,7 +36,7 @@ static void
 usage(void)
 {
 	(void) fprintf(stderr,
-	    "Usage: dlfsdump [-F] -f file\n");
+	    "Usage: dlfsdump [-F] -f file | device\n");
 }
 
 /* Gracefully aborts. */

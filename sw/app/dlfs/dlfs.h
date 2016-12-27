@@ -111,6 +111,10 @@ typedef struct {
 #define	DLFS_GET_MAX_INODES	\
     ((MDD_ReadCapacity() - DLFS_1STINODE_SECTOR) / DLFS_SECS_PER_INODE)
 
+/* Calculates inode position in sectors. inodes are numbered from 0. */
+#define	DLFS_INODE2SEC(inode)	\
+    ((inode) * DLFS_SECS_PER_INODE + DLFS_1STINODE_SECTOR)
+
 /* public functions */
 /* Initialization routine. */
 extern int dlfs_init(void);
