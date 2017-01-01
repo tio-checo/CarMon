@@ -33,7 +33,7 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/helpers.o $(BUILD_DIR)/pic_core.o $(BUILD_DIR)/rfid.o \
     $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/i2c_sw.o $(BUILD_DIR)/mcp9801.o \
     $(BUILD_DIR)/pcf8563.o $(BUILD_DIR)/mon.o \
-    $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/log.o $(BUILD_DIR)/utils.o \
+    $(BUILD_DIR)/log.o $(BUILD_DIR)/utils.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
     $(BUILD_DIR)/usb_device.o \
     $(BUILD_DIR)/usb_function_cdc.o $(BUILD_DIR)/int_disable_interrupts_lib.o \
@@ -79,9 +79,6 @@ $(BUILD_DIR)/crt0-mipsel-app.o: ../common/Source/crt0-mipsel-app.S
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/bt.o: ../common/Source/bt.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/log.o: ../common/Source/log.c

@@ -8,7 +8,10 @@
 #include "xc.h"
 
 #include "bt.h"
+
+#ifdef DAQ_MODULE
 #include "data_acq.h"
+#endif
 
 #ifdef KWP2K_MODULE
 #include "kwp2k.h"
@@ -148,7 +151,10 @@ main(int argc, char **argv)
 #ifdef OBD_MODULE
 	obd_init();
 #endif
+
+#ifdef DAQ_MODULE
 	daq_init();
+#endif
 
 	/*
 	 * Must be called after kwp2k_init() and obd_init(),
@@ -192,8 +198,10 @@ main(int argc, char **argv)
 			/* Suspend BT module */
 			bt_suspend();
 
+#ifdef DAQ_MODULE
 			/* Suspend data acquisition module */
 			daq_suspend();
+#endif
 
 			/* turn off LEDs */
 			LATBSET = (1 << 12);
@@ -216,8 +224,10 @@ main(int argc, char **argv)
 
 		}
 
+#ifdef DAQ_MODULE
 		/* Run post processing upper layer service routine. */
 		daq_pp_upper_svc();
+#endif
 
 		/* Run logging upper layer service routine. */
 		log_svc();

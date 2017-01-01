@@ -34,7 +34,7 @@ LIB_DIRS= -L $(TOOLS_DIR)/lib/microchip
 OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/helpers.o $(BUILD_DIR)/pic_core.o \
     $(BUILD_DIR)/master_comm.o $(BUILD_DIR)/mon.o \
-    $(BUILD_DIR)/data_acq.o $(BUILD_DIR)/utils.o $(BUILD_DIR)/obd.o \
+    $(BUILD_DIR)/utils.o $(BUILD_DIR)/obd.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
     $(BUILD_DIR)/usb_device.o \
     $(BUILD_DIR)/usb_function_cdc.o $(BUILD_DIR)/int_disable_interrupts_lib.o \
@@ -128,9 +128,6 @@ $(BUILD_DIR)/can_snoop.o: ../common/Source/can_snoop.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/carmon.o: ../common/Source/carmon.c
-	$(CC) -o $@ -c $(CFLAGS) $?
-
-$(BUILD_DIR)/data_acq.o: ../common/Source/data_acq.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/dlfs.o: ../common/Source/dlfs.c

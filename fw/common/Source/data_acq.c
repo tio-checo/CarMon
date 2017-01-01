@@ -1260,7 +1260,7 @@ daq_init(void)
 
 	daq_adc_sample_acquired = FALSE;
 
-	/* Register and enabled service. */
+	/* Register and enable the service. */
 	rtl_svc_init("DataAcq", daq_svc, TRUE, FALSE);
 
 	return 0;

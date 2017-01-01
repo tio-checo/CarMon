@@ -8,7 +8,6 @@
 #include "xc.h"
 
 #include "bt.h"
-#include "data_acq.h"
 
 #ifdef KWP2K_MODULE
 #include "kwp2k.h"

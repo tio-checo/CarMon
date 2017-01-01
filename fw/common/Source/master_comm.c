@@ -21,7 +21,10 @@
 #include "xc.h"
 
 #include "bt.h"
+
+#ifdef DAQ_MODULE
 #include "data_acq.h"
+#endif
 
 #ifdef CANHAL_MODULE
 #include "can_hal.h"
@@ -355,6 +358,7 @@ mcom_decode_packet(void)
 		break;
 #endif
 
+#ifdef DAQ_MODULE
 	/* A/D converter */
 	case MCOMM_ADC_ID:
 		err = daq_adc_process_query(&mcom_co.rx_buf[1], ln);
@@ -376,6 +380,7 @@ mcom_decode_packet(void)
 		}
 
 		break;
+#endif
 
 #ifdef OBD_MODULE
 	/* module handling communication with ECUs */
