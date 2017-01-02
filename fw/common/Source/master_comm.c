@@ -52,7 +52,11 @@
 #endif
 
 #include "rt_light.h"
+
+#ifdef MCOM_USBACM_MODULE
 #include "usb_app.h"
+#endif
+
 #include "utils.h"
 
 #include <errno.h>
@@ -172,12 +176,13 @@ mcom_rx_st(void)
 	unsigned char ch;
 
 	/*
-	 * It is assumed after power on that master is to be connected via USB.
-	 * However, it can also connect via Bluetooth. In that case, we need to
-	 * redirect 'putchar' and 'getchar' routines appropriately.  
-	 * Though in order to prevent collisions, the switch is done when we are
+	 * If the device has compiled in support for communication over
+	 * USB CDC ACM, then after power on USB CDC ACM is the default.
+	 * However, master can also connect via Bluetooth. In that case,
+	 * 'putchar' and 'getchar' routines need to be redirected appropriately.
+	 * In order to prevent collisions, the switch is done when
 	 * waiting for a new packet.
-	 * And once we switch to Bluetooth, we never switch back to USB.
+	 * Switch to Bluetooth is irreversible, as we never switch back to USB.
 	 */
 	if (mcom_co.getchar != bt_getchar_master) {
 		unsigned char dummy;
@@ -981,10 +986,16 @@ mcom_init(void)
 
 	/*
 	 * Methods for receiving and sending char from/to master.
-	 * Initially assume master is connected via USB CDC ACM.
+	 * Initially assume master is connected via USB CDC ACM
+	 * (if available).
 	 */
+#ifdef MCOM_USBACM_MODULE
 	mcom_co.getchar = usbsacm_getchar;
 	mcom_co.putchar = usbsacm_putchars;
+#else
+	mcom_co.getchar = bt_getchar_master;
+	mcom_co.putchar = bt_putchar;
+#endif
 
 	/* receive buffer */
 	/* rx buffer tail  */

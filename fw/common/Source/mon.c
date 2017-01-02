@@ -19,7 +19,11 @@
 #include "bt.h"
 #include "mon.h"
 #include "utils.h"
+
+#ifdef MCOM_USBACM_MODULE
 #include "usb_app.h"
+#endif
+
 #include "rt_light.h"
 
 #include <errno.h>
@@ -178,6 +182,7 @@ mon_getchar(unsigned char *ch, BOOL block)
 {
 	unsigned char dummy;
 
+#ifdef MCOM_USBACM_MODULE
 	/*
 	 * USB used as a communication device.
 	 * Blocking in USB diag mode not supported.
@@ -185,6 +190,10 @@ mon_getchar(unsigned char *ch, BOOL block)
 	if (mon_diag_mode == MON_DIAG_MODE_USB) {
 		return usbsacm_getchar(ch);
 	} else if (mon_diag_mode == MON_DIAG_MODE_BT) {
+#else
+	if (mon_diag_mode == MON_DIAG_MODE_BT) {
+#endif
+
 		/*
 		 * Bluetooth used as a communication device.
 		 * Blocking in BT diag mode not supported.
@@ -222,7 +231,8 @@ static int
 mon_putchar(unsigned char ch)
 {
 	unsigned char echo;
-
+ 
+#ifdef MCOM_USBACM_MODULE
 	/* USB used as a communication device. */
 	if (mon_diag_mode == MON_DIAG_MODE_USB) {
 		/* Wait until transmitter is ready. */
@@ -240,6 +250,9 @@ mon_putchar(unsigned char ch)
 			uapp_svc();
 		}
 	} else if (mon_diag_mode == MON_DIAG_MODE_BT) {
+#else
+	if (mon_diag_mode == MON_DIAG_MODE_BT) {
+#endif
 		/* Bluetooth used as a communication device. */
 		/* Block until character is sent out. */
 		return bt_putchar(ch, TRUE);
