@@ -9,7 +9,7 @@
 #include "HardwareProfile.h"
 #include "xc.h"
 
-#include "i2c_sw.h"
+#include "i2c_hal.h"
 #include "lcd_term.h"
 #include "rt_light.h"
 
@@ -62,7 +62,7 @@ lcdterm_svc(void)
 	 * Grab I2C bus.
 	 */
 	case LCDTERM_ST_SENDFB1:
-		if (i2csw_request_bus() != 0)
+		if (i2c_request_bus() != 0)
 			break;
 
 		/* Prepare data */
@@ -81,13 +81,13 @@ lcdterm_svc(void)
 	 * each byte is processed.
 	 */
 	case LCDTERM_ST_SENDFB2:
-		if (i2csw_write(LCDTERM_I2C_ADDRESS,
+		if (i2c_write(LCDTERM_I2C_ADDRESS,
 		    (unsigned char *) lcdterm_fb,
 		    sizeof (lcdterm_fb) - 1) == EAGAIN)
 			break;
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		lcdterm_st = LCDTERM_ST_IDLE;
 		break;

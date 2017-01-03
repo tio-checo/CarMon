@@ -26,8 +26,8 @@
 #include "gps.h"
 #endif
 
-#ifdef I2CSW_MODULE
-#include "i2c_sw.h"
+#ifdef I2CHAL_MODULE
+#include "i2c_hal.h"
 #endif
 
 #ifdef PCF8563_MODULE
@@ -141,8 +141,8 @@ main(int argc, char **argv)
         rtl_init();
 	bt_init();
 
-#ifdef I2CSW_MODULE
-	i2csw_init();
+#ifdef I2CHAL_MODULE
+	i2c_init();
 #endif
 
 #ifdef PCF8563_MODULE

@@ -18,80 +18,41 @@
 extern int i2csw_init(void);
 
 /*
- * Grants I2C bus to a consumer. Must be called by consumer before
- * communication with I2C device is commenced. That assures that
- * only one device accesses I2C bus at a time.
- *
- * Returns 0 if bus was granted, otherwise returns EBUSY.
+ * Returns TRUE if I2C bus is busy sending or receiving word.
  */
-extern int i2csw_request_bus(void);
+extern BOOL i2csw_i2c_bus_busy(void);
 
 /*
- * Releases I2C bus. Must be called by consumer after the consumer
- * is done with communication.
- *
- * Returns 0.
- */
-extern int i2csw_release_bus(void);
-
-/*
- * Writes data to I2C device.
- *
- * It is a non-blocking function to be called periodically until
- * communication layer finishes writing.
+ * Instruct lower layer to send out data on I2C bus.
  *
  * Parameters:
- *  addr - I2C address of the device
- *  data - pointer to data buffer
- *  ln   - number of bytes to be read from the device
+ *  data  - data to be sent out starting with MSB
+ *  bits  - number of bits to be sent out
+ *  start - if TRUE, then I2C start condition is generated
+ *  stop  - if TRUE, then I2C stop condition is generated
  *
- * Return values:
- *  0      - Writing finished
- *  EPERM  - Bus not granted to the consumer
- *  ENXIO  - No device responded to specified address
- *  EIO    - Communication error
- *  EAGAIN - Writing in progress
+ * Returns: EBUSY if I2C bus is currently busy, otherwise 0.
  */
-extern int i2csw_write(unsigned char, unsigned char *, int);
+extern int i2csw_i2c_send(unsigned char, unsigned int, BOOL, BOOL);
 
 /*
- * Reads data sequentially from I2C device starting from current address.
- * It is a non-blocking function to be called periodically until
- * communication layer finishes reading.
+ * Instruct lower layer to receive data from I2C bus.
  *
  * Parameters:
- *  addr - I2C address of the device
- *  data - pointer to data buffer
- *  ln   - number of bytes to be read from the device
+ *  bits  - number of bits to be received
+ *  pdata - pointer where to store received data
+ *  ack   - if TRUE, then ACK is generated, otherwise NAK.
+ *  stop  - if TRUE, then I2C stop condition is generated
  *
- * Return values:
- *  0      - reading finished, buffer contains valid data
- *  EPERM  - Bus not granted to the consumer
- *  ENXIO  - No device responded to specified address
- *  EIO    - Communication error
- *  EAGAIN - reading now in progress
+ * Returns: EAGAIN - receiving in progress
+ *          0      - data available
  */
-extern int i2csw_current_read(unsigned char, unsigned char *, int);
+extern int i2csw_i2c_recv(unsigned char *, unsigned int, BOOL, BOOL);
 
 /*
- * Reads data sequentially from I2C device starting from given address.
- * It is a non-blocking function to be called periodically until
- * communication layer finishes reading.
- *
- * Parameters:
- *  addr - I2C address of the device
- *  data_addr - data address
- *  data - pointer to data buffer
- *  ln   - number of bytes to be read from the device
- *
- * Return values:
- *  0      - reading finished, buffer contains valid data
- *  EPERM  - Bus not granted to the consumer
- *  ENXIO  - No device responded to specified address
- *  EIO    - Communication error
- *  EAGAIN - reading now in progress
+ * Handles I2C communication with I2CSW - lower layer.
  */
-extern int i2csw_random_read(unsigned char, unsigned char, unsigned char *,
-    int);
+extern int i2csw_i2c_ll_svc(void);
+
 #endif /* __I2CSW_H */
 

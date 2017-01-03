@@ -13,7 +13,7 @@
 #include "xc.h"
 
 #include "master_comm.h"
-#include "i2c_sw.h"
+#include "i2c_hal.h"
 #include "pcf8563.h"
 #include "rt_light.h"
 
@@ -104,7 +104,7 @@ pcf8563_svc(void)
 	 * Grab I2C bus.
 	 */
 	case PCF8563_ST_GETTIME1:
-		if (i2csw_request_bus() != 0)
+		if (i2c_request_bus() != 0)
 			break;
 
 		pcf8563_st = PCF8563_ST_GETTIME2;
@@ -116,12 +116,12 @@ pcf8563_svc(void)
 	 * Read time and date from RTC.
 	 */
 	case PCF8563_ST_GETTIME2:
-		if (i2csw_random_read(PCF8563_I2C_ADDRESS,
+		if (i2c_random_read(PCF8563_I2C_ADDRESS,
 		    PCF8563_REG_VL_SECONDS, pcf8563_data, 7) == EAGAIN)
 			break;
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		pcf8563_st = PCF8563_ST_IDLE;
 		break;
@@ -132,7 +132,7 @@ pcf8563_svc(void)
 	 * Grab I2C bus.
 	 */
 	case PCF8563_ST_SETTIME1:
-		if (i2csw_request_bus() != 0)
+		if (i2c_request_bus() != 0)
 			break;
 
 		pcf8563_st = PCF8563_ST_SETTIME2;
@@ -147,11 +147,11 @@ pcf8563_svc(void)
 	 * processed.
 	 */
 	case PCF8563_ST_SETTIME2:
-		if (i2csw_write(PCF8563_I2C_ADDRESS, pcf8563_data, 8) == EAGAIN)
+		if (i2c_write(PCF8563_I2C_ADDRESS, pcf8563_data, 8) == EAGAIN)
 			break;
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		pcf8563_st = PCF8563_ST_IDLE;
 		break;

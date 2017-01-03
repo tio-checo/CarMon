@@ -19,7 +19,7 @@
 #include "xc.h"
 
 #include "master_comm.h"
-#include "i2c_sw.h"
+#include "i2c_hal.h"
 #include "ee24.h"
 #include "rt_light.h"
 #include "utils.h"
@@ -107,7 +107,7 @@ ee24_svc(void)
 	 */
 	case EE24_ST_INIT1:
 		/* Grab i2c bus. */
-		if (i2csw_request_bus() != 0) {
+		if (i2c_request_bus() != 0) {
 			break;
 		}
 
@@ -119,12 +119,12 @@ ee24_svc(void)
 		unsigned short crc;
 		int ms;
 
-		if (i2csw_random_read(EE24_I2C_ADDRESS, 0, ee24_ram_copy,
+		if (i2c_random_read(EE24_I2C_ADDRESS, 0, ee24_ram_copy,
 		    EE24_TOTAL_SIZE) == EAGAIN)
 			break;
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		/* Validate EEPROM content - section of user parameters. */
 		ms = EE24_PAR_SIZE;
@@ -151,7 +151,7 @@ ee24_svc(void)
 	/* Store parameter list to EEPROM */
 	case EE24_ST_STORE_PAR1:
 		/* Grab i2c bus. */
-		if (i2csw_request_bus() != 0) {
+		if (i2c_request_bus() != 0) {
 			break;
 		}
 
@@ -170,7 +170,7 @@ ee24_svc(void)
 	/* Store nv state to EEPROM */
 	case EE24_ST_STORE_NV1:
 		/* Grab i2c bus. */
-		if (i2csw_request_bus() != 0) {
+		if (i2c_request_bus() != 0) {
 			break;
 		}
 
@@ -188,7 +188,7 @@ ee24_svc(void)
 
 	/* Write one byte to EEPROM */
 	case EE24_ST_STORE_NVPAR2:
-		if (i2csw_write(EE24_I2C_ADDRESS, buf, 2) == EAGAIN) {
+		if (i2c_write(EE24_I2C_ADDRESS, buf, 2) == EAGAIN) {
 			break;
 		}
 
@@ -208,7 +208,7 @@ ee24_svc(void)
 		index--;
 		if (index < 0) {
 			/* Release I2C bus */
-			i2csw_release_bus();
+			i2c_release_bus();
 
 			ee24_st = EE24_ST_IDLE;
 

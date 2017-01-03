@@ -22,6 +22,10 @@
 #include "pcf8563.h"
 #endif
 
+#ifdef I2CHAL_MODULE
+#include "i2c_hal.h"
+#endif
+
 #ifdef EE24_MODULE
 #include "ee24.h"
 #endif
@@ -33,6 +37,10 @@
 #include "utils.h"
 
 /* constants */
+#ifdef I2CHAL_MODULE
+/* I2C data buffer size */
+#define PCORE_I2C_BUF_SIZE	256
+#endif
 
 /* local variables */
 /* communication module */
@@ -47,6 +55,24 @@ static mcom_response_t pcore_resp_data;
 static BOOL fl_send_data;
 /* real time initialized */
 static BOOL pcore_time_initialized = FALSE;
+
+#ifdef I2CHAL_MODULE
+/* I2C message */
+static i2c_msg_t i2c_msg;
+/* I2C data buffer */
+static unsigned char i2c_buf[PCORE_I2C_BUF_SIZE];
+
+/* state machine handling I2C communication */
+static enum {
+	PCORE_I2C_ST_IDLE = 0,	/* state machine idle */
+
+	PCORE_I2C_ST_READ1,	/* Read from device */
+	PCORE_I2C_ST_READ2,
+
+	PCORE_I2C_ST_WRITE1,		/* Write to device */
+	PCORE_I2C_ST_WRITE2
+} pcore_i2c_st;
+#endif
 
 /* local functions */
 /*
@@ -142,6 +168,64 @@ pcore_svc(void)
 	}
 #endif
 
+#ifdef I2CHAL_MODULE
+	switch (pcore_i2c_st) {
+	/* Idle */
+	case PCORE_I2C_ST_IDLE:
+		break;
+
+	/* Read from I2C device - grab the bus*/
+	case PCORE_I2C_ST_READ1:
+		if (i2c_request_bus() == 0) {
+			pcore_i2c_st = PCORE_I2C_ST_READ2;
+		}
+
+		break;
+
+	/* Read from I2C device */
+	case PCORE_I2C_ST_READ2:
+		if (i2c_random_read(i2c_msg.dev_addr, i2c_msg.data_addr,
+		    i2c_msg.buf, i2c_msg.ln) == EAGAIN) {
+			break;
+		}
+
+		/* Release the bus */
+		i2c_release_bus();
+
+		/* Send data to master */
+		pcore_send_data_response_to_master(i2c_msg.buf,
+		    i2c_msg.ln, MCOM_DATA_TYPE_BYTE);
+
+		pcore_i2c_st = PCORE_I2C_ST_IDLE;
+		break;
+
+	/* Write to I2C device - grab the bus */
+	case PCORE_I2C_ST_WRITE1:
+		if (i2c_request_bus() == 0) {
+			pcore_i2c_st = PCORE_I2C_ST_WRITE2;
+		}
+
+		break;
+
+	/* Write to I2C device */
+	case PCORE_I2C_ST_WRITE2:
+		if (i2c_write(i2c_msg.dev_addr, i2c_msg.buf, i2c_msg.ln)
+		    == EAGAIN) {
+			break;
+		}
+
+		/* Release the bus */
+		i2c_release_bus();
+
+		/* Send result of the operation to master */
+		mcom_prepare_ack_response(&pcore_resp_ack_nak);
+		fl_send_ack_nak = TRUE;
+
+		pcore_i2c_st = PCORE_I2C_ST_IDLE;
+		break;
+	}
+#endif
+
 	return 0;
 }
 
@@ -224,6 +308,13 @@ pcore_init(void)
 	/* initialize communication data */
 	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
 	pcore_resp_data.id = MCOMM_PIC_ID;
+
+#ifdef I2CHAL_MODULE
+	/* initialize I2C state machine */
+	pcore_i2c_st = PCORE_I2C_ST_IDLE;
+	/* initialize pointer to I2C data buffer */
+	i2c_msg.buf = i2c_buf;
+#endif
 
 	/* Register and enable pcore service */
 	rtl_svc_init("PicCore", pcore_svc, TRUE, TRUE);
@@ -324,13 +415,79 @@ pcore_process_query(char *data, int ln)
 		} break;
 #endif
 
+#ifdef I2CHAL_MODULE
+		/* Read from I2C device */
+		case MCOMM_PCORE_CMD_READI2C:
+			/* Previous I2C operation still in progress. */
+			if (pcore_i2c_st != PCORE_I2C_ST_IDLE) {
+				err = MCOM_NAK_MODULE_BUSY;
+				break;
+			}
+
+			/* Verify packet length */
+			if (ln != 7) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			} 
+
+			i2c_msg.dev_addr = hex2ulong(data + 1, 2);
+			i2c_msg.data_addr = hex2ulong(data + 3, 2);
+			i2c_msg.ln = hex2ulong(data + 5, 2);
+
+			/* Make sure the data fit the buffer */
+			if (i2c_msg.ln > sizeof (i2c_buf)) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			} 
+
+			pcore_i2c_st = PCORE_I2C_ST_READ1;
+
+			fl_send_ack_nak = FALSE;
+			break;
+
+		/* Write to I2C device */
+		case MCOMM_PCORE_CMD_WRITEI2C: {
+			int i;
+
+			/* Previous I2C operation still in progress. */
+			if (pcore_i2c_st != PCORE_I2C_ST_IDLE) {
+				err = MCOM_NAK_MODULE_BUSY;
+				break;
+			}
+
+			/* Verify packet length */
+			if ((ln < 7) || ((ln - 3) / 2 > sizeof (i2c_buf))) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
+
+			i2c_msg.dev_addr = hex2ulong(data + 1, 2);
+
+			/*
+			 * Transfer data to I2C buffer starting
+			 * with address to be written.
+			 */
+			for (i = 0; i < (ln - 3) / 2; i++) {
+				i2c_msg.buf[i] = hex2ulong(data + 3 + i * 2, 2);
+			}
+
+			i2c_msg.ln = (ln - 3) / 2;
+
+			pcore_i2c_st = PCORE_I2C_ST_WRITE1;
+
+			fl_send_ack_nak = FALSE;
+
+		} break;
+#endif
+
 		/* Calculate 16bit CRC-CCITT checksum for given data */
-		case MCOMM_PCORE_CMD_CALCCRC: {
+		case MCOMM_PCORE_CMD_CALCCRC:
 			temp_us = crc_calc_array(data, ln);
 
 			pcore_send_data_response_to_master(&temp_us, 1,
 			    MCOM_DATA_TYPE_WORD);
-		} break;
+
+			break;
 
 		/* unknown command */
 		default:

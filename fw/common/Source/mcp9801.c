@@ -14,7 +14,7 @@
 #include "xc.h"
 
 #include "master_comm.h"
-#include "i2c_sw.h"
+#include "i2c_hal.h"
 #include "mcp9801.h"
 #include "rt_light.h"
 
@@ -74,7 +74,7 @@ mcp9801_svc(void)
 	 * Grab I2C bus.
 	 */
 	case MCP9801_ST_INIT1:
-		if (i2csw_request_bus() != 0)
+		if (i2c_request_bus() != 0)
 			break;
 
 		/* Prepare data */
@@ -96,7 +96,7 @@ mcp9801_svc(void)
 	 *  - shutdown disable (default)
 	 */
 	case MCP9801_ST_INIT2:
-		if (i2csw_write(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
+		if (i2c_write(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
 			break;
 
 		/* Prepare data */
@@ -112,11 +112,11 @@ mcp9801_svc(void)
 	 * so that subsequent reads from the chip return measured temperature.
 	 */
 	case MCP9801_ST_INIT3:
-		if (i2csw_write(MCP9801_I2C_ADDRESS, buf, 1) == EAGAIN)
+		if (i2c_write(MCP9801_I2C_ADDRESS, buf, 1) == EAGAIN)
 			break;
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		/* Init timer measuring acquisition period. */
 		rtl_timer_init(&mcp9801_acq_timer, MCP9801_ACQ_PERIOD);
@@ -131,7 +131,7 @@ mcp9801_svc(void)
 	 * Grab I2C bus.
 	 */
 	case MCP9801_ST_GETTEMP1:
-		if (i2csw_request_bus() != 0)
+		if (i2c_request_bus() != 0)
 			break;
 
 		mcp9801_st = MCP9801_ST_GETTEMP2;
@@ -143,14 +143,14 @@ mcp9801_svc(void)
 	 * Read 2 bytes from the sensor.
 	 */
 	case MCP9801_ST_GETTEMP2:
-		if (i2csw_current_read(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
+		if (i2c_current_read(MCP9801_I2C_ADDRESS, buf, 2) == EAGAIN)
 			break;
 
 		/* Move obtained temperature to resulting buffer. */
 		mcp9801_temperature = buf[0] << 8 | buf[1];
 
 		/* Release I2C bus */
-		i2csw_release_bus();
+		i2c_release_bus();
 
 		mcp9801_st = MCP9801_ST_GETTEMP3;
 		break;

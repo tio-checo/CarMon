@@ -18,6 +18,8 @@
 #define	MCOMM_PCORE_CMD_CALCCRC	'c'	/* calculate CRC-CCITT checksum */
 #define	MCOMM_PCORE_CMD_SETEEPAR	'E'	/* set EEPROM parameter */
 #define	MCOMM_PCORE_CMD_GETEEPAR	'e'	/* get EEPROM parameter */
+#define	MCOMM_PCORE_CMD_READI2C		'i'	/* read from I2C device */
+#define	MCOMM_PCORE_CMD_WRITEI2C	'I'	/* write to I2C device */
 
 /* types */
 
