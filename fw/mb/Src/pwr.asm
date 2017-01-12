@@ -3,7 +3,7 @@
 ; File: PWR.ASM
 ; Author: Jan Damborsky
 ; Created: 9.3.2016
-; Last modified: 15.3.2016
+; Last modified: 12.1.2017
 ;
 ; Power management.
 ;
@@ -23,7 +23,8 @@
 ; - configured via 'Project->Build Options'
 
 ; definition of local state machines states
-cPwr_MonitorBl	EQU 0
+cPwr_InitWait		EQU 0
+cPwr_DoNotMonitor	EQU 4
 ;--------------------------------------------------------------------------
 ; MACRO definitions
 ;----
@@ -78,12 +79,18 @@ sPwr_Ctrl
 	movf	vPwr_Ctrl,w	; beware of PCL overflow !
 	addwf	PCL,f
 
+; initial power-on wait until IO pin values stabilize
+	goto	lPwr_InitWait	; 0
+
 ; test if PIC32MX is operating in bootloader mode
-	goto	lPwr_MonitorBl	; 0
+	goto	lPwr_MonitorBl	; 1
 
 ; monitors CAN bus
-	goto	lPwr_MonitorCan	; 1
-	goto	lPwr_Wait4CanActive ; 2
+	goto	lPwr_MonitorCan	; 2
+	goto	lPwr_Wait4CanActive ; 3
+
+; do not monitor CAN bus, powers always on
+	goto	lPwr_DoNotMonitor	; 4
 
 ; state machine switch
 lPwr_ControlDecE
@@ -103,7 +110,7 @@ sPwr_Ini
  GLOBAL	sPwr_Ini
 
 ; initialize state machine
-	movlw	cPwr_MonitorBl
+	movlw	cPwr_InitWait
 	movwf	vPwr_Ctrl
 
 ; initialize timers
@@ -130,13 +137,27 @@ sPwr_Ini
 ; MAIN APPLICATION
 ;----
 ;
+; wait after power-on for one second
+; to let values on IO pins stabilize
+lPwr_InitWait
+	decfsz	vPwr_SecTimer,f
+	goto	lPwr_ControlE
+
+	movlw	cPWR_LOOPS_PER_SEC
+	movwf	vPwr_SecTimer
+
+	goto	lPwr_ControlIncE ; lPwr_MonitorBl
+;----
 ; Never turn the powers off if PIC32MX module is operating
 ; in bootloader mode.
 ;
 lPwr_MonitorBl
+	movlw	cPwr_DoNotMonitor
 	btfss	PORT_BL,bBL
-	goto	lPwr_ControlE
-	goto	lPwr_ControlIncE ; lPwr_MonitorCan
+	goto	lPwr_ControlCtrlE	; lPwr_DoNotMonitor
+	goto	lPwr_ControlIncE	; lPwr_MonitorCan
+;----
+
 ;----
 ; Monitor CAN traffic and reset timers if there is an activity
 ; detected on CAN bus.
@@ -249,6 +270,10 @@ lPwr_Wait4CanActive
 	mPwr12VOn
 
 	goto	lPwr_ControlDecE ; lPwr_MonitorCan
+;----
+; Keep both 12V as well as 5V on forever
+lPwr_DoNotMonitor
+	goto	lPwr_ControlE
 ;----
 	END
 ;----
