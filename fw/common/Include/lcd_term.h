@@ -24,14 +24,5 @@ extern int lcdterm_init(void);
  */
 extern int lcdterm_fb_info(char **, int *);
 
-/*
- * Transfers framebuffer to the terminal.
- *
- * Return values:
- *      0 - operation successfully commenced
- *  EBUSY - module currently busy
- */
-extern int lcdterm_fb_write(void);
-
 #endif /* __LCDTERM_H */
 

@@ -2,7 +2,7 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 18.8.2015
+; Last modified: 12.1.2017
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
@@ -16,7 +16,7 @@
 ValueA	EQU	b'00000000'	; PA
 ;			  ||||||||--------- RA0 - Rotary switch CHA
 ;			  |||||||---------- RA1 - Rotary switch CHB
-;			  ||||||----------- RA2 - AN2 (environment brightness)
+;			  ||||||----------- RA2 - AN2 (LCD backlight knob)
 ;			  |||||------------ RA3 - Rotary switch S1
 ;			  ||||------------- RA4 - NC
 ;			  |||-------------- RA5 - NC
@@ -47,7 +47,7 @@ ValueC	EQU	b'00000000'	; PC
 DirA	EQU	b'00001111'	; PA
 ;			  ||||||||--------- RA0 - Rotary switch CHA
 ;			  |||||||---------- RA1 - Rotary switch CHB
-;			  ||||||----------- RA2 - AN2 (environment brightness)
+;			  ||||||----------- RA2 - AN2 (LCD backlight knob)
 ;			  |||||------------ RA3 - Rotary switch S1
 ;			  ||||------------- RA4 - NC
 ;			  |||-------------- RA5 - NC
@@ -94,7 +94,7 @@ OPTION_INI	EQU b'01001000'	; OPTION register
 WPUA_INI	EQU b'00110111'	; WPUA register - PORTA weak pull-ups
 ;				  ||||||||--------- RA0 - Rotary switch CHA
 ;				  |||||||---------- RA1 - Rotary switch CHB
-;				  ||||||----------- RA2 - AN2 (environment brightness)
+;				  ||||||----------- RA2 - AN2 (LCD backlight knob)
 ;				  |||||------------ RA3 - Rotary switch S1 - external pull-up
 ;				  ||||------------- RA4 - NC
 ;				  |||-------------- RA5 - NC

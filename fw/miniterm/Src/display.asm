@@ -3,7 +3,7 @@
 ; File: DISPLAY.ASM
 ; Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 18.8.2015
+; Last modified: 13.1.2017
 ;
 ; - populates display content according to data received from master.
 ;
@@ -124,6 +124,9 @@ sDisp_Ini
 	movwf	vDisp_Ctrl
 
 	clrf	vDisp_Cmd
+
+	movlw	0x01
+	movwf	vDisp_Backlight
 
 	return
 ;----

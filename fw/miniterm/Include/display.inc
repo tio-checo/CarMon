@@ -3,7 +3,7 @@
 ; File: DISPLAY.INC
 ; Author: Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 13.8.2015
+; Last modified: 11.1.2017
 ; Changelog:
 ;
 ; Controls display according to data received from master.
@@ -19,7 +19,8 @@ vDisp_Cmd		EQU 0x51 ; Command register
 vDisp_Tmp		EQU 0x52 ; temporary register
 vDisp_Timer		EQU 0x53 ; timer
 vDisp_StrIndex	EQU 0x54 ; string index
-vDisp_FB		EQU 0x60 ; frame buffer 0x60 - 0x6f
+vDisp_FB		EQU 0x58 ; 16-char frame buffer (0x58 - 0x67)
+vDisp_Backlight	EQU 0x68 ; display backlight
 
 cDISP_FB_SIZE	EQU 0x10 ; frame buffer size
 

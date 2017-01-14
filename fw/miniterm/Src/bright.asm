@@ -3,7 +3,7 @@
 ; File: BRIGHT.ASM
 ; Jan Damborsky
 ; Created: 17.8.2015
-; Last modified: 18.8.2015
+; Last modified: 12.1.2017
 ;
 ; Automatic control of LCD brightness.
 ;
@@ -15,6 +15,7 @@
 
  INCLUDE "p16f690.inc"
  INCLUDE "./include/bright.inc"
+ INCLUDE "./include/display.inc"
 
 ; extern definitions
 
@@ -91,18 +92,27 @@ lBright_Measure1
 	bsf		ADCON0,GO
 	goto	lBright_ControlE
 ;----
-; adjusts LCD backlight according to measured value
+; Adjusts LCD backlight according to measured value.
+; If backlight knob is at maximum, go with a backlight
+; calculated by master device.
 lBright_SetBacklight
 ; calculate average value
 ; divide by 256 - that is discard lower byte
-	movf	vBright_AccH,w
+; increment by 1, so that Z flag can be used
+; for checking for max value (0xff)
+	incf	vBright_AccH,w
+
+	btfsc	STATUS,Z
+	incf	vDisp_Backlight,w
 
 ; set PWM directly from calculated value
+	addlw	0xff		; subtract -1 to eliminate previous increment
 	movwf	CCPR1L
 
 ; start new control cycle
 	movlw	cBright_Begin
 	goto	lBright_ControlCtrlE ; lBright_Begin
+;----
 ; Subroutines
 ;----
 ; initialize the module

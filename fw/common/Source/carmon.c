@@ -477,11 +477,6 @@ cm_alarm_process(unsigned char *d, int ln)
 			    gps_get_course() : ' ';
 		}
 
-		fb_addr[16] = '\0';
-
-		/* Write framebuffer to the terminal. */
-		lcdterm_fb_write();
-
 		break;
 
 	/* No action is to be taken for provided PID. */

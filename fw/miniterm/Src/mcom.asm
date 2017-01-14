@@ -3,7 +3,7 @@
 ; File: MCOM.ASM
 ; Jan Damborsky
 ; Created: 12.8.2015
-; Last modified: 13.8.2015
+; Last modified: 11.1.2017
 ;
 ; Handles communication with master connected via I2C bus.
 ;
@@ -109,7 +109,7 @@ lMcom_RecvByte
 ; if byte has been received, since we realized
 ; that checking just for SSPSTAT[BF] may lead
 ; to reading SSPBUF multiple times.
-; PIR1[SSPIF] must be clear by software once
+; PIR1[SSPIF] must be cleared by software once
 ; SSPBUF is read
 ;
 	bcf		STATUS,RP0
@@ -142,6 +142,7 @@ lMcom_RecvCmd
 	mMcomGetChar
 
 ; the only command supported for now is writing to frame buffer
+; and setting LCD backlight
 	movlw	vDisp_FB
 	movwf	vMcom_Ptr
 
@@ -168,7 +169,9 @@ lMcom_RecvData1
 
 	incf	vMcom_Ptr,f
 
-	movlw	vDisp_FB + 0x10
+; following check assumes that framebuffer data is followed
+; by one byte used to set LCD backlight
+	movlw	vDisp_Backlight + 1
 	xorwf	vMcom_Ptr,w
 
 	btfss	STATUS,Z
