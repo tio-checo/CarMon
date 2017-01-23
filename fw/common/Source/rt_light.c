@@ -74,6 +74,7 @@ static rtl_svc_t rtl_pool_svcs[RTL_SVC_POOL_SIZE];
 static struct rtl_istat_t {
 	char	*name;		/* Interrupt description */
 	int	num;		/* Interrupt number */
+	unsigned long	prlg_time;	/* Max timer ticks spent in prologue */
 	unsigned long	min_time;	/* Min timer ticks spent in handler */
 	unsigned long	max_time;	/* Max timer ticks spent in handler */
 	unsigned long	missed;	/* Number of missed interrupts */
@@ -357,8 +358,9 @@ rtl_init(void)
 	rtl_hb_mode(HB_MODE_FIFTY_FIFTY, 500, 0);
 
 	/* Initialize interrupt statistics */
-	rtl_istat[RTL_ISTAT_TIMER1].name = "Timer1";
+	rtl_istat[RTL_ISTAT_TIMER1].name = "Tmr1";
 	rtl_istat[RTL_ISTAT_TIMER1].num = _TIMER_1_IRQ;
+	rtl_istat[RTL_ISTAT_TIMER1].prlg_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
 	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
@@ -424,6 +426,7 @@ rtl_svc_clear_kstats(void)
 	}
 
 	/* Interrupt kstats. */
+	rtl_istat[RTL_ISTAT_TIMER1].prlg_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
 	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
@@ -442,9 +445,9 @@ rtl_svc_display_kstats(int (*print_str)(const char *))
 	int i;
 
 	/* print header */
-	print_str("---------------------------------------------\n\r");
+	print_str("---------------------------------------------------------\n\r");
 	print_str("SH ADDRESS    E D start_time svc_time N\n\r");
-	print_str("---------------------------------------------\n\r");
+	print_str("---------------------------------------------------------\n\r");
 
 	for (i = 0; (i < RTL_SVC_POOL_SIZE) && (rtl_pool_svcs[i].svc != NULL);
 	    i++) {
@@ -458,19 +461,20 @@ rtl_svc_display_kstats(int (*print_str)(const char *))
 		print_str(s);
 	}
 
-	print_str("---------------------------------------------\n\r");
-	print_str("IRQ# min[ticks] max[ticks] missed nloops NAME\n\r");
-	print_str("---------------------------------------------\n\r");
+	print_str("---------------------------------------------------------\n\r");
+	print_str("IRQ# prlg[ticks] min[ticks] max[ticks] missed nloops NAME\n\r");
+	print_str("---------------------------------------------------------\n\r");
 
 	for (i = 0; i < RTL_ISTAT_NUM; i++) {
-		snprintf(s, sizeof (s), "%4d %10ld %10ld %6ld %6ld %s\n\r",
-		    rtl_istat[i].num, rtl_istat[i].min_time,
-		    rtl_istat[i].max_time, rtl_istat[i].missed,
-		    rtl_istat[i].nloops, rtl_istat[i].name);
+		snprintf(s, sizeof (s), "%4d %11ld %10ld %10ld %6ld %6ld %s\n\r",
+		    rtl_istat[i].num, rtl_istat[i].prlg_time,
+		    rtl_istat[i].min_time, rtl_istat[i].max_time,
+		    rtl_istat[i].missed, rtl_istat[i].nloops,
+		    rtl_istat[i].name);
 		print_str(s);
 	}
 
-	print_str("---------------------------------------------\n\r");
+	print_str("---------------------------------------------------------\n\r");
 
 	/* Print number of used timers. */
 	for (i = 0; i < RTL_TIMER_POOL_SIZE && rtl_pool_timers[i].allocated; i++)
@@ -479,7 +483,7 @@ rtl_svc_display_kstats(int (*print_str)(const char *))
 	snprintf(s, sizeof (s), "RT timers used: %d/%d\n\r",
 	    i, RTL_TIMER_POOL_SIZE);
 	print_str(s);
-	print_str("---------------------------------------------\n\r");
+	print_str("---------------------------------------------------------\n\r");
 
 	return 0;
 }
@@ -505,6 +509,14 @@ __attribute__ ((interrupt)) isr_timer1(void)
 	int i;
 	unsigned long nloops = 0;
 	BOOL is_diag_mode;
+	long t;
+
+	/* Record max time spent in interrupt prologue. */
+	t = TMR1;
+	if (rtl_istat[RTL_ISTAT_TIMER1].prlg_time < t) {
+		rtl_istat[RTL_ISTAT_TIMER1].prlg_time = t;
+	}
+
 
 /*	LATBCLR = 1 << 12;	done in interrupt prolog */
 
