@@ -472,6 +472,15 @@ rtl_svc_display_kstats(int (*print_str)(const char *))
 
 	print_str("---------------------------------------------\n\r");
 
+	/* Print number of used timers. */
+	for (i = 0; i < RTL_TIMER_POOL_SIZE && rtl_pool_timers[i].allocated; i++)
+		;
+
+	snprintf(s, sizeof (s), "RT timers used: %d/%d\n\r",
+	    i, RTL_TIMER_POOL_SIZE);
+	print_str(s);
+	print_str("---------------------------------------------\n\r");
+
 	return 0;
 }
 
