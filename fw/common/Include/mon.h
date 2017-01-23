@@ -9,6 +9,9 @@
 /* initialize monitor module */
 extern int mon_init(void);
 
+/* Service routine */
+extern int mon_svc(void);
+
 /* Enter diagnostic mode. */
 extern int mon_diag_enter(unsigned char);
 

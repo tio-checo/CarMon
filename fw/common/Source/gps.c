@@ -447,8 +447,12 @@ gps_init(void)
 	/* Clear check sum error counter. */
 	gps_chsum_err = 0;
 
-	/* Register and enable main service routine. */
-	rtl_svc_init("GPS", gps_main_svc, TRUE, TRUE);
+	/*
+	 * Register and enable main service routine.
+	 * Disabled in diag mode, so that UART can be used
+	 * as diag port by diag service.
+	 */
+	rtl_svc_init("GPS", gps_main_svc, TRUE, FALSE);
 
 	return 0;
 }

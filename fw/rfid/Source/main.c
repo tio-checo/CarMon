@@ -173,14 +173,6 @@ main(int argc, char **argv)
 	/* All services are initialized, thus enable main service handler. */
 	rtl_svc_handler_enable();
 
-	/* Immediately enter diagnostic mode */
-/*
-	mon_diag_enter();
-	while (mon_is_diag_mode()) {
-		mon_svc();
-	}
-*/
-
 	while(1) {
 		if (mcom_suspend()) {
 			sleeping = TRUE;
@@ -231,6 +223,11 @@ main(int argc, char **argv)
 
 		/* Run logging upper layer service routine. */
 		log_svc();
+
+		/* Run diagnostic service if enabled. */
+		if (mon_is_diag_mode()) {
+			mon_svc();
+		}
 
 		/*
 		 * Enter idle mode if there is nothing to do.

@@ -80,6 +80,7 @@ static int mon_sd_menu(unsigned char);
 /* state machine states */
 enum mon_st_menu_t {
 MON_ST_IDLE = 0,	/* machine is IDLE */
+MON_ST_ENTER,		/* enter diag mode */
 MON_ST_MAIN,		/* main menu */
 MON_ST_SD_CARD,		/* SD card menu */
 MON_ST_BLUETOOTH	/* Bluetooth menu */
@@ -140,6 +141,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
 /* Association between state, menu and handler */
 static mon_map_st2menu_t mon_st2menu_map[] = {
     {"", NULL},
+    {"", NULL},
     {MON_DIAG_MAIN_MENU, mon_main_menu},
     {MON_DIAG_SD_MENU, mon_sd_menu},
     {"", NULL}};
@@ -169,8 +171,6 @@ static int mon_old_speed;
 static int mon_st;
 /* diagnostic mode */
 static unsigned char mon_diag_mode;
-/* service handle */
-static rtl_svc_handle_t mon_sh;
 
 /* private functions */
 
@@ -235,20 +235,9 @@ mon_putchar(unsigned char ch)
 #ifdef MCOM_USBACM_MODULE
 	/* USB used as a communication device. */
 	if (mon_diag_mode == MON_DIAG_MODE_USB) {
-		/* Wait until transmitter is ready. */
-		while (usbsacm_putchar(ch, FALSE) != 0) {
-			/*
-			 * Since we are called from a service, looping blocks
-			 * other services from running.
-			 * Thus, while looping we need to periodically call
-			 * services we depend upon, otherwise we would
-			 * end up in deadlock.
-			 * In this particular case, we give USB service its
-			 * time quanta, since it takes care of transmitting
-			 * the character to the host.
-			 */
-			uapp_svc();
-		}
+		/* Wait until transmitter accepts the character. */
+		while (usbsacm_putchar(ch, FALSE) != 0)
+			;
 	} else if (mon_diag_mode == MON_DIAG_MODE_BT) {
 #else
 	if (mon_diag_mode == MON_DIAG_MODE_BT) {
@@ -878,14 +867,27 @@ mon_sd_menu(unsigned char ch)
 	return next_st;
 }
 
+/* public functions */
+
 /*
  * Service routine
  */
-static int
+int
 mon_svc(void)
 {
 	unsigned char ch;
 	int next;
+
+	/*
+	 * Diagnostic mode just entered, display main menu
+	 * and enter the main state machine.
+	 */
+	if (mon_st == MON_ST_ENTER) {
+		mon_print_str(MON_DIAG_MAIN_MENU);
+		mon_print_str(MON_DIAG_PROMPT);
+
+		mon_st = MON_ST_MAIN;
+	} 
 
 	/* Wait for user's input - handle Bluetooth menu separately for now. */
 	if (mon_st != MON_ST_BLUETOOTH) {
@@ -984,8 +986,6 @@ mon_svc(void)
 	return 0;
 }
 
-/* public functions */
-
 /*
  * Initialize the module.
  */
@@ -993,9 +993,6 @@ int
 mon_init(void)
 {
 	mon_st = MON_ST_IDLE;
-
-	/* Register, but not enable the service. */
-	mon_sh = rtl_svc_init("Monitor", mon_svc, FALSE, TRUE);
 
 	return 0;
 }
@@ -1017,11 +1014,8 @@ mon_diag_enter(unsigned char mode)
 
 	mon_diag_mode_enabled = TRUE;
 
-	/* Enable diagnostic service. */
-	rtl_svc_enable(mon_sh);
-
 	/* Wake up state machine. */
-	mon_st = MON_ST_MAIN;
+	mon_st = MON_ST_ENTER;
 
 	/*
 	 * If communicating over UART, set communication speed
@@ -1029,10 +1023,6 @@ mon_diag_enter(unsigned char mode)
 	 */
 	if (mode == MON_DIAG_MODE_SER)
 		mon_old_speed = mon_set_comm_speed(115200);
-
-	/* Display main menu. */
-	mon_print_str(MON_DIAG_MAIN_MENU);
-	mon_print_str(MON_DIAG_PROMPT);
 
 	return 0;
 }
@@ -1044,9 +1034,6 @@ int
 mon_diag_leave(void)
 {
 	mon_diag_mode_enabled = FALSE;
-
-	/* Disable diagnostic service. */
-	rtl_svc_disable(mon_sh);
 
 	/* Switch state machine to idle mode. */
 	mon_st = MON_ST_IDLE;
