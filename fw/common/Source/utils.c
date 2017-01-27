@@ -9,6 +9,7 @@
 #include <stddef.h>
 
 #include "GenericTypeDefs.h"
+#include "dma.h"
 
 /* local constants */
 /* HEX->ASCII conversion table */
@@ -76,6 +77,8 @@ hex2ulong(char *a, int ln)
 
 /*
  * Converts given number of ASCII HEX characters to sequence of bytes
+ * in and out can point to the same buffer in which case input data
+ * are overwritten with the converted ones.
  */
 int
 hex2ucharbuf(char *in, unsigned char *out, int ln)
@@ -170,9 +173,9 @@ long2str(long n, char *out, int ln, BOOL lz)
  * Initializes 16bit CRC-CCITT calculation algorithm
  */
 void
-crc_init(unsigned short *crc)
+crc_init(unsigned short *crc, unsigned short seed)
 {
-	*crc = 0xffff;
+	*crc = seed;
 }
 
 /*
@@ -207,16 +210,42 @@ crc_finalize(unsigned short *crc)
 }
 
 /*
- * Calculates CRC for given array of bytes
+ * Calculates 16-bit CRC-CCITT for given array of bytes using DMA
  */
 unsigned short
-crc_calc_array(void *buf, int ln)
+crc_dma_calc_array(void *buf, int ln)
+{
+	unsigned int crc;
+
+	/*
+	 * Configure DMA module:
+	 *  - use DMA channel 0 with priority 0
+	 *  - CRC checksum is to be calculated
+	 *  - input data reflected or not
+	 *  - bytes not reordered
+	 */
+	/* Sets DRCCON */
+	DmaSfmConfigure(DMA_CHKSUM_CRC, DMA_BITO_MSb, DMA_REORDER_NOT);
+	/* Configure polynomial, its length and initial seed */
+	DmaSfmCrcConfigure(0x1021, 16, 0x84cf);
+	/* Blocks until DMA is done with CRC calc. */
+	/* Assume the calculation always succeeds. */
+	(void) DmaChnMemCrc(&crc, buf, ln, DMA_CHANNEL0, DMA_CHN_PRI0);
+
+	return (unsigned short)(crc & 0xffff);
+}
+
+/*
+ * Calculates 16-bit CRC-CCITT for given array of bytes using lookup table
+ */
+unsigned short
+crc_calc_array(void *buf, int ln, unsigned short seed)
 {
 	unsigned short crc;
 	int i;
 	unsigned char *barray = (unsigned char *)buf;
 
-	crc_init(&crc);
+	crc_init(&crc, seed);
 	for (i = 0; i < ln; i++) {
 		crc_calc(&crc, barray[i]);
 	}
@@ -225,7 +254,6 @@ crc_calc_array(void *buf, int ln)
 
 	return crc;
 }
-
 #define op_t unsigned long int
 #define OPSIZ (sizeof (op_t))
 typedef unsigned char byte;

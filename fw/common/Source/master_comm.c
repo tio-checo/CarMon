@@ -104,7 +104,7 @@ static struct mcom_comm_object_t {
 	/* receive buffer */
 	char rx_buf[MCOM_PACKET_MAXLN];
 	/* rx buffer tail  */
-	unsigned char rx_tail;
+	unsigned int rx_tail;
 	/* flag indicating that buffer contains received packet */
 	BOOL fl_packet_received;
 
@@ -294,7 +294,7 @@ mcom_decode_packet(void)
 		}
 
 		/* Calculate checksum. */
-		crc = crc_calc_array(mcom_co.rx_buf, ln - 4);
+		crc = crc_calc_array(mcom_co.rx_buf, ln - 4, 0xffff);
 
 		/* Verify checksum. */
 		if (chsum != crc) {
@@ -705,7 +705,7 @@ mcom_tx_st(void)
 	/* send SOF */
 	case MCOM_ST_TX_SOF:
 		/* Initialize CRC calculator. */
-		crc_init(&crc);
+		crc_init(&crc, 0xffff);
 
 		buf_index = 0;
 

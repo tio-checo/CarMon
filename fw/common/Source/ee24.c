@@ -128,19 +128,15 @@ ee24_svc(void)
 
 		/* Validate EEPROM content - section of user parameters. */
 		ms = EE24_PAR_SIZE;
-		crc = crc_calc_array(ee24_param_list, ms - 2);
+		crc = crc_dma_calc_array(ee24_param_list, ms);
 
-		ee24_param_crc_valid = (crc ==
-		    (unsigned short)ee24_param_list[ms - 1] +
-		    256 * (unsigned short)ee24_param_list[ms - 2]);
+		ee24_param_crc_valid = (crc == 0);
 
 		/* Validate EEPROM content - section of nv state. */
 		ms = EE24_NV_SIZE;
-		crc = crc_calc_array(ee24_nv_state, ms - 2);
+		crc = crc_dma_calc_array(ee24_nv_state, ms);
 
-		ee24_nv_crc_valid = (crc ==
-		    (unsigned short)ee24_nv_state[ms - 1] +
-		    256 * (unsigned short)ee24_nv_state[ms - 2]);
+		ee24_nv_crc_valid = (crc == 0);
 
 		/* EEPROM content copied to RWM */
 		ee24_copied2ram = TRUE;
@@ -377,7 +373,12 @@ ee24_setpar(int num, int ln, char *value)
 
 	/* Recalculate CRC */
 	ms = EE24_PAR_SIZE;
-	crc = crc_calc_array(ee24_param_list, ms - 2);
+	/*
+	 * DMA CRC calculation relies on message being appended
+	 * with 16 zero bits.
+	 */
+	ee24_param_list[ms - 2] = ee24_param_list[ms - 1] = 0;
+	crc = crc_dma_calc_array(ee24_param_list, ms);
 	ee24_param_list[ms - 2] = crc >> 8;
 	ee24_param_list[ms - 1] = crc & 0xff;
 
@@ -407,7 +408,12 @@ ee24_save_nv_state(void)
 
 	/* Recalculate CRC */
 	ms = EE24_NV_SIZE;
-	crc = crc_calc_array(ee24_nv_state, ms - 2);
+	/*
+	 * DMA CRC calculation relies on message being appended
+	 * with 16 zero bits.
+	 */
+	ee24_nv_state[ms - 2] = ee24_nv_state[ms - 1] = 0;
+	crc = crc_dma_calc_array(ee24_nv_state, ms);
 	ee24_nv_state[ms - 2] = crc >> 8;
 	ee24_nv_state[ms - 1] = crc & 0xff;
 

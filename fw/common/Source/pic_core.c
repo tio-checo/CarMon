@@ -11,6 +11,7 @@
 
 #include "HardwareProfile.h"
 #include "xc.h"
+#include "dma.h"
 
 #include "master_comm.h"
 
@@ -328,7 +329,7 @@ pcore_init(void)
 int
 pcore_process_query(char *data, int ln)
 {
-	static unsigned short temp_us;
+	static unsigned char resp_data[6];
 
 	int err = 0;
 	char *tds;
@@ -369,13 +370,16 @@ pcore_process_query(char *data, int ln)
 
 #ifdef MCP9801_MODULE
 		/* Get temperature */
-		case MCOMM_PCORE_CMD_GETTEMP:
-			temp_us = mcp9801_get_temperature();
+		case MCOMM_PCORE_CMD_GETTEMP: {
+			unsigned short temp_us = mcp9801_get_temperature();
 
-			pcore_send_data_response_to_master(&temp_us, 1,
-			    MCOM_DATA_TYPE_WORD);
+			resp_data[0] = (unsigned char)(temp_us >> 8);
+			resp_data[1] = (unsigned char)temp_us;
 
-		break;
+			pcore_send_data_response_to_master(resp_data, 2,
+			    MCOM_DATA_TYPE_BYTE);
+
+		} break;
 #endif
 
 #ifdef EE24_MODULE
@@ -480,14 +484,112 @@ pcore_process_query(char *data, int ln)
 		} break;
 #endif
 
-		/* Calculate 16bit CRC-CCITT checksum for given data */
-		case MCOMM_PCORE_CMD_CALCCRC:
-			temp_us = crc_calc_array(data, ln);
+		/*
+		 * Calculate CRC checksum for given data.
+		 * 'data' buffer is in form of
+		 *
+		 * ------------------------------
+		 * | c | TYPE | P1..P4 | D1..DN |
+		 * ------------------------------
+		 *
+		 * TYPE (1 char)
+		 *  s - 16bit CRC-CCITT calculated by software (only P4 used)
+		 *  d - CRC calculated by DMA module
+		 * P1 (1b)
+		 *  ==0 - input data not reflected (MSB first)
+		 *  !=0 - input data reflected (LSB first)
+		 * P2 (1b)
+		 *  length of CRC polynomial (max 32)
+		 * P3 (4b)
+		 *  CRC polynomial
+		 * P4 (4b)
+		 *  CRC seed
+		 * D1..DN
+		 *  data
+		 */
+		case MCOMM_PCORE_CMD_CALCCRC: {
+			unsigned int crc = 0;
+			unsigned int t;
+			unsigned int crc_polynomial;
+			unsigned int crc_seed;
+			unsigned int crc_plen;
+			unsigned int crc_refin;
+			unsigned char *crc_dbuf;
+			unsigned int crc_dln;
 
-			pcore_send_data_response_to_master(&temp_us, 1,
-			    MCOM_DATA_TYPE_WORD);
+			/*
+			 * Do some sanity checking.
+			 * At least one data byte is required.
+			 */
+			if ((data[1] != 's' && data[1] != 'd')
+			    || ln < 24 || (ln % 2 != 0)) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
 
-			break;
+			/* Convert CRC parameters. */
+			crc_refin = hex2ulong(data + 2, 2);
+			crc_plen = hex2ulong(data + 4, 2);
+			crc_polynomial = hex2ulong(data + 6, 8);
+			crc_seed = hex2ulong(data + 14, 8);
+
+			if (crc_plen < 1 || crc_plen > 32) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
+
+			/* Convert input ASCII HEX data to sequence of bytes. */
+			crc_dbuf = (unsigned char *)data + 22;
+			crc_dln = (ln - 22) / 2;
+			if (hex2ucharbuf(data + 22, crc_dbuf, ln - 22) != 0) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
+
+			if (data[1] == 's') {
+				t = TMR1;
+				crc = crc_calc_array(crc_dbuf, crc_dln,
+				    crc_seed);
+				t = TMR1 - t;
+			} else {
+				t = TMR1;
+				/*
+				 * Configure DMA module:
+				 *  - use DMA channel 0 with priority 0
+				 *  - CRC checksum is to be calculated
+				 *  - input data reflected or not
+				 *  - bytes not reordered
+				 */
+				/* Sets DRCCON */
+				DmaSfmConfigure(DMA_CHKSUM_CRC, crc_refin == 0 ?
+				    DMA_BITO_MSb : DMA_BITO_LSb,
+				    DMA_REORDER_NOT);
+				/* Sets DRCCON, DCRCDATA, DCRCXOR */
+				DmaSfmCrcConfigure(crc_polynomial, crc_plen,
+				    crc_seed);
+				/* Blocks until DMA is done with CRC calc. */
+				if (DmaChnMemCrc(&crc, crc_dbuf, crc_dln,
+				    DMA_CHANNEL0, DMA_CHN_PRI0) !=
+				    DMA_TXFER_OK) {
+					err = MCOM_NAK_IO_ERROR;
+					break;
+				}
+				t = TMR1 - t;
+			}
+
+			t /= GetPeripheralClock() / 1000000;
+
+			resp_data[0] = (unsigned char)(crc >> 24);
+			resp_data[1] = (unsigned char)(crc >> 16);
+			resp_data[2] = (unsigned char)(crc >> 8);
+			resp_data[3] = (unsigned char)crc;
+			resp_data[4] = (unsigned char)(t >> 8);
+			resp_data[5] = (unsigned char)t;
+
+			pcore_send_data_response_to_master(resp_data, 6,
+			    MCOM_DATA_TYPE_BYTE);
+
+		} break;
 
 		/* unknown command */
 		default:

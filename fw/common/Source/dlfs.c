@@ -182,7 +182,7 @@ dlfs_calc_crc(unsigned char *buff)
 {
 	unsigned short crc;
 
-	crc = crc_calc_array(buff, DLFS_SECTOR_SIZE - DLFS_CRC_SIZE);
+	crc = crc_calc_array(buff, DLFS_SECTOR_SIZE - DLFS_CRC_SIZE, 0xffff);
 
 	/* LSB first */
 	buff[DLFS_SECTOR_SIZE - 2] = crc & 0xff;

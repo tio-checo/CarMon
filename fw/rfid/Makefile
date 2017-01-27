@@ -38,6 +38,9 @@ OBJFILES= $(BUILD_DIR)/main.o $(BUILD_DIR)/rt_light.o $(BUILD_DIR)/bt.o \
     $(BUILD_DIR)/usb_app.o $(BUILD_DIR)/usb_descriptors.o \
     $(BUILD_DIR)/usb_device.o \
     $(BUILD_DIR)/usb_function_cdc.o $(BUILD_DIR)/int_disable_interrupts_lib.o \
+    $(BUILD_DIR)/dma_chn_mem_crc_lib.o \
+    $(BUILD_DIR)/dma_chn_start_txfer_lib.o \
+    $(BUILD_DIR)/dma_reg_map_tbl_lib.o \
     $(BUILD_DIR)/int_enable_interrupts_lib.o \
     $(BUILD_DIR)/int_enable_mv_int_lib.o \
     $(BUILD_DIR)/int_tbl_lib.o \
@@ -122,6 +125,15 @@ $(BUILD_DIR)/usb_device.o: ../common/Source/USB/usb_device.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/usb_function_cdc.o: ../common/Source/USB/usb_function_cdc.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/dma_chn_mem_crc_lib.o: ../common/Source/peripheral/dma/dma_chn_mem_crc_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/dma_chn_start_txfer_lib.o: ../common/Source/peripheral/dma/dma_chn_start_txfer_lib.c
+	$(CC) -o $@ -c $(CFLAGS) $?
+
+$(BUILD_DIR)/dma_reg_map_tbl_lib.o: ../common/Source/peripheral/dma/dma_reg_map_tbl_lib.c
 	$(CC) -o $@ -c $(CFLAGS) $?
 
 $(BUILD_DIR)/int_disable_interrupts_lib.o: ../common/Source/peripheral/int/int_disable_interrupts_lib.c
