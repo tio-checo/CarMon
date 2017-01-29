@@ -62,18 +62,22 @@ static BOOL pcore_time_initialized = FALSE;
 static i2c_msg_t i2c_msg;
 /* I2C data buffer */
 static unsigned char i2c_buf[PCORE_I2C_BUF_SIZE];
+#endif
 
 /* state machine handling I2C communication */
 static enum {
-	PCORE_I2C_ST_IDLE = 0,	/* state machine idle */
+	PCORE_ST_IDLE = 0,	/* state machine idle */
 
+	PCORE_EE_ST_WAIT4SETPAR,	/* send ACK after EEPROM written */
+
+#ifdef I2CHAL_MODULE
 	PCORE_I2C_ST_READ1,	/* Read from device */
 	PCORE_I2C_ST_READ2,
 
 	PCORE_I2C_ST_WRITE1,		/* Write to device */
 	PCORE_I2C_ST_WRITE2
-} pcore_i2c_st;
 #endif
+} pcore_st;
 
 /* local functions */
 /*
@@ -169,16 +173,30 @@ pcore_svc(void)
 	}
 #endif
 
-#ifdef I2CHAL_MODULE
-	switch (pcore_i2c_st) {
+	switch (pcore_st) {
 	/* Idle */
-	case PCORE_I2C_ST_IDLE:
+	case PCORE_ST_IDLE:
 		break;
 
+	/*
+	 * Wait for EEPROM parameter stored in EEPROM,
+	 * send ACK to master afterwards.
+	 */
+	case PCORE_EE_ST_WAIT4SETPAR:
+		if (ee24_svc_busy()) {
+			break;
+		}
+
+		pcore_st = PCORE_ST_IDLE;
+		mcom_prepare_ack_response(&pcore_resp_ack_nak);
+		fl_send_ack_nak = TRUE;
+		break;
+
+#ifdef I2CHAL_MODULE
 	/* Read from I2C device - grab the bus*/
 	case PCORE_I2C_ST_READ1:
 		if (i2c_request_bus() == 0) {
-			pcore_i2c_st = PCORE_I2C_ST_READ2;
+			pcore_st = PCORE_I2C_ST_READ2;
 		}
 
 		break;
@@ -197,13 +215,13 @@ pcore_svc(void)
 		pcore_send_data_response_to_master(i2c_msg.buf,
 		    i2c_msg.ln, MCOM_DATA_TYPE_BYTE);
 
-		pcore_i2c_st = PCORE_I2C_ST_IDLE;
+		pcore_st = PCORE_ST_IDLE;
 		break;
 
 	/* Write to I2C device - grab the bus */
 	case PCORE_I2C_ST_WRITE1:
 		if (i2c_request_bus() == 0) {
-			pcore_i2c_st = PCORE_I2C_ST_WRITE2;
+			pcore_st = PCORE_I2C_ST_WRITE2;
 		}
 
 		break;
@@ -222,7 +240,7 @@ pcore_svc(void)
 		mcom_prepare_ack_response(&pcore_resp_ack_nak);
 		fl_send_ack_nak = TRUE;
 
-		pcore_i2c_st = PCORE_I2C_ST_IDLE;
+		pcore_st = PCORE_ST_IDLE;
 		break;
 	}
 #endif
@@ -310,9 +328,9 @@ pcore_init(void)
 	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
 	pcore_resp_data.id = MCOMM_PIC_ID;
 
+	/* initialize pcore state machine */
+	pcore_st = PCORE_ST_IDLE;
 #ifdef I2CHAL_MODULE
-	/* initialize I2C state machine */
-	pcore_i2c_st = PCORE_I2C_ST_IDLE;
 	/* initialize pointer to I2C data buffer */
 	i2c_msg.buf = i2c_buf;
 #endif
@@ -414,6 +432,13 @@ pcore_process_query(char *data, int ln)
 				/* The only error returned is EINVAL. */
 				if (err != 0) {
 					err = MCOM_NAK_EINVAL;
+				} else {
+					/*
+					 * Wait until parameter is stored
+					 * to EEPROM, then send ACK.
+					 */
+					pcore_st = PCORE_EE_ST_WAIT4SETPAR;
+					fl_send_ack_nak = FALSE;
 				}
 			}
 		} break;
@@ -423,7 +448,7 @@ pcore_process_query(char *data, int ln)
 		/* Read from I2C device */
 		case MCOMM_PCORE_CMD_READI2C:
 			/* Previous I2C operation still in progress. */
-			if (pcore_i2c_st != PCORE_I2C_ST_IDLE) {
+			if (pcore_st != PCORE_ST_IDLE) {
 				err = MCOM_NAK_MODULE_BUSY;
 				break;
 			}
@@ -444,7 +469,7 @@ pcore_process_query(char *data, int ln)
 				break;
 			} 
 
-			pcore_i2c_st = PCORE_I2C_ST_READ1;
+			pcore_st = PCORE_I2C_ST_READ1;
 
 			fl_send_ack_nak = FALSE;
 			break;
@@ -454,7 +479,7 @@ pcore_process_query(char *data, int ln)
 			int i;
 
 			/* Previous I2C operation still in progress. */
-			if (pcore_i2c_st != PCORE_I2C_ST_IDLE) {
+			if (pcore_st != PCORE_ST_IDLE) {
 				err = MCOM_NAK_MODULE_BUSY;
 				break;
 			}
@@ -477,7 +502,7 @@ pcore_process_query(char *data, int ln)
 
 			i2c_msg.ln = (ln - 3) / 2;
 
-			pcore_i2c_st = PCORE_I2C_ST_WRITE1;
+			pcore_st = PCORE_I2C_ST_WRITE1;
 
 			fl_send_ack_nak = FALSE;
 

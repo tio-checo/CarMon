@@ -16,6 +16,9 @@
 /* Initialization routine. */
 extern int ee24_init(void);
 
+/* Returns TRUE if the service is currently busy. Otherwise returns FALSE. */
+extern BOOL ee24_svc_busy(void);
+
 /*
  * Gets EEPROM parameter.
  *

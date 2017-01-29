@@ -222,15 +222,6 @@ ee24_svc(void)
 }
 
 /*
- * Returns TRUE if the service is currently busy. Otherwise returns FALSE.
- */
-static BOOL
-ee24_svc_busy(void)
-{
-	return (ee24_st != EE24_ST_IDLE);
-}
-
-/*
  * Locates parameter in the list of parameters.
  * Assumes valid parameter is provided - no checks are done.
  * 
@@ -287,6 +278,15 @@ ee24_init(void)
 	ee24_st = EE24_ST_INIT1;
 
 	return 0;
+}
+
+/*
+ * Returns TRUE if the service is currently busy. Otherwise returns FALSE.
+ */
+BOOL
+ee24_svc_busy(void)
+{
+	return (ee24_st != EE24_ST_IDLE);
 }
 
 /*
