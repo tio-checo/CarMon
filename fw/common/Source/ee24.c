@@ -2,11 +2,14 @@
  *
  * Support for 24Cxx I2C EEPROM.
  *
- * Memory is divided into two independent parts. The first one contains
+ * Memory is divided into two independent regions. The first one contains
  * user options/parameters, the second one keeps internal non-volatile
  * state of carmon service.
  * Each part is protected by its own CRC. That assures that even
  * if one part is corrupted, the another one remains usable.
+ * To speed up write process, Page Write operation is used to store
+ * data to EEPROM. Start as well as size of both regions must
+ * be selected appropriately to account for that.
  *
  *********************************************************************/
 
@@ -27,6 +30,9 @@
 /* constants */
 /* I2C address of 24Cxx EEPROM chip */
 #define EE24_I2C_ADDRESS	0x54
+
+/* Page Write page size */
+#define EE24_PAGE_SIZE		16
 
 /* offset and size of the first part containing user parameters */
 #define EE24_PAR_OFFSET		0
@@ -93,8 +99,9 @@ ee24_svc(void)
 {
 	static int index;
 	static int ee_offset;
-	static unsigned char buf[2];
+	static unsigned char buf[EE24_PAGE_SIZE + 1];
 	static unsigned char *data;
+	int i;
 
 	switch (ee24_st) {
 	/* service idle */
@@ -151,14 +158,21 @@ ee24_svc(void)
 			break;
 		}
 
-		/* Write last byte first. */
-		index = EE24_PAR_SIZE - 1;
+		/* Write last page first. */
+		index = EE24_PAR_SIZE - EE24_PAGE_SIZE;
 		ee_offset = EE24_PAR_OFFSET;
 		data = ee24_param_list;
 
-		/* Byte address followed by byte itself to be written. */
+		/*
+		 * Address of the 1st byte in EEPROM page
+		 * followed by array of bytes to be written.
+		 * The whole page will be written at once
+		 * to speed up the write operation.
+		 */
 		buf[0] = ee_offset + index;
-		buf[1] = data[index];
+		for (i = 0; i < EE24_PAGE_SIZE; i++) {
+			buf[i + 1] = data[index + i];
+		}
 
 		ee24_st = EE24_ST_STORE_NVPAR2;
 		break;
@@ -170,25 +184,32 @@ ee24_svc(void)
 			break;
 		}
 
-		/* Write last byte first. */
-		index = EE24_NV_SIZE - 1;
+		/* Write last page first. */
+		index = EE24_NV_SIZE - EE24_PAGE_SIZE;
 		ee_offset = EE24_NV_OFFSET;
 		data = ee24_nv_state;
 
-		/* Byte address followed by byte itself to be written. */
+		/*
+		 * Address of the 1st byte in EEPROM page
+		 * followed by array of bytes to be written.
+		 * The whole page will be written at once
+		 * to speed up the write operation.
+		 */
 		buf[0] = ee_offset + index;
-		buf[1] = data[index];
+		for (i = 0; i < EE24_PAGE_SIZE; i++) {
+			buf[i + 1] = data[index + i];
+		}
 
 		ee24_st = EE24_ST_STORE_NVPAR2;
 		break;
 
 	/* Write one byte to EEPROM */
 	case EE24_ST_STORE_NVPAR2:
-		if (i2c_write(EE24_I2C_ADDRESS, buf, 2) == EAGAIN) {
+		if (i2c_write(EE24_I2C_ADDRESS, buf, sizeof (buf)) == EAGAIN) {
 			break;
 		}
 
-		/* Now wait 10ms until the write is completed. */
+		/* Now wait 10ms until the page write is completed. */
 		rtl_timer_init(&ee24_eew_timer, EE24_EEW_DELAY);
 
 		ee24_st = EE24_ST_STORE_NVPAR3;
@@ -200,8 +221,8 @@ ee24_svc(void)
 			break;
 		}
 
-		/* Proceed with writing another byte, if there is any. */
-		index--;
+		/* Proceed with writing another page, if there is any. */
+		index -= EE24_PAGE_SIZE;
 		if (index < 0) {
 			/* Release I2C bus */
 			i2c_release_bus();
@@ -212,7 +233,9 @@ ee24_svc(void)
 		}
 
 		buf[0] = ee_offset + index;
-		buf[1] = data[index];
+		for (i = 0; i < EE24_PAGE_SIZE; i++) {
+			buf[i + 1] = data[index + i];
+		}
 
 		ee24_st = EE24_ST_STORE_NVPAR2;
 		break;
