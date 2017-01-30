@@ -3,7 +3,7 @@
 ; File: PWR.ASM
 ; Author: Jan Damborsky
 ; Created: 9.3.2016
-; Last modified: 12.1.2017
+; Last modified: 30.1.2017
 ;
 ; Power management.
 ;
@@ -146,18 +146,55 @@ lPwr_InitWait
 	movlw	cPWR_LOOPS_PER_SEC
 	movwf	vPwr_SecTimer
 
+; reset interrupt-on-change condition for bootloader pin
+	movf	PORTB,w
+	bcf		INTCON,RABIF
+
 	goto	lPwr_ControlIncE ; lPwr_MonitorBl
 ;----
 ; Never turn the powers off if PIC32MX module is operating
-; in bootloader mode.
+; in bootloader mode. Make sure that it is really bootloader
+; jumper that is keeping the pin on low level, since it is
+; also shared with I2C SDA signal.
+; Thus, verify the signal is kept low and no change occurs
+; on it for subsequent second.
 ;
 lPwr_MonitorBl
-	movlw	cPwr_DoNotMonitor
-	btfss	PORT_BL,bBL
-	goto	lPwr_ControlCtrlE	; lPwr_DoNotMonitor
-	goto	lPwr_ControlIncE	; lPwr_MonitorCan
-;----
+	btfsc	INTCON,RABIF
+	goto	lPwr_MonitorBl1
 
+	btfsc	PORT_BL,bBL
+	goto	lPwr_MonitorBl1
+
+	decfsz	vPwr_SecTimer,f
+	goto	lPwr_ControlE
+
+	movlw	cPwr_DoNotMonitor
+	goto	lPwr_ControlCtrlE	; lPwr_DoNotMonitor
+;
+; Done with bootloader pin monitoring which is shared
+; with I2C SDA, so now initialize SSP module to operate
+; in I2C 7-bit slave mode.
+;
+lPwr_MonitorBl1
+	bsf		STATUS,RP0
+	movlw	SSPADD_INI
+	movwf	SSPADD
+	bcf		STATUS,RP0
+
+;
+; Enable SSP module in SSPMSK mode before changing the mode
+; to the desired I2C mode to workaround following issue:
+; In any of the I2C modes, the SSP module will fail to recognize
+; the first Start bit received after a transition from module
+; disable to module enable.
+;
+	movlw	b'00111001'
+	movwf	SSPCON
+
+	movlw	SSPCON_INI
+	movwf	SSPCON
+	goto	lPwr_ControlIncE	; lPwr_MonitorCan
 ;----
 ; Monitor CAN traffic and reset timers if there is an activity
 ; detected on CAN bus.

@@ -2,7 +2,7 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 1.3.2016
-; Last modified: 12.3.2016
+; Last modified: 30.1.2017
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
@@ -28,7 +28,7 @@ ValueB	EQU	b'00000000'	; PB
 ;			  |||||||---------- NA
 ;			  ||||||----------- NA
 ;			  |||||------------ NA
-;			  ||||------------- RB4 - I2C SDA
+;			  ||||------------- RB4 - I2C SDA/bootloader
 ;			  |||-------------- RB5 - NC
 ;			  ||--------------- RB6 - I2C SCL
 ;			  |---------------- RB7 - +12V ON
@@ -122,17 +122,17 @@ WPUB_INI	EQU b'11110000'	; WPUB register - PORTB weak pull-ups
 ;				  |||||||---------- NA
 ;				  ||||||----------- NA
 ;				  |||||------------ NA
-;				  ||||------------- RB4 - I2C SDA
+;				  ||||------------- RB4 - I2C SDA/bootloader
 ;				  |||-------------- RB5 - NC
 ;				  ||--------------- RB6 - I2C SCL
 ;				  |---------------- RB7 - +12V ON
 ;
-IOCB_INI	EQU b'00000000'	; IOCB register - PORTB interrupt-on-change
+IOCB_INI	EQU b'00010000'	; IOCB register - PORTB interrupt-on-change
 ;				  ||||||||--------- NA
 ;				  |||||||---------- NA
 ;				  ||||||----------- NA
 ;				  |||||------------ NA
-;				  ||||------------- RB4 - I2C SDA - no
+;				  ||||------------- RB4 - I2C SDA/bootloader - yes
 ;				  |||-------------- RB5 - NC - no
 ;				  ||--------------- RB6 - I2C SCL - no
 ;				  |---------------- RB7 - +12V ON - no

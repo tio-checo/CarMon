@@ -2,7 +2,7 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 1.3.2016
-; Last modified: 12.3.2016
+; Last modified: 30.1.2017
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
@@ -97,25 +97,6 @@ lPicIni11
 
 ;	movlw	T1CON_INI	; T=400ns for Fosc=20MHz
 ;	movwf	T1CON
-
-; initialize SSP module to operate in I2C 7-bit slave mode
-	bsf		STATUS,RP0
-	movlw	SSPADD_INI
-	movwf	SSPADD
-	bcf		STATUS,RP0
-
-;
-; enable SSP module in SSPMSK mode before changing the mode
-; to the desired I2C mode to workaround following issue:
-; In any of the I2C modes, the SSP module will fail to recognize
-; the first Start bit received after a transition from module
-; disable to module enable.
-;
-	movlw	b'00111001'
-	movwf	SSPCON
-
-	movlw	SSPCON_INI
-	movwf	SSPCON
 
 ; initialize AD converter - measures environment brightness
 ; used to control LCD backlight
