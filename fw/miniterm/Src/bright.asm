@@ -3,7 +3,7 @@
 ; File: BRIGHT.ASM
 ; Jan Damborsky
 ; Created: 17.8.2015
-; Last modified: 12.1.2017
+; Last modified: 2.2.2017
 ;
 ; Automatic control of LCD brightness.
 ;
@@ -93,20 +93,20 @@ lBright_Measure1
 	goto	lBright_ControlE
 ;----
 ; Adjusts LCD backlight according to measured value.
-; If backlight knob is at maximum, go with a backlight
-; calculated by master device.
+; If backlight knob is at maximum (either 0xfe or 0xff),
+; go with a backlight calculated by master device.
 lBright_SetBacklight
-; calculate average value
-; divide by 256 - that is discard lower byte
-; increment by 1, so that Z flag can be used
-; for checking for max value (0xff)
-	incf	vBright_AccH,w
+; Calculate average value, that is divide by 256
+; which means discard lower byte.
+	movf	vBright_AccH,w
 
-	btfsc	STATUS,Z
-	incf	vDisp_Backlight,w
+; Adding 0x02 sets Carry flag for 0xfe and 0xff
+	addlw	0x02
 
-; set PWM directly from calculated value
-	addlw	0xff		; subtract -1 to eliminate previous increment
+	movf	vBright_AccH,w
+	btfsc	STATUS,C
+	movf	vDisp_Backlight,w
+
 	movwf	CCPR1L
 
 ; start new control cycle
