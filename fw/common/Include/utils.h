@@ -13,6 +13,13 @@
  */
 extern int uint2hex(unsigned int, char *, int);
 
+/*
+ * Converts unsigned long to ASCII HEX string.
+ * Start with MSB. Lading zeros are not printed.
+ * Returns number of written characters.
+ */
+extern int ulong2hexwolz(unsigned long, char *);
+
 /* Converts given number of bytes to ASCII HEX string */
 extern int ucharbuf2hex(unsigned char *, unsigned char *, int);
 

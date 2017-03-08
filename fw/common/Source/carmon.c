@@ -85,6 +85,9 @@
 /* Distance from the last DPF rejuvenation */
 #define CM_CME_ID_DPF_DIST	"DPFDIST"
 
+/* dlfs kstats logged every minute */
+#define CM_LOG_PERIOD	60 * 1000000UL
+
 /* types */
 /* States in 'Configuration' mode */
 typedef enum _cm_conf_state_t {
@@ -154,10 +157,16 @@ static BOOL cm_log_available;
 /* Set to TRUE once the first ECU PID is logged to the log device. */
 static BOOL cm_ecu_pid_logged;
 
+/* Used for periodic log of dlfs kstats. */
+static rtl_timer_t *cm_log_timer;
+
 /* local functions */
 
 /* Logs Carmon Event to log device. */
 static void cm_log_cme(char *, unsigned int, unsigned int);
+
+/* Logs dlfs kstats to log device. */
+static void cm_log_dlfs_kstat(void);
 
 /*
  * Car state machine.
@@ -774,6 +783,16 @@ cm_main_svc(void)
 	cm_stv.dpf_dt += RTL_SERVICE_PERIOD;
 
 	/*
+	 * Start periodically log dlfs kstats once connection to ECU
+	 * has been established.
+	 */
+	if (cm_ecu_pid_logged && rtl_timer_expired(cm_log_timer)) {
+		rtl_timer_init(&cm_log_timer, CM_LOG_PERIOD);
+
+		cm_log_dlfs_kstat();
+	}
+
+	/*
 	 * Invoke appropriate service routine.
 	 */
 	switch (cm_mode) {
@@ -956,14 +975,54 @@ cm_log_cme(char *event_id, unsigned int value, unsigned int ln)
 	/* Append 'end of log record' marker. */
 	log_record[pos++] = '\r';
 	log_record[pos++] = '\n';
-	log_record[pos] = '\0';
 
 	/*
 	 * Write log record to log device.
 	 * dlfs_write() is non-blocking function, so can be called
 	 * from interrupt context.
 	 */
-	dlfs_write(0, log_record, strlen(log_record));
+	dlfs_write(0, log_record, pos);
+}
+
+/* Logs dlfs kstats to log device. */
+static void
+cm_log_dlfs_kstat(void)
+{
+	size_t pos;
+	char *ts = pcore_gettime();
+
+	/*
+	 * Log record is in CSV format as specified in rfc4180:
+	 *
+	 * <timestamp>,CMK,DLFS,<value>CRLF
+	 *
+	 * format of <timestamp>: YYYYMMDDhhmmssmmm
+	 *
+	 */
+
+	/*
+	 * Log timestamp and kstat mark first.
+	 * Resulting string fits the available buffer for sure,
+	 * so no need to check for buffer overflow.
+	 */
+	log_record[0] = '\0';
+	strcat(log_record, ts);
+	strcat(log_record + 17, ",CMK,DLFS,");
+
+	/* Append dlfs kstat. */
+	strcat(log_record + 27, dlfs_create_kstat_log_record());
+	pos = strlen(log_record);
+
+	/* Append 'end of log record' marker. */
+	log_record[pos++] = '\r';
+	log_record[pos++] = '\n';
+
+	/*
+	 * Write log record to the log device.
+	 * dlfs_write() is non-blocking function, so can be called
+	 * from interrupt context.
+	 */
+	dlfs_write(0, log_record, pos);
 }
 
 /* public functions */
@@ -1053,6 +1112,9 @@ cm_init(void)
 	cm_stv.dpf_dt = 0;
 	cm_stv.dpf_speed = 0;
 	cm_stv.dpf_dist = 0;
+
+	/* Used for periodic log of dlfs kstats. */
+	rtl_timer_init(&cm_log_timer, CM_LOG_PERIOD);
 
 	/* Register and enable main service routine. */
 	rtl_svc_init("CarMon", cm_main_svc, TRUE, TRUE);

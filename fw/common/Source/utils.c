@@ -40,6 +40,49 @@ uint2hex(unsigned int in, char *out, int ln)
 }
 
 /*
+ * Converts unsigned long to ASCII HEX string.
+ * Leading zeros are not printed.
+ * Returns number of written characters.
+ */
+int
+ulong2hexwolz(unsigned long in, char *out)
+{
+	int i, hbz, hbn, written;
+
+	written = 0;
+
+	/* Treat zero as a special case, no need to loop. */
+	if (in == 0) {
+		out[0] = '0';
+		return 1;
+	}
+
+	/*
+	 * Count leading zeros to determine how many
+	 * half bytes (bit quartets) are to be processed
+	 * (leading zero half bytes are skipped).
+	 */
+	hbz = _clz(in) / 4;
+	hbn = (2 * sizeof (unsigned long)) - hbz;
+
+	/*
+	 * Adjust input value, so that it can be converted
+	 * via processing the highest half byte.
+	 */
+	in <<= (hbz * 4);
+
+	for (i = 0; i < hbn; i++) {
+		if ((in & 0xf0000000UL) != 0) {
+			out[written++] = hex2ascii_tbl[(in >> 28) & 0x0f];
+		}
+
+		in <<= 4;
+	}
+
+	return written;
+}
+
+/*
  * Converts given number of bytes to ASCII HEX string
  */
 int

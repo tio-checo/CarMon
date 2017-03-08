@@ -160,4 +160,7 @@ extern void dlfs_display_media_status(int (*)(const char *));
  * to the media.
  */
 extern void dlfs_flush_ul_svc(void);
+
+/* Assembles kstat log record to be written to log device. */
+extern char * dlfs_create_kstat_log_record(void);
 #endif /* __DLFS_H */

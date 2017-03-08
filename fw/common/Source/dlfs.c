@@ -28,7 +28,7 @@
  *
  *   superblock - Contains information about filesystem (e.g. version).
  *                Occupies one block device.
- *   inode      - Contains information about file (one continuos log
+ *   inode      - Contains information about file (one continuous log
  *                record). Created each time new log record is started.
  *                Occupies one block on device.
  *   data block - Contains logged data.
@@ -984,4 +984,56 @@ dlfs_display_kstat(int (*print_str)(const char *))
 
 	/* footer */
 	print_str("-------------------------------------\n\r");
+}
+
+/*
+ * Assembles kstat log record to be written to the log device.
+ * Log record is null-terminated string in form of
+ *   <version>,<fen>,<rsen>,<wsen>,<srt_max>,<swt_max>
+ */
+char *
+dlfs_create_kstat_log_record(void)
+{
+	/* Each kstat value can occupy up to 9 positions in the record. */
+	static char dlfs_log_record[9 * 5 + 2 + 1];
+
+	int pos;
+	unsigned long t;
+
+	pos = 0;
+
+	/* version */
+	dlfs_log_record[pos++] = '1';
+	dlfs_log_record[pos++] = ',';
+
+	/* fen */
+	pos += ulong2hexwolz(dlfs_kstat.fen, dlfs_log_record + pos);
+	dlfs_log_record[pos++] = ',';
+
+	/* rsen */
+	pos += ulong2hexwolz(dlfs_kstat.rsen, dlfs_log_record + pos);
+	dlfs_log_record[pos++] = ',';
+
+	/* wsen */
+	pos += ulong2hexwolz(dlfs_kstat.wsen, dlfs_log_record + pos);
+	dlfs_log_record[pos++] = ',';
+
+	/* srt_max in [ms] */
+	t = dlfs_kstat.srt_max.tv_usec / 1000;
+	if (dlfs_kstat.srt_max.tv_sec != 0) {
+		t += dlfs_kstat.srt_max.tv_sec * 1000;
+	}
+	pos += ulong2hexwolz(t, dlfs_log_record + pos);
+	dlfs_log_record[pos++] = ',';
+
+	/* swt_max in [ms] */
+	t = dlfs_kstat.swt_max.tv_usec / 1000;
+	if (dlfs_kstat.swt_max.tv_sec != 0) {
+		t += dlfs_kstat.swt_max.tv_sec * 1000;
+	}
+	pos += ulong2hexwolz(t, dlfs_log_record + pos);
+
+	dlfs_log_record[pos] = '\0';
+
+	return dlfs_log_record;
 }
