@@ -72,9 +72,7 @@ ulong2hexwolz(unsigned long in, char *out)
 	in <<= (hbz * 4);
 
 	for (i = 0; i < hbn; i++) {
-		if ((in & 0xf0000000UL) != 0) {
-			out[written++] = hex2ascii_tbl[(in >> 28) & 0x0f];
-		}
+		out[written++] = hex2ascii_tbl[(in >> 28) & 0x0f];
 
 		in <<= 4;
 	}
