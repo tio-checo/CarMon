@@ -1035,5 +1035,9 @@ dlfs_create_kstat_log_record(void)
 
 	dlfs_log_record[pos] = '\0';
 
+	/* clear srt_max and swt_max to let them capture new max value */
+	dlfs_kstat.srt_max.tv_sec = dlfs_kstat.srt_max.tv_usec = 0;
+	dlfs_kstat.swt_max.tv_sec = dlfs_kstat.swt_max.tv_usec = 0;
+
 	return dlfs_log_record;
 }
