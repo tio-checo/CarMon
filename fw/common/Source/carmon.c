@@ -446,8 +446,18 @@ cm_alarm_process(unsigned char *d, int ln)
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
 		 */
+
+		/*
+		 * Display injector corrections if following conditions are met:
+		 *   - engine running
+		 *   - vehicle stopped
+		 *   - DPF rejuvenation not running
+		 *   - distance since the last rejuvenation not being displayed
+		 */
 		if ((CM_STATE_IS_SET(CM_ENGINE_RUNNING)) &&
-		    !(CM_STATE_IS_SET(CM_VEHICLE_MOVING))) {
+		    !(CM_STATE_IS_SET(CM_VEHICLE_MOVING)) &&
+		    !(CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS)) &&
+		    !(CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST))) {
 			fb_addr[0] = ' ';
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 1), fb_addr + 1, 3,
 			    FALSE);
@@ -467,20 +477,21 @@ cm_alarm_process(unsigned char *d, int ln)
 			fb_addr[4] = 0xb2;
 			fb_addr[5] = ' ';
 
+			long2str(cm_stv.egt11, fb_addr + 6, 3, FALSE);
+			fb_addr[9] = 0xb2;
+
 			if (CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST)) {
-				long2str(cm_stv.dpf_dist_saved, fb_addr + 6, 3,
+				long2str(cm_stv.dpf_dist_saved, fb_addr + 10, 3,
 				    FALSE);
 
-				fb_addr[9]= 'k';
-				fb_addr[10]= 'm';
+				fb_addr[13]= 'k';
+				fb_addr[14]= 'm';
 			} else {
-				long2str(cm_stv.egt11, fb_addr + 6, 3, FALSE);
-				fb_addr[9] = 0xb2;
 				fb_addr[10] = ' ';
-			}
 
-			long2str(cm_stv.dpf_ar, fb_addr + 11, 3, FALSE);
-			fb_addr[14] = '%';
+				long2str(cm_stv.dpf_ar, fb_addr + 11, 3, FALSE);
+				fb_addr[14] = '%';
+			}
 
 			fb_addr[15] = gps_get_status() > 0 ?
 			    gps_get_course() : ' ';
