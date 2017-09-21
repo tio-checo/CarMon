@@ -11,11 +11,6 @@
 #include <stddef.h>
 
 /* constants */
-/*
- * Flag values accessible only to dlfs_open()
- */
-#define	O_CREAT		0x100	/* open with file create */
-
 /* size of device block */
 #define	DLFS_SECTOR_SIZE	512
 
