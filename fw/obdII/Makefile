@@ -1,3 +1,7 @@
+#
+# Copyright(c) 2015, 2023
+#
+
 TOOLS_DIR= /opt/mipsel
 TOOLS_BIN= $(TOOLS_DIR)/bin
 
@@ -22,7 +26,7 @@ CFLAGS= -D__XC32 -D__PIC32MX__ -D__32MX795F512H__ -D__PIC32_FEATURE_SET__=795 \
 -DOBDCONV_BOARD -DOBD_MODULE -DCANHAL_MODULE -DCARMON_MODULE \
 -DI2CSW_MODULE -DI2CHAL_MODULE -DPCF8563_MODULE -DLCDTERM_MODULE \
 -DDLFS_MODULE -DGPS_MODULE -DEE24_MODULE -DMCOM_USBACM_MODULE \
--nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
+-fgnu89-inline -nostdinc -Os -Wall -msoft-float -march=m4k $(HEADER_DIRS)
 
 # linker flags
 #  - soft float
