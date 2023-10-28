@@ -1,5 +1,7 @@
 /*********************************************************************
  *
+ * Copyright(c) 2015, 2023
+ *
  * Implements CarMon service.
  *
  * CarMon device can operate in following modes:
@@ -118,6 +120,9 @@ static unsigned int cm_car_state;
 
 /* car state values */
 static struct {
+	unsigned int	load;		/* Calculated engine load */
+	unsigned int	maf;		/* Mass air flow */
+	unsigned int	vbat;		/* Control module voltage */
 	int		water;		/* water coolant temperature */
 	int		egt11;		/* exhaust gas temperature bank 11 */
 	int		egt12;		/* exhaust gas temperature bank 12 */
@@ -126,6 +131,7 @@ static struct {
 	unsigned long	dpf_dist;	/* distance since last DPF rejuv. */
 	unsigned long	dpf_dist_saved;	/* last distance since last DPF rejuv.*/
 	unsigned int	dpf_ar;		/* DPF accumulation ratio */
+	int		dpf_dp;		/* DPF differential pressure */
 } cm_stv;
 
 /* structure holding ACK/NAK response to master */
@@ -180,7 +186,7 @@ cm_update_car_state(unsigned char *d, int ln)
 	/* Take desired action based on PID value received. */
 	switch (d[0]) {
 	/* Engine RPM */
-	case OBD_PID_RPM:
+	case OBD_PID_RPM: {
 		/*
 		 * Engine is considered running for RPM > 200.
 		 * If engine is stopped, clear 'engine warmed' flag.
@@ -220,7 +226,7 @@ cm_update_car_state(unsigned char *d, int ln)
 
 			CM_CAR_CLR_STATE(CM_ENGINE_RUNNING);
 		}
-		break;
+	} break;
 
 	/* Vehicle speed */
 	case OBD_PID_SPEED: {
@@ -248,9 +254,30 @@ cm_update_car_state(unsigned char *d, int ln)
 	} break;
 
 	/*
+	 * Calculated engine load
+	 */
+	case OBD_PID_LOAD: {
+		cm_stv.load = OBD_GET_LOAD_VALUE(d + 1);
+	} break;
+
+	/*
+ 	 * Mass air flow
+	 */
+	case OBD_PID_MAF: {
+		cm_stv.maf = OBD_GET_MAF_VALUE(d + 1);
+	} break;
+
+	/*
+ 	 * Control module voltage
+	 */
+	case OBD_PID_VBAT: {
+		cm_stv.vbat = OBD_GET_VBAT_VALUE(d + 1);
+	} break;
+
+	/*
 	 * Engine coolant temperature
 	 */
-	case OBD_PID_WATER:
+	case OBD_PID_WATER: {
 		cm_stv.water = OBD_GET_WATER_VALUE(d + 1);
 
 		/*
@@ -261,12 +288,19 @@ cm_update_car_state(unsigned char *d, int ln)
 		if (cm_stv.water >= 90) {
 			CM_CAR_SET_STATE(CM_ENGINE_WARMED);
 		}
-		break;
+	} break;
+
+	/*
+ 	 * DPF differential pressure
+	 */
+	case OBD_PID_DPFDP: {
+		cm_stv.dpf_dp = OBD_GET_DPFDP_VALUE(d + 1);
+	} break;
 
 	/*
 	 * DPF accumulation ratio & DPF rejuvenation status.
 	 */
-	case OBD_PID_DPFAR:
+	case OBD_PID_DPFAR: {
 		/* DPF accumulation ratio */
 		cm_stv.dpf_ar = OBD_GET_DPFAR_VALUE(d + 1);
 
@@ -307,7 +341,7 @@ cm_update_car_state(unsigned char *d, int ln)
 
 			CM_CAR_CLR_STATE(CM_DPF_REJUV_INPROGRESS);
 		}
-		break;
+	} break;
 	} /* switch */
 }
 
@@ -422,12 +456,19 @@ cm_alarm_process(unsigned char *d, int ln)
 	 *
 	 * Otherwise display following information:
 	 *
-	 *  - DPF rejuvenation status
-	 *  - Coolant temperature
-	 *  - Exhaust gas temperature EGT11
-	 *    or distance since the last DPF rejuvenaiton
-	 *  - DPF accumulation ratio
-	 *  - GPS course
+	 *  - row 1
+	 *    - DPF rejuvenation status
+	 *    - Coolant temperature
+	 *    - Exhaust gas temperature EGT11
+	 *      or distance since the last DPF rejuvenation
+	 *    - DPF accumulation ratio
+	 *    - GPS course
+	 *  - row 2 - " 99g 99kPa 100% " - idle
+	 *            " 99g 99kPa 13.8V" - running
+	 *    - MAF - 0-99g
+	 *    - DPF differential pressure - -5-99k
+	 *    - LOAD (engine idle) - 0-100%
+	 *      or battery voltage (running) - 10.0-15.0V
 	 */
 	case OBD_PID_INJFB:
 		/*
@@ -441,7 +482,7 @@ cm_alarm_process(unsigned char *d, int ln)
 		}
 
 		/*
-		 * Make sure string has exactly 16 characters
+		 * Make sure string has exactly 16x2 characters
 		 * (which is size of LCD display).
 		 * If string was shorter null terminator would
 		 * be displayed as well (as bogus character).
@@ -458,6 +499,7 @@ cm_alarm_process(unsigned char *d, int ln)
 		    !(CM_STATE_IS_SET(CM_VEHICLE_MOVING)) &&
 		    !(CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS)) &&
 		    !(CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST))) {
+			/* row 1 */
 			fb_addr[0] = ' ';
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 1), fb_addr + 1, 3,
 			    FALSE);
@@ -470,7 +512,20 @@ cm_alarm_process(unsigned char *d, int ln)
 			fb_addr[12] = ' ';
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 4), fb_addr + 13, 3,
 			    FALSE);
+
+			/* row 2 - " 99g 99kPa 100% " */
+			long2str(cm_stv.maf, fb_addr + 16, 3, FALSE);
+			fb_addr[19] = 'g';
+			long2str(cm_stv.dpf_dp, fb_addr + 20, 3, FALSE);
+			fb_addr[23] = 'k';
+			fb_addr[24] = 'P';
+			fb_addr[25] = 'a';
+			fb_addr[26] = ' ';
+			long2str(cm_stv.load, fb_addr + 27, 3, FALSE);
+			fb_addr[30] = '%';
+			fb_addr[31] = ' ';
 		} else {
+			/* row 1 */
 			fb_addr[0] = CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS) ?
 			    'R' : ' ';
 			long2str(cm_stv.water, fb_addr + 1, 3, FALSE);
@@ -495,6 +550,19 @@ cm_alarm_process(unsigned char *d, int ln)
 
 			fb_addr[15] = gps_get_status() > 0 ?
 			    gps_get_course() : ' ';
+
+			/* row 2 - " 99g 99kPa 13.8V" */
+			long2str(cm_stv.maf, fb_addr + 16, 3, FALSE);
+			fb_addr[19] = 'g';
+			long2str(cm_stv.dpf_dp, fb_addr + 20, 3, FALSE);
+			fb_addr[23] = 'k';
+			fb_addr[24] = 'P';
+			fb_addr[25] = 'a';
+			fb_addr[26] = ' ';
+			long2str(cm_stv.vbat / 10, fb_addr + 27, 2, FALSE);
+			fb_addr[29] = '.';
+			long2str(cm_stv.vbat % 10, fb_addr + 30, 1, FALSE);
+			fb_addr[31] = 'V';
 		}
 
 		break;

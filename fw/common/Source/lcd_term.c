@@ -1,5 +1,7 @@
 /*********************************************************************
  *
+ * Copyright(c) 2015, 2023
+ *
  * Support for LCD terminal connected via I2C bus.
  *
  *********************************************************************/
@@ -38,7 +40,7 @@
 #define ALS_REG_THR_TIMER	0x07	/* Threshold Timer */
 
 /* size of LCD frame buffer */
-#define LCDTERM_FB_SIZE		16
+#define LCDTERM_FB_SIZE		32
 
 /* 5 second initial wait after power up. */
 #define LCDTERM_INIT_WAIT	5000000UL
@@ -230,8 +232,14 @@ lcdterm_init(void)
 	rtl_timer_init(&lcdterm_timer, LCDTERM_INIT_WAIT);
 
 	/* Initialize frame buffer to something readable. */
-	snprintf(lcdterm_fb, sizeof (lcdterm_fb), " CarMon 2017(c)");
-	lcdterm_fb[15] = ' ';
+	snprintf(lcdterm_fb, sizeof (lcdterm_fb),
+	    " Tio(c) CarMon  "		/* row 1 */
+	    "  2015 - 2024  ");	/* row 2 */
+	/*
+	 * snprintf() writes null byte at the end of the framebuffer,
+	 * so rewrite it with desired meaningful character.
+	 */
+	lcdterm_fb[sizeof (lcdterm_fb) - 1] = ' ';
 
 	/* Start state machine. */
 	lcdterm_st = LCDTERM_ST_WAIT;

@@ -1,5 +1,7 @@
 /*********************************************************************
  *
+ * Copyright(c) 2015, 2023
+ *
  * Handles OBD communication layer with ECU. This layer is independent
  * on real communication protocol used (KWP2000, CAN ...).
  *
@@ -33,6 +35,16 @@
 
 /* OBD PIDs - used by alarms */
 /*
+ * Calculated engine load
+ */
+#define	OBD_PID_LOAD		0x04
+/*
+ * Given raw packet received from ECU for PID '04', the macro extracts value
+ * of Calculated engine load in [%].
+ */
+#define OBD_GET_LOAD_VALUE(er)	((100 * ((er)[0])) / 255)
+
+/*
  * Engine coolant temperature
  */
 #define	OBD_PID_WATER		0x05
@@ -61,6 +73,26 @@
  * of vehicle speed.
  */
 #define OBD_GET_SPEED_VALUE(er)	((er)[0])
+
+/*
+ * Mass air flow
+ */
+#define	OBD_PID_MAF		0x10
+/*
+ * Given raw packet received from ECU for PID '10', the macro extracts value
+ * of Mass air flow in [g/s].
+ */
+#define OBD_GET_MAF_VALUE(er)	((256 * ((er)[0]) + ((er)[1])) / 100)
+
+/*
+ * Control module voltage
+ */
+#define	OBD_PID_VBAT		0x42
+/*
+ * Given raw packet received from ECU for PID '42', the macro extracts value
+ * of Control module voltage in 0.1[V].
+ */
+#define OBD_GET_VBAT_VALUE(er)	((256 * ((er)[0]) + ((er)[1])) / 100)
 
 /*
  * Exhaust Gas temperature (EGT) Bank 1
@@ -114,6 +146,16 @@
  * of DPF accumulation ratio.
  */
 #define OBD_GET_DPFAR_VALUE(er)	(2 * ((er)[21]))
+
+/*
+ * DPF differential pressure
+ */
+#define	OBD_PID_DPFDP		0xEF
+/*
+ * Given raw packet received from ECU for PID 'EF', the macro extracts value
+ * of DPF differential pressure in [kPa].
+ */
+#define OBD_GET_DPFDP_VALUE(er)	((256 * ((er)[0]) + ((er)[1]) - 1280) / 256)
 
 /*
  * Injector Feedback Value #1, #2, #3, #4
