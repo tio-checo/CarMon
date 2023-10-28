@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 
 import argparse
 
@@ -59,11 +59,11 @@ def read_starting_voltage(probe_fname):
                     # Get next line.
                     line = fdata.readline()
 
-        except IOError, err:
-            print 'Failed to process %s file due to following error:' % \
-                   sv_fname
+        except IOError as err:
+            print('Failed to process %s file due to following error:' %
+                   sv_fname)
 
-            print str(err)
+            print(str(err))
     else:
         # Starting voltage captured in probe file, extract it from there.
 
@@ -101,11 +101,11 @@ def read_starting_voltage(probe_fname):
                 sv.append(t_list)
                 sv.append(v_list)
 
-        except IOError, err:
-            print 'Failed to process %s file due to following error:' % \
-                   probe_fname
+        except IOError as err:
+            print('Failed to process %s file due to following error:' %
+                   probe_fname)
 
-            print str(err)
+            print(str(err))
 
     return sv
 
@@ -135,7 +135,7 @@ def main():
 
     args = parser.parse_args()
 
-    print 'index list:', args.index_list
+    print('index list:', args.index_list)
 
     # Read starting voltage data
     starting_voltage = read_starting_voltage(args.filename);
@@ -170,16 +170,16 @@ def main():
             # Process line with data labels.
             data_desc = line.strip().split()
 
-            print data_desc
+            print(data_desc)
 
             # Determine number of parameters.
             num_pars = len (data_desc)
-            print 'num_pars:', num_pars
+            print('num_pars:', num_pars)
 
             if (len (starting_voltage[0]) != 0):
-                print 'Starting voltage captured: Yes'
+                print('Starting voltage captured: Yes')
             else:
-                print 'Starting voltage captured: No'
+                print('Starting voltage captured: No')
 
             #
             # Read captured data in two dimensional list. Each row
@@ -198,18 +198,18 @@ def main():
 
                 # Discard incomplete lines.
                 if len (split_line) == num_pars:
-#                    print 'split_line:', split_line
+#                    print('split_line:', split_line)
                     for i in range(len (split_line)):
                         obd_data[i].append(float(split_line[i]))
 #                else:
-#                    print 'Line %s incomplete, discarding.', split_line[0]
+#                    print('Line %s incomplete, discarding.', split_line[0])
 
                 data_line = fdata.readline()
-    except IOError, err:
-        print 'Failed to process %s file due to following error:' % \
-               args.filename
+    except IOError as err:
+        print('Failed to process %s file due to following error:' %
+               args.filename)
 
-        print str(err)
+        print(str(err))
 
         return
 
@@ -222,14 +222,14 @@ def main():
 
     # Display information about data in given file and exit.
     if args.query:
-        print 'Data rows:'
+        print('Data rows:')
         for i in range(len (data_desc)):
-            print ' Row %d: %s' % (i, data_desc[i])
+            print(' Row %d: %s' % (i, data_desc[i]))
 
         if (len (starting_voltage[0]) != 0):
-            print 'Starting voltage captured: Yes'
+            print('Starting voltage captured: Yes')
         else:
-            print 'Starting voltage captured: No'
+            print('Starting voltage captured: No')
 
         return
 
