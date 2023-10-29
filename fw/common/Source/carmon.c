@@ -529,11 +529,11 @@ cm_alarm_process(unsigned char *d, int ln)
 			fb_addr[0] = CM_STATE_IS_SET(CM_DPF_REJUV_INPROGRESS) ?
 			    'R' : ' ';
 			long2str(cm_stv.water, fb_addr + 1, 3, FALSE);
-			fb_addr[4] = 0xb2;
+			fb_addr[4] = 0xdf;
 			fb_addr[5] = ' ';
 
 			long2str(cm_stv.egt11, fb_addr + 6, 3, FALSE);
-			fb_addr[9] = 0xb2;
+			fb_addr[9] = 0xdf;
 
 			if (CM_STATE_IS_SET(CM_DISPLAY_DPF_DIST)) {
 				long2str(cm_stv.dpf_dist_saved, fb_addr + 10, 3,
