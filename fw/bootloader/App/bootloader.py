@@ -1,4 +1,7 @@
-#!/usr/bin/python2.7 -u
+#!/usr/bin/python3 -u
+#
+# Copyright(c) 2012, 2023
+#
 
 import argparse
 import serial
@@ -75,14 +78,14 @@ class Bootloader():
         if len(b) == 0:
             return None
         else:
-            #print "->0x%X" % ord(b[0])
-            return ord(b[0])
+            #print("->0x%X" % b[0])
+            return b[0]
 
     def send_l2_char(self, ch):
         '''
         '''
-        #print "<-0x%X" % ord(ch)
-        self.ser.write(ch)
+        #print("<-0x%X" % ch)
+        self.ser.write(ch.to_bytes(1, 'big'))
 
         # If running in half duplex mode, every sent character is echoed back.
         # Discard that echo
@@ -92,9 +95,9 @@ class Bootloader():
     def send_l3_char(self, ch):
         '''
         '''
-        if (ord(ch) == Bootloader.SOH) or (ord(ch) == Bootloader.EOT) \
-           or (ord(ch) == Bootloader.DLE):
-            self.send_l2_char(chr(Bootloader.DLE))
+        if (ch == Bootloader.SOH) or (ch == Bootloader.EOT) \
+           or (ch == Bootloader.DLE):
+            self.send_l2_char(Bootloader.DLE)
         self.send_l2_char(ch)
 
     def send_l3_packet(self, p):
@@ -104,19 +107,19 @@ class Bootloader():
         crc = self.calc_crc(p)
 
         # 'Start of Header'
-        self.send_l2_char(chr(Bootloader.SOH))
+        self.send_l2_char(Bootloader.SOH)
 
         # data
         for i in range(len(p)):
-            self.send_l3_char(chr(p[i]))
+            self.send_l3_char(p[i])
 
         # crcL
-        self.send_l3_char(chr(crc & 0xff))
+        self.send_l3_char(crc & 0xff)
         # crcH
-        self.send_l3_char(chr(crc >> 8 & 0xff))
+        self.send_l3_char(crc >> 8 & 0xff)
 
         # 'End of Frame'
-        self.send_l2_char(chr(Bootloader.EOT))
+        self.send_l2_char(Bootloader.EOT)
 
     def recv_l3_char(self):
         ''' Receives one character. Handles DLE escaping.
@@ -178,7 +181,7 @@ class Bootloader():
         # It may take a while, so give it a try couple times
         tries = 10
         for i in range(tries):
-            print ".",
+            print(".", end='')
             p = self.recv_l3_packet()
             if p != None:
                 break;
@@ -208,7 +211,7 @@ class Bootloader():
 
                     p = [Bootloader.CMD_PROGRAM]
                     # Convert ASCII hex characters to bootloader format
-                    for i in range(len(stripped_line) / 2):
+                    for i in range(int(len(stripped_line) / 2)):
                         p.append(int(stripped_line[i * 2:(i + 1) * 2], 16))
 
                     self.send_l3_packet(p)
@@ -227,7 +230,7 @@ class Bootloader():
                        or p[0] != Bootloader.CMD_PROGRAM:
                         return False
 
-                    print ".",
+                    print(".", end='')
         except:
             raise
 
@@ -299,56 +302,56 @@ def main():
     #ser = serial.Serial(args.comm_device, 115200, timeout=1.0)
 
     # Try to establish connection first
-    print "Establishing connection",
+    print("Establishing connection", end='')
     for i in range(5):
-        print ".",
+        print(".", end='')
 
         v = bl.get_version()
         if v != None:
             break
 
     if v == None:
-        print "Failed."
+        print("Failed.")
         sys.exit(1)
     else:
-        print "Done."
+        print("Done")
 
     # Get and display version of bootloader
     if args.get_version:
         v = bl.get_version()
         if v != None:
-            print "get_version(): %s" % v
+            print("get_version(): %s" % v)
         else:
-            print "get_version(): failed"
+            print("get_version(): failed")
 
     if args.erase_flash:
-        print "Erasing flash",
+        print("Erasing flash",)
         if bl.erase_flash():
-            print "Done."
+            print("Done")
         else:
-            print "Operation failed."
+            print("Operation failed.")
 
     if args.filename != None:
-        print "Programing flash",
+        print("Programing flash",)
         if bl.program_flash(args.filename):
-            print "Done."
+            print("Done")
         else:
-            print "Operation failed."
+            print("Operation failed.")
 
     if args.read_crc:
-        print "Reading CRC..."
+        print("Reading CRC...")
         crc = bl.read_crc()
         if crc != None:
-            print "CRC: %s" % crc
+            print("CRC: %s" % crc)
         else:
-            print "Operation failed."
+            print("Operation failed.")
 
     if args.start_application:
-        print "Passing control to application...",
+        print("Passing control to application...",)
         if bl.start_application():
-            print "Done."
+            print("Done")
         else:
-            print "Operation failed."
+            print("Operation failed.")
     # Deactivate bootloader object
     #   - serial port is closed
     bl.deactivate()
