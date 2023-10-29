@@ -3,23 +3,25 @@
 ; File: DISPLAY.ASM
 ; Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 13.1.2017
+; Last modified: 29.10.2023
 ;
 ; - populates display content according to data received from master.
 ;
 ; variables occupy RAM space 0x50-0x6f
 ;
 ; Changelog:
+;  - v0.2
+;    - added support for 16x2 alphanumeric LCD with Hitachi HD44780U controller
 ; 
 ;--------------------------------------------------------------------------
 
  INCLUDE "p16f690.inc"
- INCLUDE "./include/display.inc"
+ INCLUDE "../include/display.inc"
 
 ; extern definitions
 
 ; LOCAL CONSTANTS DEFINITION
-;DISP_SIMUL		EQU 1 ; simulator mode
+DISP_SIMUL		EQU 0 ; simulator mode
 ; - configured via 'Project->Build Options'
 
 ; definition of local state machines states
@@ -80,7 +82,7 @@ lDisp_ControlE
 ;----
 sDisp_GetInitString
 	addwf	PCL,f
-	retlw	' '
+	retlw	' '	; 0
 	retlw	'C'
 	retlw	'a'
 	retlw	'r'
@@ -88,13 +90,33 @@ sDisp_GetInitString
 	retlw	'o'
 	retlw	'n'
 	retlw	' '
+	retlw	' '
+	retlw	'T'
+	retlw	'i'
+	retlw	'o'
+	retlw	'('
+	retlw	'c'
+	retlw	')'
+	retlw	' '
+; only for 16x2 LCD
+ IF DISP_CONTROLLER == 1
+	retlw	' '	; 16
+	retlw	' '
 	retlw	'2'
 	retlw	'0'
 	retlw	'1'
 	retlw	'5'
-	retlw	'('
-	retlw	'c'
-	retlw	')'
+	retlw	' '
+	retlw	'-'
+	retlw	' '
+	retlw	'2'
+	retlw	'0'
+	retlw	'2'
+	retlw	'3'
+	retlw	' '
+	retlw	' '
+	retlw	' '
+ ENDIF
 	retlw	0
 ;----
 sDisp_GetDemoString
@@ -268,9 +290,13 @@ lDisp_Init2
 
 ; 'Function Set' instruction
 ;  DL = 0 - 4bit data mode
-;  N = 0  - 1 line display mode
+;  N = 0/1  - 1 or 2 line(s) display mode
 ;  F = 0  - 5x8 dots format display mode
+ IF DISP_CONTROLLER == 0
 	movlw	0x20
+ ELSE
+	movlw	0x28
+ ENDIF
 	call	sDisp_WriteInst
 
 	goto	lDisp_ControlIncE	; lDisp_Init3
@@ -310,7 +336,7 @@ lDisp_WelcomeString
 	btfsc	vDisp_Tmp,bDISP_BSY
 	goto	lDisp_ControlE
 
-; DDRAM address space is not contiguous, need account for that
+; DDRAM address space is not contiguous, account for that
 	movf	vDisp_StrIndex,w
 	call	sDisp_GetInitString
 
@@ -457,7 +483,12 @@ lDisp_SetAddr
 	iorlw	0
 
 	btfss	STATUS,Z
+
+ IF DISP_CONTROLLER == 0
 	movlw	40
+ ELSE
+	movlw	0x40
+ ENDIF
 
 ; 'Set DDRAM address' instruction
 	iorlw	0x80

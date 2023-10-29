@@ -2,14 +2,16 @@
 ; File: PICHW.ASM
 ; Author: Jan Damborsky
 ; Created: 19.5.2015
-; Last modified: 18.8.2015
+; Last modified: 27.10.2023
 ; Changelog:
 ;
 ;--------------------------------------------------------------------------
+; make sure default radix is decimal
+;	RADIX	DEC	    ; set on commandline via -rDEC
 
 	include "p16f690.inc"
-	include "./include/main.inc"
-	include	"./include/pichw.inc"
+	include "../include/main.inc"
+	include	"../include/pichw.inc"
 
 ;------------------------------------------------------
 ;---- I/O initialization

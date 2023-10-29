@@ -3,7 +3,7 @@
 ; File: MCOM.ASM
 ; Jan Damborsky
 ; Created: 12.8.2015
-; Last modified: 11.1.2017
+; Last modified: 27.10.2023
 ;
 ; Handles communication with master connected via I2C bus.
 ;
@@ -14,8 +14,8 @@
 ;--------------------------------------------------------------------------
 
  INCLUDE "p16f690.inc"
- INCLUDE "./include/display.inc"
- INCLUDE "./include/mcom.inc"
+ INCLUDE "../include/display.inc"
+ INCLUDE "../include/mcom.inc"
 
 ; extern definitions
 
@@ -33,7 +33,7 @@ cMcom_Wait4Start	EQU 0
 ;
 mMcomGetChar	MACRO
 	movf	SSPBUF,w
-	bcf		PIR1,SSPIF
+	bcf	PIR1,SSPIF
 	ENDM
 ; ----
 ;--------------------------------------------------------------------------
@@ -86,21 +86,21 @@ sMcom_Ini
 ;
 ; wait for I2C start condition
 lMcom_Wait4Start
-	bsf		STATUS,RP0
+	bsf	STATUS,RP0
 	btfss	SSPSTAT,S
 	goto	lMcom_Wait4Start1
 
-	bcf		STATUS,RP0
+	bcf	STATUS,RP0
 	goto	lMcom_ControlIncE	; lMcom_RecvByte
 
 lMcom_Wait4Start1
-	bcf		STATUS,RP0
+	bcf	STATUS,RP0
 	goto	lMcom_ControlE
 ;----
 ; wait until byte is received
 ; terminate receive process if stop condition is detected
 lMcom_RecvByte
-	bsf		STATUS,RP0
+	bsf	STATUS,RP0
 	btfsc	SSPSTAT,P
 	goto	lMcom_RecvByteStop	; stop condition detected
 
@@ -112,7 +112,7 @@ lMcom_RecvByte
 ; PIR1[SSPIF] must be cleared by software once
 ; SSPBUF is read
 ;
-	bcf		STATUS,RP0
+	bcf	STATUS,RP0
 	btfsc	PIR1,SSPIF
 	goto	lMcom_ControlIncE	; byte received
 
@@ -122,13 +122,13 @@ lMcom_RecvByteStop
 ; stop condition detected, re-start receiving process
 ; unless we are receiving data in which case we
 ; set appropriate flag and move to the next state
-	bcf		STATUS,RP0
+	bcf	STATUS,RP0
 
 	movlw	cMcom_Wait4Start
 	btfss	vMcom_Sts,bMCOM_STS_RECVDATA
 	goto	lMcom_ControlCtrlE	; lMcom_Wait4Start
 
-	bsf		vMcom_Sts,bMCOM_STS_STOP
+	bsf	vMcom_Sts,bMCOM_STS_STOP
 	goto	lMcom_ControlIncE
 ;----
 ; I2C address received - discarded for now
@@ -147,7 +147,7 @@ lMcom_RecvCmd
 	movwf	vMcom_Ptr
 
 ; data are to be received
-	bsf		vMcom_Sts,bMCOM_STS_RECVDATA
+	bsf	vMcom_Sts,bMCOM_STS_RECVDATA
 
 	goto	lMcom_ControlIncE	; lMcom_RecvByte
 ;----
@@ -157,7 +157,7 @@ lMcom_RecvData
 	btfss	vMcom_Sts,bMCOM_STS_STOP
 	goto	lMcom_RecvData1
 
-	bcf		vMcom_Sts,bMCOM_STS_STOP
+	bcf	vMcom_Sts,bMCOM_STS_STOP
 	goto	lMcom_RecvData2
 
 lMcom_RecvData1
@@ -179,19 +179,19 @@ lMcom_RecvData1
 
 lMcom_RecvData2
 ; no more data are to be received
-	bcf		vMcom_Sts,bMCOM_STS_RECVDATA
+	bcf	vMcom_Sts,bMCOM_STS_RECVDATA
 
 ; let display module refresh LCD
-	bsf		vDisp_Cmd,bDISP_CMD_FB_WRITE
+	bsf	vDisp_Cmd,bDISP_CMD_FB_WRITE
 
 	goto	lMcom_ControlIncE	; lMcom_Wait4Stop
 ;----
 lMcom_Wait4Stop
-	bsf		STATUS,RP0
+	bsf	STATUS,RP0
 	btfss	SSPSTAT,P
 	goto	lMcom_Wait4Start1
 
-	bcf		STATUS,RP0
+	bcf	STATUS,RP0
 
 	movlw	cMcom_Wait4Start
 	goto	lMcom_ControlCtrlE	; lMcom_Wait4Start

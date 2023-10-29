@@ -3,7 +3,7 @@
 ; File: KBD.ASM
 ; Jan Damborsky
 ; Created: 17.6.2015
-; Last modified: 17.8.2015
+; Last modified: 27.10.2023
 ;
 ; Handles keyboard.
 ;
@@ -14,7 +14,7 @@
 ;--------------------------------------------------------------------------
 
  INCLUDE "p16f690.inc"
- INCLUDE "./include/kbd.inc"
+ INCLUDE "../include/kbd.inc"
 
 ; extern definitions
 

@@ -3,7 +3,7 @@
 ; File: BRIGHT.ASM
 ; Jan Damborsky
 ; Created: 17.8.2015
-; Last modified: 2.2.2017
+; Last modified: 28.10.2023
 ;
 ; Automatic control of LCD brightness.
 ;
@@ -14,8 +14,8 @@
 ;--------------------------------------------------------------------------
 
  INCLUDE "p16f690.inc"
- INCLUDE "./include/bright.inc"
- INCLUDE "./include/display.inc"
+ INCLUDE "../include/bright.inc"
+ INCLUDE "../include/display.inc"
 
 ; extern definitions
 

@@ -1,25 +1,30 @@
 ;------------------------------------------------------------------------
+; Build with MPLAB X IDE v5.30
+; which is the last version which supports MPASM assembler.
+;
 ; File: MAIN.ASM
 ; Main Application
 ; Device: PIC16F690
 ; Jan Damborsky
-; version: v0.1
+; version: v0.2
 ;
 ; Created: 19.5.2015
-; Last modified: 18.8.2015
+; Last modified: 27.10.2023
 ; Changelog:
+;  - v0.2
+;    - added support for 16x2 alphanumeric LCD with Hitachi HD44780U controller
 ;
 ; memory usage
 ; ============
 ;
 ;  module name       CODE        RAM
 ; -------------------------------------
-;  MAIN          0x000-0x0ff  0x70-0x73
+;  MAIN          0x000-0x0ff  0x7a-0x7d
 ;  PICHW         0x100-0x1ff
 ;  MCOM          0x200-0x2ff  0x20-0x2f
 ;  BRIGHTNESS    0x300-0x3ff  0x30-0x3f
 ;  KBD           0x400-0x4ff  0x40-0x4f
-;  DISPLAY       0x500-0x5ff  0x50-0x6f
+;  DISPLAY       0x500-0x5ff  0x50-0x78
 ;
 ;------------------------------------------------------------------------
 
@@ -28,10 +33,10 @@
 ;----
  INCLUDE "p16f690.inc"
 ;----
- INCLUDE "./include/pichw.inc"
- INCLUDE "./include/display.inc"
+ INCLUDE "../include/pichw.inc"
+ INCLUDE "../include/display.inc"
  
- INCLUDE "./include/main.inc"
+ INCLUDE "../include/main.inc"
 ;---
 ;------------------------------------------------------
 ;------------------------------------------------------
@@ -89,7 +94,7 @@ lMainLoop
 ; re-load TMR0
 	movlw	TMR0_PRELOAD
 	movwf	TMR0
-	bcf		INTCON, T0IF
+	bcf	INTCON, T0IF
 
 ; toggle debug pin
 	movlw	(1 << bDEBUG)
