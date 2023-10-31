@@ -2,8 +2,8 @@
 # Copyright(c) 2015, 2023
 #
 
-#TOOLS_DIR= /opt/mipsel-10.3.0
-TOOLS_DIR= /opt/mipsel
+TOOLS_DIR= /opt/mipsel-10.3.0
+#TOOLS_DIR= /opt/mipsel
 TOOLS_BIN= $(TOOLS_DIR)/bin
 
 CC= $(TOOLS_BIN)/mipsel-gcc
