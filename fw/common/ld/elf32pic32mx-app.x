@@ -554,6 +554,7 @@ SECTIONS
   {
     *( .gnu.linkonce.r.*)
     *(.rodata1)
+    *(.rodata.str1.4)
     . = ALIGN(4) ;
   } >kseg0_program_mem
   /*
