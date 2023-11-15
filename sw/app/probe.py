@@ -222,7 +222,7 @@ class TurboProbe(Probe):
 
         # If all necessary data available, recalculate the probe.
         for key in self.mProbeList:
-            if not self.mProbeValues.has_key(key):
+            if not key in self.mProbeValues:
                 return False
 
         self.mCurrY = self.mProbeValues['0B'] / self.mProbeValues['33']
@@ -369,7 +369,7 @@ class ProbePool(object):
                                          compound_pos, compound_ln)
 
                     # Save relationship between compound probe and OBD PID
-                    if (ProbePool.mObdPid2Compound.has_key(compound_obd_pid)):
+                    if (compound_obd_pid in ProbePool.mObdPid2Compound):
                         ProbePool.mObdPid2Compound[compound_obd_pid].append(pid)
                     else:
                         ProbePool.mObdPid2Compound[compound_obd_pid] = [pid]
@@ -406,7 +406,7 @@ class ProbePool(object):
 
     def is_compound_probe(self, pid):
         """Returns True if given OBD PID carries compound probe(s)"""
-        return ProbePool.mObdPid2Compound.has_key(pid)
+        return pid in ProbePool.mObdPid2Compound
 
     def get_compound_list(self, pid):
         """Returns list of compound probes for given OBD PID."""

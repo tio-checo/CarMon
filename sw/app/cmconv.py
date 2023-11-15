@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 
 import argparse
 
@@ -29,7 +29,7 @@ def ts2datetime(ts):
 def extract_raw_pid_value(r):
     s = r[2]
     ba = []
-    for i in range(len(s) / 2):
+    for i in range(int(len(s) / 2)):
         ba.append(int(s[2 * i:2 * (i + 1)], 16))
 
     return ba
