@@ -155,7 +155,8 @@
  * Given raw packet received from ECU for PID 'EF', the macro extracts value
  * of DPF differential pressure in [kPa].
  */
-#define OBD_GET_DPFDP_VALUE(er)	((256 * ((er)[0]) + ((er)[1]) - 1280) / 256)
+#define OBD_GET_DPFDP_VALUE(er)	\
+    ((10 * (256 * ((er)[0]) + ((er)[1]) - 1280)) / 256)
 
 /*
  * Injector Feedback Value #1, #2, #3, #4

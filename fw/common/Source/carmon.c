@@ -463,10 +463,10 @@ cm_alarm_process(unsigned char *d, int ln)
 	 *      or distance since the last DPF rejuvenation
 	 *    - DPF accumulation ratio
 	 *    - GPS course
-	 *  - row 2 - " 99g 99kPa 100% " - idle
-	 *            " 99g 99kPa 13.8V" - running
+	 *  - row 2 - "99g 999hPa 100% " - idle
+	 *            "99g 999hPa 13.8V" - running
 	 *    - MAF - 0-99g
-	 *    - DPF differential pressure - -5-99k
+	 *    - DPF differential pressure - -50-999hPa
 	 *    - LOAD (engine idle) - 0-100%
 	 *      or battery voltage (running) - 10.0-15.0V
 	 */
@@ -513,11 +513,11 @@ cm_alarm_process(unsigned char *d, int ln)
 			long2str(OBD_GET_INJFB_VALUE(d + 1, 4), fb_addr + 13, 3,
 			    FALSE);
 
-			/* row 2 - " 99g 99kPa 100% " */
-			long2str(cm_stv.maf, fb_addr + 16, 3, FALSE);
-			fb_addr[19] = 'g';
-			long2str(cm_stv.dpf_dp, fb_addr + 20, 3, FALSE);
-			fb_addr[23] = 'k';
+			/* row 2 - "99g 999hPa 100% " */
+			long2str(cm_stv.maf, fb_addr + 16, 2, FALSE);
+			fb_addr[18] = 'g';
+			long2str(cm_stv.dpf_dp, fb_addr + 19, 4, FALSE);
+			fb_addr[23] = 'h';
 			fb_addr[24] = 'P';
 			fb_addr[25] = 'a';
 			fb_addr[26] = ' ';
@@ -551,11 +551,11 @@ cm_alarm_process(unsigned char *d, int ln)
 			fb_addr[15] = gps_get_status() > 0 ?
 			    gps_get_course() : ' ';
 
-			/* row 2 - " 99g 99kPa 13.8V" */
-			long2str(cm_stv.maf, fb_addr + 16, 3, FALSE);
-			fb_addr[19] = 'g';
-			long2str(cm_stv.dpf_dp, fb_addr + 20, 3, FALSE);
-			fb_addr[23] = 'k';
+			/* row 2 - "99g 999hPa 13.8V" */
+			long2str(cm_stv.maf, fb_addr + 16, 2, FALSE);
+			fb_addr[18] = 'g';
+			long2str(cm_stv.dpf_dp, fb_addr + 19, 4, FALSE);
+			fb_addr[23] = 'h';
 			fb_addr[24] = 'P';
 			fb_addr[25] = 'a';
 			fb_addr[26] = ' ';
