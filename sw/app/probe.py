@@ -307,8 +307,12 @@ class ProbePool(object):
 
         probe_fname = 'probes_' + probe_def + '.xml'
 
+        #
         # Commence parsing of XML file describing probes
-        tree = etree.parse(ProbePool.PROBE_XML_DIR + probe_fname)
+        # Allow resolving external entities (disabled by default)
+        #
+        parser = etree.XMLParser(resolve_entities=True)
+        tree = etree.parse(ProbePool.PROBE_XML_DIR + probe_fname, parser)
 
         # Iterate over children of <ProbeList> root tag
         for probe_list_el in tree.getroot():
