@@ -1,6 +1,6 @@
 # CarMon
 
-CarMon is a custom vehicle monitoring and data logging project combining PIC32 firmware, OBD-II interface hardware, desktop utilities, and an Android application. It collects engine and vehicle measurements, records them for later analysis, and provides tools for viewing live data and investigating vehicle diagnostics.
+CarMon is a custom vehicle monitoring and data logging project combining OBD-II interface hardware, embedded firmware, desktop utilities, and an Android application. The existing PIC32 implementation collects engine and vehicle measurements, records them for later analysis, and provides tools for viewing live data and investigating vehicle diagnostics. An **ESP32-S3 hardware version is under development**, with its gEDA schematic and PCB layout now included in this repository.
 
 The source includes standard OBD measurements and Toyota diesel-specific definitions for the **1AD-FTV** and **2AD-FTV** engines, including injector feedback, exhaust gas temperatures, and diesel particulate filter (DPF) measurements. Vehicle-specific PID definitions and CAN mappings need to be checked before using the project with another engine or ECU.
 
@@ -14,9 +14,11 @@ The source includes standard OBD measurements and Toyota diesel-specific definit
 - Provides desktop tools to extract recorded sessions, convert raw ECU values into physical quantities, and plot measurements.
 - Includes an Android Bluetooth application with a dashboard, logging settings, supported PID inspection, freeze-frame data, and diagnostic trouble code screens.
 
-This repository contains several generations and related parts of the project. The main OBD firmware Makefile targets the **Microchip PIC32MX795F512H**. The desktop and Android applications include legacy dependencies; the repository does not provide a single installer or an automated end-to-end setup.
+This repository contains several generations and related parts of the project. The features above describe the PIC32 implementation; the main OBD firmware Makefile targets the **Microchip PIC32MX795F512H**. ESP32-S3 firmware is not yet included. The desktop and Android applications include legacy dependencies; the repository does not provide a single installer or an automated end-to-end setup.
 
 ## System overview
+
+The following diagram describes the existing PIC32 system:
 
 ```text
 Vehicle ECU / CAN bus
@@ -45,6 +47,7 @@ Host communication uses the project's custom converter protocol. The included ap
 | [`fw/miniterm/`](fw/miniterm/) | Assembly firmware for the display/keyboard terminal. |
 | [`fw/rfid/`](fw/rfid/) | Related RFID firmware. |
 | [`hw/elektro/`](hw/elektro/) | OBD interface, motherboard, GPS, display, and RFID schematics and PCB layouts. |
+| [`hw/elektro/obdII_conv_esp32s3/`](hw/elektro/obdII_conv_esp32s3/) | ESP32-S3 hardware under development: gEDA schematic and PCB layout. |
 | [`sw/app/`](sw/app/) | Desktop logging, protocol, conversion, plotting, and Bluetooth helper tools. |
 | [`sw/app/dlfs/`](sw/app/dlfs/) | C utilities for extracting and formatting DLFS storage. |
 | [`sw/app/android/ObdLogger/`](sw/app/android/ObdLogger/) | Java Android application and XML measurement definitions. |
@@ -57,7 +60,7 @@ git clone https://github.com/tio-checo/CarMon.git
 cd CarMon
 ```
 
-For offline analysis, start with the desktop tools below. To build a complete device, first review the hardware revision, its firmware hardware profile, the enabled modules in the Makefile, and the vehicle-specific measurement definitions.
+For offline analysis, start with the desktop tools below. The firmware build and recording workflow documented here apply to the PIC32 version. To build a PIC32 device, first review the hardware revision, its firmware hardware profile, the enabled modules in the Makefile, and the vehicle-specific measurement definitions. For the ESP32-S3 hardware, see [ESP32-S3 version](#esp32-s3-version).
 
 ### Convert and plot recorded data
 
@@ -108,7 +111,7 @@ The dumper creates timestamped `obd-NNN-YYYYMMDD-HHMMSS.csv` files in the curren
 
 `dlfsformat` initializes DLFS storage and **overwrites storage metadata**. Review its source and confirm the target before using it on a card or device.
 
-### Build the main firmware
+### Build the PIC32 firmware
 
 [`fw/obdII/Makefile`](fw/obdII/Makefile) expects a PIC32-compatible MIPS little-endian toolchain. Its default tool directory is `/opt/mipsel-10.3.0`; it also expects the libraries `dsp`, `c_s_n`, and `gcc_s_n` under the toolchain's `lib/microchip` directory. A generic host compiler is insufficient.
 
@@ -134,6 +137,17 @@ The Python 3 analysis tools can be used independently of the legacy live logger 
 ## Hardware and measurement definitions
 
 The hardware files use **gEDA schematic** (`.sch`) and **PCB** (`.pcb`) formats. Start with [`hw/elektro/obdII_conv/`](hw/elektro/obdII_conv/) for the PIC32 converter and motherboard revisions. Custom symbol and footprint references may require libraries beyond this repository.
+
+### ESP32-S3 version
+
+The next hardware version of the CarMon OBD logger is being developed around the ESP32-S3. Its published design files are in [`hw/elektro/obdII_conv_esp32s3/`](hw/elektro/obdII_conv_esp32s3/):
+
+- [gEDA schematic](hw/elektro/obdII_conv_esp32s3/obdII_conv_esp32s3-1.sch)
+- [PCB layout](hw/elektro/obdII_conv_esp32s3/obdII_conv_esp32s3-1.pcb)
+
+Open these with tools supporting the gEDA schematic and PCB file formats. Custom schematic symbols may require additional libraries. This is hardware development work; ESP32-S3 firmware and a complete setup procedure are not yet included, and the PIC32 firmware cannot be flashed directly onto this board. The published files do not establish that the hardware has been assembled or tested.
+
+### Measurement definitions
 
 Measurement definitions live in [`sw/app/android/ObdLogger/res/xml/`](sw/app/android/ObdLogger/res/xml/). The Python converter reuses these definitions through [`probe.py`](sw/app/probe.py), including raw-to-physical conversions and compound measurements. Firmware polling defaults are defined in [`carmon.c`](fw/common/Source/carmon.c); Toyota CAN-to-PID mappings are in [`obd.c`](fw/common/Source/obd.c).
 
