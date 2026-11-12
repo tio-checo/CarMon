@@ -136,7 +136,9 @@ The Python 3 analysis tools can be used independently of the legacy live logger 
 
 ## Hardware and measurement definitions
 
-The hardware files use **gEDA schematic** (`.sch`) and **PCB** (`.pcb`) formats. Start with [`hw/elektro/obdII_conv/`](hw/elektro/obdII_conv/) for the PIC32 converter and motherboard revisions. Custom symbol and footprint references may require libraries beyond this repository.
+The hardware files use **gEDA schematic** (`.sch`) and **PCB** (`.pcb`) formats. Start with [`hw/elektro/obdII_conv/`](hw/elektro/obdII_conv/) for the PIC32 converter and motherboard revisions.
+
+CarMon's schematics and PCB layouts use custom symbols and footprints maintained in the separate [gaf repository](https://github.com/tio-checo/gaf). Clone that repository and register its `sym/` subdirectories with gEDA and its `pcb-footprints/` library with PCB before editing the hardware designs. See the [gaf setup instructions](https://github.com/tio-checo/gaf#using-the-libraries) for configuration examples. Standard symbols may also come from your gEDA installation.
 
 ### ESP32-S3 version
 
@@ -145,7 +147,7 @@ The next hardware version of the CarMon OBD logger is being developed around the
 - [gEDA schematic](hw/elektro/obdII_conv_esp32s3/obdII_conv_esp32s3-1.sch)
 - [PCB layout](hw/elektro/obdII_conv_esp32s3/obdII_conv_esp32s3-1.pcb)
 
-Open these with tools supporting the gEDA schematic and PCB file formats. Custom schematic symbols may require additional libraries. This is hardware development work; ESP32-S3 firmware and a complete setup procedure are not yet included, and the PIC32 firmware cannot be flashed directly onto this board. The published files do not establish that the hardware has been assembled or tested.
+Open these with tools supporting the gEDA schematic and PCB file formats, using the symbols and footprints from [gaf](https://github.com/tio-checo/gaf). This is hardware development work; ESP32-S3 firmware and a complete setup procedure are not yet included, and the PIC32 firmware cannot be flashed directly onto this board. The published files do not establish that the hardware has been assembled or tested.
 
 ### Measurement definitions
 
