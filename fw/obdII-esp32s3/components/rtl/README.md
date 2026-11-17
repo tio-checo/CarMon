@@ -1,7 +1,6 @@
 # rtl
 
-Původní RTL: registrace služeb, softwarové časovače, heartbeat a statistiky. Hardwarový časovač PIC32 bude později nahrazen GPTimer na ESP32-S3 při zachování periody 500 µs.
+Původní služby, pooly časovačů a heartbeat nyní používají ESP32-S3 GPTimer po 500 µs. Obsluha běží na CPU1 v ISR; omezení cache, časování a synchronizace jsou v hlavním README.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

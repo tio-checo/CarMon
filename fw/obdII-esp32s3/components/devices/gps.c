@@ -1,3 +1,4 @@
+#include "carmon_platform.h"
 /*********************************************************************
  *
  * Implements GPS service
@@ -14,9 +15,6 @@
  *
  *********************************************************************/
 
-#include "HardwareProfile.h"
-#include "peripheral/uart.h"
-#include "xc.h"
 
 #include "bt.h"
 #include "carmon.h"
@@ -353,21 +351,7 @@ gps_rx_svc(unsigned char ch)
 static int
 gps_getchar_uart(unsigned char *ch)
 {
-	/* Receive buffer is empty */
-	if (!U1STAbits.URXDA) {
-		/* If receiving was disabled due to 'buffer overflow',
-		 * re-enable it by clearing OERR error bit.
-		 */
-		if (U1STAbits.OERR)
-			U1STAbits.OERR = 0;
-
-		return EAGAIN;
-	}
-
-	/* There is a character in receive buffer, return it. */
-	*ch = U1RXREG;
-
-	return 0;
+    return carmon_gps_uart_read(ch);
 }
 
 /*
@@ -405,35 +389,8 @@ gps_main_svc(void)
 int
 gps_init(void)
 {
-#ifndef KWP2K_MODULE
-	/*
-	 * Initialize UART1 - used for communication with GPS over K-line.
-	 * K-line is only available if not in use by KWP2000 module.
-	 */
-
-	/*
-	 * initialize IO pins
-	 */
-	/* set Tx to inactive before it is configured as digital output */
-	LATDCLR = GPS_TX_MASK;
-	TRISDCLR = GPS_TX_MASK;
-
-	/*
-	 *  - baudrate: GPS_BAUDRATE
-	 *  - 8 data bits, 1 stop bit
-	 *  - continue to operate in IDLE mode
-	 *  - IrDA mode disabled
-	 *  - HW flow control turned off
-	 *  - loopback mode disabled
-	 *  - autobaud mode disabled
-	 *  - standard speed mode - 16x baud clock enabled
-	 */
-	U1BRG = (SYS_FREQ / 16 / GPS_BAUDRATE - 1);
-	U1MODE = UART_EN;
-
-	/* TX pin is inverted, so configure it as active in LOW */
-	U1STA = (UART_RX_ENABLE | UART_TX_ENABLE | UART_TX_INV);
-#endif /* KWP2K_MODULE */
+    int err = carmon_gps_uart_init();
+    if (err != 0) return err;
 
 	/* Initialize GPS state machine. */
 	gps_st = GPS_ST_WAIT4SOF;
@@ -486,7 +443,7 @@ gps_get_course(void)
 void
 gps_print_diag_info(int (*print_str)(const char *))
 {
-	char s[81];
+	char s[sizeof(gps_nmea_buf) + 16];
 
 	/* header */
 	print_str("-------------------------------------\r\n");
@@ -526,13 +483,6 @@ gps_print_diag_info(int (*print_str)(const char *))
 int
 gps_suspend(void)
 {
-	/* Before turning off UART, make sure Tx line is inactive */
-	LATDCLR = GPS_TX_MASK;
-
-	/* turn off K-line UART */
-	U1STA = UART_DIS;
-	U1MODE = UART_DIS;
-
-	return 0;
+    return carmon_gps_uart_suspend();
 }
 

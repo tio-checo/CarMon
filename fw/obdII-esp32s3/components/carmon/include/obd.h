@@ -11,7 +11,7 @@
 #define __OBD_H
 
 #include "GenericTypeDefs.h"
-#include "CAN.h"
+#include "carmon_can_frame.h"
 
 /* ECU submodule IDs */
 #define	ECU_OBD_ID		'O'	/* OBD module */
@@ -258,7 +258,7 @@ extern int obd_init(void);
 extern int obd_process_query(char *, int);
 
 /* Callback routine processing received CAN frames */
-extern int obd_can_rx_cb(CANRxMessageBuffer *);
+extern int obd_can_rx_cb(carmon_can_frame_t *);
 
 /* Activates or deactivates PID autoscan mode. */
 extern int obd_autoscan_conf_mode(BOOL);

@@ -1,7 +1,6 @@
 # communication
 
-Původní protokol s počítačem, externí BTM-112 a diagnostický monitor. Nový USB transport zatím není implementován.
+Původní master_comm.c se překládá s odloženým požadavkem na restart ESP32-S3. PIC32 mon.c a bt.c zůstávají mimo sestavení; jejich rozhraní zatím poskytuje unported.c s chybou ENOTSUP.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

@@ -1,3 +1,4 @@
+#include <stdio.h>
 /*********************************************************************
  *
  * Copyright(c) 2015, 2023
@@ -8,8 +9,6 @@
 
 #include <errno.h>
 
-#include "HardwareProfile.h"
-#include "xc.h"
 
 #include "i2c_hal.h"
 #include "lcd_term.h"

@@ -14,11 +14,8 @@
  * 
  *********************************************************************/
 
-#include "HardwareProfile.h"
 #include "GenericTypeDefs.h"
-#include "adc10.h"
-#include "uart.h"
-#include "xc.h"
+#include "carmon_platform.h"
 
 #include "bt.h"
 
@@ -138,30 +135,9 @@ static void mcom_jump_to_bootloader(void);
 static void
 mcom_jump_to_bootloader(void)
 {
-	unsigned int d;
-
-	/* disable interrupts first */
-	asm volatile("di");
-
-	/* Suspend BT module */
-	bt_suspend();
-
-	/* write invalid key to force lock */
-	SYSKEY = 0x00000000;
-	/* Key 1 */
-	SYSKEY = 0xAA996655;
-	/* Key 2 */
-	SYSKEY = 0x556699AA;
-
-	/* set SWRST bit to arm reset */
-	RSWRSTSET = 1;
-	/* read RSWRST register to trigger reset */
-	d = RSWRST;
-	/*
-	 * prevent any unwanted code execution
-	 * until reset occurs
-	 */
-	while(1);
+    /* Restart from the owner task, never from the RTL interrupt. This enters
+     * normal ESP boot; ROM download mode still requires the BOOT strap. */
+    carmon_request_restart();
 }
 
 /*
@@ -669,7 +645,7 @@ mcom_tx_st(void)
 	static char tmp_buf[4];
 	static unsigned int item_ln, item_index, buf_ln, buf_index;
 	static unsigned short crc;
-	unsigned int d;
+	unsigned int d = 0;
 	mcom_response_t *r;
 
 	/*

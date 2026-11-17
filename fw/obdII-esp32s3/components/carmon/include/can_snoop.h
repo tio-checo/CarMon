@@ -1,3 +1,4 @@
+#include "carmon_can_frame.h"
 /*********************************************************************
  *
  * CAN bus analyzer.
@@ -28,7 +29,7 @@ extern void can_snoop_init(void);
 extern int can_snoop_process_query(char *, int);
 
 /* Lets received frame undergo process of analysis. */
-extern int can_snoop_process_frame(CANRxMessageBuffer *);
+extern int can_snoop_process_frame(carmon_can_frame_t *);
 
 /* Returns number of dropped frames. */
 extern int can_snoop_get_num_dropped_frames(void);

@@ -1,7 +1,6 @@
 # platform
 
-Převzaté hardwarové a systémové části určené k přizpůsobení nebo nahrazení: CAN, I²C, systémové příkazy, pomocné funkce a CRC. Obsah zatím stále patří PIC32, nikoliv hotovému portu ESP32-S3.
+esp32s3/ obsahuje inicializaci desky a aplikace a výslovně nepřenesené backendy. utils.c používá softwarové CRC; helpers.c používá čas a libc ESP-IDF. Původní can_hal.c, i2c_hal.c a i2c_sw.c se zatím nepřekládají.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

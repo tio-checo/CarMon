@@ -1,7 +1,6 @@
 # storage
 
-Původní DLFS a jeho datový formát. Backend Microchip SD-SPI bude později nahrazen blokovými operacemi SDMMC.
+DLFS se překládá přes carmon_media.h. Backend zatím hlásí nepřítomné médium a neumožňuje I/O. Binární kompatibilita layoutu se skutečnými kartami musí být ověřena před prvním zápisem.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

@@ -1,3 +1,6 @@
+#include <inttypes.h>
+#include <string.h>
+#include "carmon_can_frame.h"
 /*********************************************************************
  *
  * CAN bus analyzer.
@@ -136,11 +139,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include "HardwareProfile.h"
 #include "GenericTypeDefs.h"
-#include "xc.h"
-#include "CAN.h"
-#include "CANTypes.h"
 
 #include "master_comm.h"
 #include "can_hal.h"
@@ -265,7 +264,7 @@ can_snoop_inc_dropped_frames(void)
  * 
  */
 static void
-can_snoop_encode_response(CANRxMessageBuffer *rxm)
+can_snoop_encode_response(carmon_can_frame_t *rxm)
 {
 	int i;
 	char tb[10];
@@ -275,13 +274,13 @@ can_snoop_encode_response(CANRxMessageBuffer *rxm)
 
 	/* Time-stamp */
 	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_TSTAMP) {
-		snprintf(tb, sizeof (tb), "%04X", rxm->msgSID.CMSGTS);
+		snprintf(tb, sizeof (tb), "%04" PRIX32, rxm->msgSID.CMSGTS);
 		strcat(can_snoop_resp_buf, tb);
 	}
 
 	/* Message type */
 	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_TYPE) {
-		snprintf(tb, sizeof (tb), "%02X",
+		snprintf(tb, sizeof (tb), "%02" PRIX32,
 		    rxm->msgEID.RTR | (rxm->msgEID.IDE << 1));
 
 		strcat(can_snoop_resp_buf, tb);
@@ -289,14 +288,14 @@ can_snoop_encode_response(CANRxMessageBuffer *rxm)
 
 	/* ID */
 	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_ID) {
-		snprintf(tb, sizeof (tb), "%08X", CAN_GET_ID(rxm));
+		snprintf(tb, sizeof (tb), "%08" PRIX32, CAN_GET_ID(rxm));
 
 		strcat(can_snoop_resp_buf, tb);
 	}
 
 	/* DLC */
 	if (can_snoop_frame_mask & CAN_SNOOP_PSMASK_DLC) {
-		snprintf(tb, sizeof (tb), "%02X", rxm->msgEID.DLC);
+		snprintf(tb, sizeof (tb), "%02" PRIX32, rxm->msgEID.DLC);
 		strcat(can_snoop_resp_buf, tb);
 	}
 
@@ -376,7 +375,7 @@ can_snoop_busy(void)
  * Pass-through analysis.
  */
 static void
-can_snoop_pass_through(CANRxMessageBuffer *rxm)
+can_snoop_pass_through(carmon_can_frame_t *rxm)
 {
 	/*
 	 * If module is now busy with sending previous response,
@@ -396,7 +395,7 @@ can_snoop_pass_through(CANRxMessageBuffer *rxm)
  * Address analysis.
  */
 static void
-can_snoop_collect_ids(CANRxMessageBuffer *rxm)
+can_snoop_collect_ids(carmon_can_frame_t *rxm)
 {
 	int i;
 	UINT32 id;
@@ -461,7 +460,7 @@ can_snoop_collect_ids(CANRxMessageBuffer *rxm)
  * Data analysis.
  */
 static void
-can_snoop_data_analysis(CANRxMessageBuffer *rxm)
+can_snoop_data_analysis(carmon_can_frame_t *rxm)
 {
 	int i, index;
 	UINT32 id;
@@ -561,7 +560,7 @@ can_snoop_data_analysis(CANRxMessageBuffer *rxm)
  * Timing analysis.
  */
 static void
-can_snoop_time_analysis(CANRxMessageBuffer *rxm)
+can_snoop_time_analysis(carmon_can_frame_t *rxm)
 {
 	UINT32 tdif;
 
@@ -777,7 +776,7 @@ can_snoop_process_query(char *data, int ln)
  * Lets received frame undergo process of analysis.
  */
 int
-can_snoop_process_frame(CANRxMessageBuffer *rxm)
+can_snoop_process_frame(carmon_can_frame_t *rxm)
 {
 	switch (can_snoop_mode) {
 	/* Analysis disabled */

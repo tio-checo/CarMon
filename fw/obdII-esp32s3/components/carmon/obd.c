@@ -1,3 +1,4 @@
+#include "carmon_can_frame.h"
 /*********************************************************************
  *
  * Handles OBD communication layer with ECU. This layer is independent
@@ -1187,7 +1188,7 @@ obd_conf(char *data, int ln)
  * Callback routine processing received CAN frames.
  */
 int
-obd_can_rx_cb(CANRxMessageBuffer *rxm)
+obd_can_rx_cb(carmon_can_frame_t *rxm)
 {
 	int i, j;
 	int id = CAN_GET_ID(rxm);

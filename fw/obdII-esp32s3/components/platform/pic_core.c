@@ -1,3 +1,8 @@
+#include <string.h>
+#include "esp_timer.h"
+
+/* Owned here on ESP32-S3; the PIC32 monitor previously supplied this symbol. */
+long pcore_gettime_time;
 /*********************************************************************
  *
  * Support for PIC core functions.
@@ -9,9 +14,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include "HardwareProfile.h"
-#include "xc.h"
-#include "dma.h"
 
 #include "master_comm.h"
 
@@ -140,7 +142,7 @@ pcore_svc(void)
 #endif
 
 	/* Update time of the day. */
-	updatetimeofday(RTL_SERVICE_PERIOD);
+	/* Wall clock is maintained by ESP-IDF, not the RTL interrupt. */
 
 	/* Handle communication service. */
 	pcore_comm_svc();
@@ -163,7 +165,7 @@ pcore_svc(void)
 				settimeofday(&newtv, NULL);
 			}
 
-			/* PASS THROUGH */
+			__attribute__((fallthrough));
 
 		/* operation failed - do not initialize core time from RTC */
 		default:
@@ -571,38 +573,16 @@ pcore_process_query(char *data, int ln)
 				break;
 			}
 
-			if (data[1] == 's') {
-				t = TMR1;
-				crc = crc_calc_array(crc_dbuf, crc_dln,
-				    crc_seed);
-				t = TMR1 - t;
-			} else {
-				t = TMR1;
-				/*
-				 * Configure DMA module:
-				 *  - use DMA channel 0 with priority 0
-				 *  - CRC checksum is to be calculated
-				 *  - input data reflected or not
-				 *  - bytes not reordered
-				 */
-				/* Sets DRCCON */
-				DmaSfmConfigure(DMA_CHKSUM_CRC, crc_refin == 0 ?
-				    DMA_BITO_MSb : DMA_BITO_LSb,
-				    DMA_REORDER_NOT);
-				/* Sets DRCCON, DCRCDATA, DCRCXOR */
-				DmaSfmCrcConfigure(crc_polynomial, crc_plen,
-				    crc_seed);
-				/* Blocks until DMA is done with CRC calc. */
-				if (DmaChnMemCrc(&crc, crc_dbuf, crc_dln,
-				    DMA_CHANNEL0, DMA_CHN_PRI0) !=
-				    DMA_TXFER_OK) {
-					err = MCOM_NAK_IO_ERROR;
-					break;
-				}
-				t = TMR1 - t;
-			}
-
-			t /= GetPeripheralClock() / 1000000;
+            if (data[1] != 's') {
+                /* PIC32-specific configurable DMA CRC command is not ported. */
+                err = MCOM_NAK_EINVAL;
+                break;
+            }
+            (void)crc_refin;
+            (void)crc_polynomial;
+            uint32_t start_us = (uint32_t)esp_timer_get_time();
+            crc = crc_calc_array(crc_dbuf, crc_dln, crc_seed);
+            t = (uint32_t)esp_timer_get_time() - start_us;
 
 			resp_data[0] = (unsigned char)(crc >> 24);
 			resp_data[1] = (unsigned char)(crc >> 16);
@@ -652,7 +632,7 @@ pcore_gettime(void)
 	struct timeval currtv;
 	unsigned long t1, t2;
 
-	t1 = TMR1;
+	t1 = (uint32_t)esp_timer_get_time();
 
 	get_curr_hrtime(&currtv);
 	t = currtv.tv_sec;
@@ -669,7 +649,7 @@ pcore_gettime(void)
 
 	tds[17] = '\0';
 
-	t2 = TMR1;
+	t2 = (uint32_t)esp_timer_get_time();
 
 	if (t2 > t1) {
 		t2 -= t1;

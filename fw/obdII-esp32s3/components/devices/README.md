@@ -1,7 +1,6 @@
 # devices
 
-Ovladače EEPROM EE24, RTC PCF8563, LCD terminálu a GPS. Závislosti na původním I²C, UART a RTL jsou zatím beze změn.
+EEPROM, RTC, LCD a GPS parser se překládají. Přímý PIC32 UART byl nahrazen rozhraním platformy, zatím s návratovou hodnotou ENOTSUP. I²C backend také ještě není přenesen.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

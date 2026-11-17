@@ -8,6 +8,7 @@
 #define __DLFS_H
 
 #include "GenericTypeDefs.h"
+#include "carmon_media.h"
 
 #include <sys/types.h>
 #include <stddef.h>
@@ -111,7 +112,7 @@ typedef struct {
 /* macros */
 /* Calculates theoretical maximum number of inodes for mounted media. */
 #define	DLFS_GET_MAX_INODES	\
-    ((MDD_ReadCapacity() - DLFS_1STINODE_SECTOR) / DLFS_SECS_PER_INODE)
+    ((carmon_media_capacity() - DLFS_1STINODE_SECTOR) / DLFS_SECS_PER_INODE)
 
 /* public functions */
 /* Initialization routine. */

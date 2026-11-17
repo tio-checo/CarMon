@@ -1,3 +1,4 @@
+#include <string.h>
 /*********************************************************************
  *
  * Copyright(c) 2015, 2023
@@ -17,9 +18,7 @@
  *
  *********************************************************************/
 
-#include "HardwareProfile.h"
 #include "GenericTypeDefs.h"
-#include "xc.h"
 
 #include "bt.h"
 #include "carmon.h"

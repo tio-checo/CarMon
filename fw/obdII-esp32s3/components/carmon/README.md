@@ -1,7 +1,6 @@
 # carmon
 
-Aplikační logika CarMon, OBD a sledování CAN. Typy rámců a přímé závislosti na PIC32 zatím zůstávají původní.
+CarMon, OBD a CAN snooping se překládají pro ESP32-S3. Zdejší CMakeLists.txt sdružuje i ostatní portované zdroje do jedné komponenty kvůli původním vzájemným závislostem. Aplikace se do dokončení ovladačů nespouští.
 
-Zdrojové a hlavičkové soubory byly převzaty beze změny bajtů. Původ souborů a SHA-256 jsou v `../../IMPORT_MANIFEST.json`.
-
-Tento adresář zatím nemá `CMakeLists.txt`, takže se nepřekládá jako komponenta ESP-IDF. Sestavení bude doplněno až při vlastní portaci.
+Podrobný stav a postup sestavení je v `../../README.md`.
+Historický původ kopií zachycuje `../../IMPORT_MANIFEST.json`.

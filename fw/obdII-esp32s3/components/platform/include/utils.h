@@ -7,6 +7,8 @@
 #ifndef __UTILS_H
 #define __UTILS_H
 
+#include "GenericTypeDefs.h"
+
 /*
  * Converts given number of bytes of unsigned int to ASCII HEX string.
  * Starts with MSB.

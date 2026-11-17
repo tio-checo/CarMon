@@ -41,6 +41,7 @@ extern int rtl_init(void);
 
 /* Suspend the module */
 extern int rtl_suspend(void);
+extern int rtl_cond_init(rtl_cv_t **, const char *);
 
 /* timers */
 extern int rtl_timer_init(rtl_timer_t **, rtl_time_t);

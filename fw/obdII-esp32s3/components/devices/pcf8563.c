@@ -1,3 +1,4 @@
+#include <stdio.h>
 /*********************************************************************
  *
  * Support for PCF8563 I2C real-time clock.
@@ -9,8 +10,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include "HardwareProfile.h"
-#include "xc.h"
 
 #include "master_comm.h"
 #include "i2c_hal.h"

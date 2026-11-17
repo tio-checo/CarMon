@@ -1,3 +1,6 @@
+#include <inttypes.h>
+#include <stdio.h>
+#include "carmon_media.h"
 /*********************************************************************
  *
  * Implements dambi log-structured filesystem (DLFS).
@@ -55,15 +58,12 @@
  *
  *********************************************************************/
 
-#include "HardwareProfile.h"
 #include "GenericTypeDefs.h"
-#include "xc.h"
 
 #include "dlfs.h"
 #include "helpers.h"
 #include "pic_core.h"
 #include "utils.h"
-#include "SD-SPI.h"
 
 #include <errno.h>
 #include <sys/time.h>
@@ -76,20 +76,7 @@
 
 /* macros */
 
-/* Associates physical layer functions with the SD card physical layer. */
-#ifdef USE_SD_INTERFACE_WITH_SPI
-#define MDD_MediaInitialize     MDD_SDSPI_MediaInitialize
-#define MDD_MediaDetect         MDD_SDSPI_MediaDetect
-#define MDD_SectorRead          MDD_SDSPI_SectorRead
-#define MDD_SectorWrite         MDD_SDSPI_SectorWrite
-#define MDD_InitIO              MDD_SDSPI_InitIO
-#define MDD_ShutdownMedia       MDD_SDSPI_ShutdownMedia
-#define MDD_WriteProtectState   MDD_SDSPI_WriteProtectState
-#define	MDD_ReadCapacity	MDD_SDSPI_ReadCapacity
-#else
-#error "MDD_() functions not associated with any physical device."
-#endif
-
+/* Storage backend is independent of the original Microchip SD-SPI driver. */
 /* Calculates inode position in sectors. inodes are numbered from 0. */
 #define	DLFS_INODE2SEC(inode)	\
     ((inode) * DLFS_SECS_PER_INODE + DLFS_1STINODE_SECTOR)
@@ -215,7 +202,7 @@ dlfs_write_sector(unsigned long long secaddr, void *buff, BOOL calc_crc)
 	get_curr_hrtime(&ct);
 
 	/* Do not allow writing to MBR. */
-	if (!MDD_SectorWrite(secaddr, buff, FALSE)) {
+	if (!carmon_media_write_sector(secaddr, buff, FALSE)) {
 		/* Operation failed, mark backend storage as not available. */
 		dlfs_media_mounted = FALSE;
 		dlfs_media_ready = FALSE;
@@ -270,7 +257,7 @@ dlfs_read_sector(unsigned long long secaddr, dlfs_file_t *df)
 	/* Capture current time for purposes of measuring statistics. */
 	get_curr_hrtime(&ct);
 
-	if (!MDD_SectorRead(secaddr, (BYTE *)(df->sbufp->buf))) {
+	if (!carmon_media_read_sector(secaddr, (BYTE *)(df->sbufp->buf))) {
 		/* Operation failed, mark backend storage as not available. */
 		dlfs_media_mounted = FALSE;
 		dlfs_media_ready = FALSE;
@@ -375,7 +362,7 @@ static int
 dlfs_find_first_free_inode(void)
 {
 	int l, m, h;
-	int fd;
+	int fd = 0;
 
 	/*
 	 * Handle corner cases when all or none inodes are available.
@@ -517,14 +504,14 @@ dlfs_init(void)
 	dlfs_kstat_clear();
 
 	/* Initializes I/O lines connected to the media. */
-	MDD_InitIO();
+	carmon_media_init();
 
 	/*
 	 * Determine if backend media is available.
 	 * MDD_MediaInitialize() called as a side effect - among other things,
 	 * obtains information about media size.
 	 */
-	if (!MDD_MediaDetect()) {
+	if (!carmon_media_present()) {
 		return ENODEV;
 	}
 
@@ -931,15 +918,15 @@ dlfs_display_kstat(int (*print_str)(const char *))
 	snprintf(s, sizeof (s), "read errors: %ld\n\r", dlfs_kstat.rsen);
 	print_str(s);
 
-	snprintf(s, sizeof (s), "ior min time: %ld.%03ld[ms]\n\r",
-	    dlfs_kstat.srt_min.tv_sec * 1000 +
-	    dlfs_kstat.srt_min.tv_usec / 1000,
+	snprintf(s, sizeof (s), "ior min time: %" PRIdMAX ".%03ld[ms]\n\r",
+	    (intmax_t)(dlfs_kstat.srt_min.tv_sec * 1000 +
+	    dlfs_kstat.srt_min.tv_usec / 1000),
 	    dlfs_kstat.srt_min.tv_usec % 1000);
 	print_str(s);
 
-	snprintf(s, sizeof (s), "ior max time: %ld.%03ld[ms]\n\r\n\r",
-	    dlfs_kstat.srt_max.tv_sec * 1000 +
-	    dlfs_kstat.srt_max.tv_usec / 1000,
+	snprintf(s, sizeof (s), "ior max time: %" PRIdMAX ".%03ld[ms]\n\r\n\r",
+	    (intmax_t)(dlfs_kstat.srt_max.tv_sec * 1000 +
+	    dlfs_kstat.srt_max.tv_usec / 1000),
 	    dlfs_kstat.srt_max.tv_usec % 1000);
 	print_str(s);
 
@@ -970,15 +957,15 @@ dlfs_display_kstat(int (*print_str)(const char *))
 	snprintf(s, sizeof (s), "write errors: %ld\n\r", dlfs_kstat.wsen);
 	print_str(s);
 
-	snprintf(s, sizeof (s), "iow min time: %ld.%03ld[ms]\n\r",
-	    dlfs_kstat.swt_min.tv_sec * 1000 +
-	    dlfs_kstat.swt_min.tv_usec / 1000,
+	snprintf(s, sizeof (s), "iow min time: %" PRIdMAX ".%03ld[ms]\n\r",
+	    (intmax_t)(dlfs_kstat.swt_min.tv_sec * 1000 +
+	    dlfs_kstat.swt_min.tv_usec / 1000),
 	    dlfs_kstat.swt_min.tv_usec % 1000);
 	print_str(s);
 
-	snprintf(s, sizeof (s), "iow max time: %ld.%03ld[ms]\n\r",
-	    dlfs_kstat.swt_max.tv_sec * 1000 +
-	    dlfs_kstat.swt_max.tv_usec / 1000,
+	snprintf(s, sizeof (s), "iow max time: %" PRIdMAX ".%03ld[ms]\n\r",
+	    (intmax_t)(dlfs_kstat.swt_max.tv_sec * 1000 +
+	    dlfs_kstat.swt_max.tv_usec / 1000),
 	    dlfs_kstat.swt_max.tv_usec % 1000);
 	print_str(s);
 
