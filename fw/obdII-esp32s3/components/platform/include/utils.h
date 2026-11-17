@@ -1,0 +1,52 @@
+/*********************************************************************
+ *
+ * Utilities
+ *
+ *********************************************************************/
+
+#ifndef __UTILS_H
+#define __UTILS_H
+
+/*
+ * Converts given number of bytes of unsigned int to ASCII HEX string.
+ * Starts with MSB.
+ */
+extern int uint2hex(unsigned int, char *, int);
+
+/*
+ * Converts unsigned long to ASCII HEX string.
+ * Start with MSB. Lading zeros are not printed.
+ * Returns number of written characters.
+ */
+extern int ulong2hexwolz(unsigned long, char *);
+
+/* Converts given number of bytes to ASCII HEX string */
+extern int ucharbuf2hex(unsigned char *, unsigned char *, int);
+
+/* Converts given number of ASCII HEX characters (max 8) to unsigned long */
+extern unsigned long hex2ulong(char *, int);
+
+/* Converts given number of ASCII HEX characters to sequence of bytes */
+extern int hex2ucharbuf(char *, unsigned char *, int);
+
+/* Converts given number of ASCII decimal characters (max 10) to unsigned long */
+extern unsigned long dec2ulong(char *, int);
+
+/* Converts unsigned long to string with leading zeros. */
+extern int long2str(long, char *, int, BOOL);
+
+/* Initializes CRC calculation algorithm */
+extern void crc_init(unsigned short *, unsigned short);
+
+/* Calculates 16bit CRC */
+extern void crc_calc(unsigned short *, unsigned char);
+
+/* Returns calculated CRC */
+extern void crc_finalize(unsigned short *);
+
+/* Calculates CRC-CCITT for given array of bytes using DMA */
+extern unsigned short crc_dma_calc_array(void *, int);
+
+/* Calculates CRC-CCITT for given array of bytes using lookup table */
+extern unsigned short crc_calc_array(void *, int, unsigned short);
+#endif /* __UTILS_H */

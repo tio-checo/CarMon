@@ -1,0 +1,387 @@
+{
+  "format_version": 1,
+  "repository": "CarMon (Mercurial)",
+  "source_parent": "dd55e6c5cfacabb5de006ce5e5dd9874bc3ce990",
+  "imported_from": "working_tree",
+  "note": "Byte-for-byte copies; legacy sources are not built yet.",
+  "files": [
+    {
+      "source": "fw/common/Source/rt_light.c",
+      "destination": "components/rtl/rt_light.c",
+      "sha256": "4f9a6c27169da0e34084d0ddbfd36970b6dfc628d6b82a078f7b23d242a87ede",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/rt_light.h",
+      "destination": "components/rtl/include/rt_light.h",
+      "sha256": "286b811659ba346d3c32e884192fbe7b3259ee88e6d35e59177611b8384bb4cc",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/carmon.c",
+      "destination": "components/carmon/carmon.c",
+      "sha256": "ddff9751cd14c3840404f886c4087d9c7dcd98c56fa567b0b27e82bc8b493153",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/carmon.h",
+      "destination": "components/carmon/include/carmon.h",
+      "sha256": "e060709641fd21fa29f65bf7479f85cb119464e557268676605c3526e373e201",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/obd.c",
+      "destination": "components/carmon/obd.c",
+      "sha256": "263b917ef3d0a0552c33da1cbda62609f0d36515dc3c695dffa5f5fa776ccc40",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/obd.h",
+      "destination": "components/carmon/include/obd.h",
+      "sha256": "73db2b789fa060ae2e3964d1f58c24ed2cd23673aff12b80eccf1928c9e74022",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/can_snoop.c",
+      "destination": "components/carmon/can_snoop.c",
+      "sha256": "f9f69120eca1ba2dbfed78a78edd7b2b5bdff3c54faadb45da28d8d1580c93b5",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/can_snoop.h",
+      "destination": "components/carmon/include/can_snoop.h",
+      "sha256": "3d728d624fdfa49c68c41a203a9a6f4006c9138de22e1d1bd131f28c55064010",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/master_comm.c",
+      "destination": "components/communication/master_comm.c",
+      "sha256": "197c0c7d547f5704482053bfe6ef66388605906442473776c0c5787249ad8eb9",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/master_comm.h",
+      "destination": "components/communication/include/master_comm.h",
+      "sha256": "0984e5bcf3dfa88e6368503b60815b12c491777976c903b95b42d0cc2e14d27f",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/bt.c",
+      "destination": "components/communication/bt.c",
+      "sha256": "5c9c71fb828ea5793c848c6f914bfe395ec24cb18db536abb3adb43071404f8f",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/bt.h",
+      "destination": "components/communication/include/bt.h",
+      "sha256": "a1561bba54ccd1d61d276cb48d1576e8162386a9758ecd0b7a9866e595863d8a",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/mon.c",
+      "destination": "components/communication/mon.c",
+      "sha256": "ace289ece7b79863b1fa7c75dcf8fcfb5782f408ac025be095a2c8ce12e99459",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/mon.h",
+      "destination": "components/communication/include/mon.h",
+      "sha256": "be7df46c48236492b65d32d9ebbdee94e043fc10b964984b5bc47b49bfee6f33",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/dlfs.c",
+      "destination": "components/storage/dlfs.c",
+      "sha256": "f605367fea8b060c466fff02eb97211631267349da4ef52de39df3f0f48d2283",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/dlfs.h",
+      "destination": "components/storage/include/dlfs.h",
+      "sha256": "1cfe311334906368d26f6be20f2dfd66a9a9ea8e3e955d223d94a4a428fdba00",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/ee24.c",
+      "destination": "components/devices/ee24.c",
+      "sha256": "6d8005cbe509b2328eb98fbd9464f6d73d538df6ba2c4c541d8d8c25fbe15cd3",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/ee24.h",
+      "destination": "components/devices/include/ee24.h",
+      "sha256": "ec3d1227ebd5057ca2b17fa7eaeedffa772f5f4d944e39b5c4583a88c0c6b487",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/pcf8563.c",
+      "destination": "components/devices/pcf8563.c",
+      "sha256": "4eecef8f24da57aad6e3e68461b82e2621d769d0eb3e6c31ef83689295d4da37",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/pcf8563.h",
+      "destination": "components/devices/include/pcf8563.h",
+      "sha256": "87fe77e04b3420a0adcc4cb32b5dc6ccd4f8c3dc6eab0e188f18c925269df9b2",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/lcd_term.c",
+      "destination": "components/devices/lcd_term.c",
+      "sha256": "b177317827c06eb426e9f8a517f59d36464fc4b08475ae812170c5b610e9cf8b",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/lcd_term.h",
+      "destination": "components/devices/include/lcd_term.h",
+      "sha256": "059e210e201d842f0d2ef3a8c6ed7258cc398ed94f0c7e0ffd3d016cf9fee576",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/gps.c",
+      "destination": "components/devices/gps.c",
+      "sha256": "47df9be6a6c0e34a05ff28436887528996cd317fabf806b0e0568ce9f23eef19",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/gps.h",
+      "destination": "components/devices/include/gps.h",
+      "sha256": "b676b2101be5c411ca2e5325de82d11666710e4dac7b6dc095c4ed500b9c47de",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/can_hal.c",
+      "destination": "components/platform/can_hal.c",
+      "sha256": "0fd9f4ed54e606c5beccf28d462f7f81c26bfffc5757b0dc43d49898f3e4bcad",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/can_hal.h",
+      "destination": "components/platform/include/can_hal.h",
+      "sha256": "ffc7ccb4159349e7fd3eebd1f878c5417e9463ee46db17134c012e63f2aa6578",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/i2c_hal.c",
+      "destination": "components/platform/i2c_hal.c",
+      "sha256": "295cc24f61d012256ccec6dd656cd44ca48441b85fdd56599afbadb415e7861b",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/i2c_hal.h",
+      "destination": "components/platform/include/i2c_hal.h",
+      "sha256": "95424ade2b6de3589b0fdd9cd4320da019400a58d57fa78f3e7de3751e5004e3",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/i2c_sw.c",
+      "destination": "components/platform/i2c_sw.c",
+      "sha256": "45251f79ddb46dd0ee9bff62a580070263f4fc7fcb7adb322172275e11b16788",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/i2c_sw.h",
+      "destination": "components/platform/include/i2c_sw.h",
+      "sha256": "e7dfc8b46133960190892807aeaa7179a1d969ba81b626febba1ed6e5a1bd405",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/pic_core.c",
+      "destination": "components/platform/pic_core.c",
+      "sha256": "e294c38e9a865f74e305e861e5aae38e86e54c2b9ac6001083237aa46a4b0da5",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/pic_core.h",
+      "destination": "components/platform/include/pic_core.h",
+      "sha256": "1ef60e1e9cc869f86a628aace4fb32783cc385ab7998bd555dc2d22e64b7ec1a",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/utils.c",
+      "destination": "components/platform/utils.c",
+      "sha256": "2d6992df891db65b1bce40509da95f95c6054533556410ec9584c182a7af974d",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/utils.h",
+      "destination": "components/platform/include/utils.h",
+      "sha256": "0d3acde6fdf3b026a3eea1014ccf9e4aed2cc035d9225975c839b5276686ee4d",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Source/helpers.c",
+      "destination": "components/platform/helpers.c",
+      "sha256": "a6ca783c60f56fa17ae8ff537079c0a5c70ee3189a8d9c33230f9f5618b3e854",
+      "role": "legacy_source",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/common/Include/helpers.h",
+      "destination": "components/platform/include/helpers.h",
+      "sha256": "a6be8d42eb847493e2f5cf6c6f935ffd5d9f51c4f2d12e09b723a092d1b608ab",
+      "role": "legacy_header",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/obdII/Source/main.c",
+      "destination": "main/pic32_main.c",
+      "sha256": "b40c973da519e138e54d9c4540d7fa68f7225f1b2d31d335fe4bd9b536513a82",
+      "role": "legacy_entry_point",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/obdII/Include/usb_app.h",
+      "destination": "components/platform/include/usb_app.h",
+      "sha256": "4dae39c1e63deea3d0ba8181f40a1e7dcadb8eb1910883ac66e2b18b5ba35bc1",
+      "role": "legacy_transport_interface",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/obdII/Makefile",
+      "destination": "reference/pic32/Makefile",
+      "sha256": "53146f96b0dbcb33c79b9fe2845065ef2fde79ef854cfca18aab54b18f7e51f5",
+      "role": "legacy_build_reference",
+      "source_status": "M fw/obdII/Makefile"
+    },
+    {
+      "source": "fw/obdII-esp32s3/CMakeLists.txt",
+      "destination": "examples/hardware_test/CMakeLists.txt",
+      "sha256": "824133ec2d0993ca3056560f9d89ecef214031446e2df940a20f7a9b9f528938",
+      "role": "hardware_test_snapshot",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/obdII-esp32s3/sdkconfig.defaults",
+      "destination": "examples/hardware_test/sdkconfig.defaults",
+      "sha256": "7a96122d9a390657fef36ae4bc7bab6be1c892c026c89e1f1bda5ddcb859ae88",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/sdkconfig.defaults"
+    },
+    {
+      "source": "fw/obdII-esp32s3/.gitignore",
+      "destination": "examples/hardware_test/.gitignore",
+      "sha256": "c42cb27a9306e79aada19b1d8eabfd8ce72fc97a2f59e25da7c72ffff56a5b65",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/.gitignore"
+    },
+    {
+      "source": "fw/obdII-esp32s3/README.md",
+      "destination": "examples/hardware_test/README.md",
+      "sha256": "02d4e862225a6c2bcc79fdb5803ec40a8d224d0bf48b59aad321da03f8902eab",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/README.md"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/CMakeLists.txt",
+      "destination": "examples/hardware_test/main/CMakeLists.txt",
+      "sha256": "f9f4b5fb6d4db3483d37d2cf7e639eb494b3612cf7264158e563dbaadcab4479",
+      "role": "hardware_test_snapshot",
+      "source_status": "clean"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/hello_world.c",
+      "destination": "examples/hardware_test/main/hello_world.c",
+      "sha256": "58f6f8df1b2134629334e1e43901e897d35e9c3eb46fbbb1c620a2ef88ec0631",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/hello_world.c"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/internet_test.c",
+      "destination": "examples/hardware_test/main/internet_test.c",
+      "sha256": "cde261fdff2f54a75a54d83b8927e666900dd9a86e53254651d1f2b1c5628242",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/internet_test.c"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/internet_test.h",
+      "destination": "examples/hardware_test/main/internet_test.h",
+      "sha256": "83930b68ded885d69ea969d05f9bcf471e9d4011a90f5966d9f8a3f217537d44",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/internet_test.h"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/psram_test.c",
+      "destination": "examples/hardware_test/main/psram_test.c",
+      "sha256": "7c4e20181919ca2a17430af811e83f47307a9e63ab9cf473079ad43ce7bef67a",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/psram_test.c"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/psram_test.h",
+      "destination": "examples/hardware_test/main/psram_test.h",
+      "sha256": "ed39c4f3c46ac3ec48dd910c7e1ca9f9fb9a5f279acc6aa183cc1bba818f9db8",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/psram_test.h"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/sdcard_test.c",
+      "destination": "examples/hardware_test/main/sdcard_test.c",
+      "sha256": "0b5d2864c3046b8ca417390c39a20ad4a3607e83169d9e931fe3ad6af571d95b",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/sdcard_test.c"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/sdcard_test.h",
+      "destination": "examples/hardware_test/main/sdcard_test.h",
+      "sha256": "166b9ad9cdc7503bb5217825c0c18c382c2149a5f0ce13fcc865e13a56c49b65",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/sdcard_test.h"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/wifi_test.c",
+      "destination": "examples/hardware_test/main/wifi_test.c",
+      "sha256": "5492923ab4f7f2fce9aaa4c32480d8e11cf241651a437f43f357ac6c06aad89a",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/wifi_test.c"
+    },
+    {
+      "source": "fw/obdII-esp32s3/main/wifi_test.h",
+      "destination": "examples/hardware_test/main/wifi_test.h",
+      "sha256": "22a246d01fc529f50a8f3fb35772869732c96461f47f658f8a4da8eff2564983",
+      "role": "hardware_test_snapshot",
+      "source_status": "? fw/obdII-esp32s3/main/wifi_test.h"
+    },
+    {
+      "source": "fw/obdII-esp32s3/sdkconfig",
+      "destination": "examples/hardware_test/sdkconfig.reference",
+      "sha256": "bfc7bc10393fb16dc931ac85dca95598a6fee80db8544b86ce593ba86050bbfb",
+      "role": "hardware_test_configuration",
+      "source_status": "? fw/obdII-esp32s3/sdkconfig"
+    }
+  ]
+}
