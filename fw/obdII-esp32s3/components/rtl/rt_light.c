@@ -1,3 +1,9 @@
+/*********************************************************************
+ *
+ * Support for light real time system.
+ *
+ *********************************************************************/
+
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
 #include "esp_timer.h"
@@ -9,16 +15,6 @@
 #if CONFIG_GPTIMER_ISR_CACHE_SAFE
 #error "RTL service graph is not IRAM-safe; disable CONFIG_GPTIMER_ISR_CACHE_SAFE"
 #endif
-static gptimer_handle_t rtl_gptimer;
-static bool rtl_timer_running;
-static int hb_level = 1;
-static bool rtl_on_alarm(gptimer_handle_t, const gptimer_alarm_event_data_t *, void *);
-/*********************************************************************
- *
- * Support for light real time system.
- *
- *********************************************************************/
-
 
 #include "bt.h"
 
@@ -60,13 +56,18 @@ typedef struct rtl_svc {
 
 /* macros */
 /* turn heartbeat LED on */
-#define HB_LED_ON gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 0)
+#define	HB_LED_ON	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 0)
 /* turn heartbeat LED off */
-#define HB_LED_OFF gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 1)
+#define	HB_LED_OFF	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 1)
 /* toggle heartbeat LED */
-#define HB_LED_TOGGLE gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level ^= 1)
+#define	HB_LED_TOGGLE	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level ^= 1)
 
 /* local variables */
+/* ESP32-S3 timer and active-low heartbeat output state. */
+static gptimer_handle_t rtl_gptimer;
+static bool rtl_timer_running;
+static int hb_level = 1;
+
 /* heartbeat LED blinking mode */
 static unsigned char hb_mode;
 /* heartbeat LED period */
@@ -95,6 +96,9 @@ static struct rtl_istat_t {
 } rtl_istat[RTL_ISTAT_NUM];
 
 /* local functions */
+static bool rtl_on_alarm(gptimer_handle_t,
+    const gptimer_alarm_event_data_t *, void *);
+
 /*
  * Timer service routine.
  * Decrements currently active timers.
@@ -348,7 +352,9 @@ int
 rtl_init(void)
 {
 	int i;
-	if (xPortGetCoreID() != 1 || rtl_gptimer != NULL) return EINVAL;
+
+	if (xPortGetCoreID() != 1 || rtl_gptimer != NULL)
+		return EINVAL;
 
 	/* Init pool of timers - mark all timers as available */
 	for (i = 0; i < RTL_TIMER_POOL_SIZE; i++)
@@ -376,27 +382,37 @@ rtl_init(void)
 	rtl_istat[RTL_ISTAT_TIMER1].name = "GPTimer";
 	rtl_istat[RTL_ISTAT_TIMER1].num = 0;
 	rtl_istat[RTL_ISTAT_TIMER1].prlg_time = 0L;
-	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD;
+	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
 	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].nloops = 0L;
 
-    gptimer_config_t cfg = {
-        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
-        .direction = GPTIMER_COUNT_UP,
-        .resolution_hz = 1000000,
-        .intr_priority = 1,
-    };
-    gptimer_alarm_config_t alarm = {
-        .alarm_count = RTL_SERVICE_PERIOD,
-        .reload_count = 0,
-        .flags.auto_reload_on_alarm = true,
-    };
-    gptimer_event_callbacks_t callbacks = { .on_alarm = rtl_on_alarm };
-    ESP_ERROR_CHECK(gptimer_new_timer(&cfg, &rtl_gptimer));
-    ESP_ERROR_CHECK(gptimer_set_alarm_action(rtl_gptimer, &alarm));
-    ESP_ERROR_CHECK(gptimer_register_event_callbacks(rtl_gptimer, &callbacks, NULL));
-    ESP_ERROR_CHECK(gptimer_enable(rtl_gptimer));
+	/*
+	 * GPTimer used to generate interrupt for main service loop.
+	 * Main service loop is called every RTL_SERVICE_PERIOD us.
+	 * One timer tick is one microsecond.
+	 */
+	gptimer_config_t cfg = {
+		.clk_src = GPTIMER_CLK_SRC_DEFAULT,
+		.direction = GPTIMER_COUNT_UP,
+		.resolution_hz = 1000000,
+		/* set priority 1 */
+		.intr_priority = 1,
+	};
+	gptimer_alarm_config_t alarm = {
+		.alarm_count = RTL_SERVICE_PERIOD,
+		.reload_count = 0,
+		.flags.auto_reload_on_alarm = true,
+	};
+	gptimer_event_callbacks_t callbacks = { .on_alarm = rtl_on_alarm };
+
+	ESP_ERROR_CHECK(gptimer_new_timer(&cfg, &rtl_gptimer));
+	ESP_ERROR_CHECK(gptimer_set_alarm_action(rtl_gptimer, &alarm));
+	ESP_ERROR_CHECK(gptimer_register_event_callbacks(rtl_gptimer,
+	    &callbacks, NULL));
+
+	/* enable GPTimer interrupt */
+	ESP_ERROR_CHECK(gptimer_enable(rtl_gptimer));
 
 	return 0;
 }
@@ -407,12 +423,16 @@ rtl_init(void)
 int
 rtl_svc_handler_enable(void)
 {
-    if (!rtl_gptimer || xPortGetCoreID() != 1) return EINVAL;
-    if (!rtl_timer_running) {
-        ESP_ERROR_CHECK(gptimer_start(rtl_gptimer));
-        rtl_timer_running = true;
-    }
-    return 0;
+	if (rtl_gptimer == NULL || xPortGetCoreID() != 1)
+		return EINVAL;
+
+	/* Start GPTimer */
+	if (!rtl_timer_running) {
+		ESP_ERROR_CHECK(gptimer_start(rtl_gptimer));
+		rtl_timer_running = true;
+	}
+
+	return 0;
 }
 
 /*
@@ -421,12 +441,16 @@ rtl_svc_handler_enable(void)
 int
 rtl_svc_handler_disable(void)
 {
-    if (!rtl_gptimer || xPortGetCoreID() != 1) return EINVAL;
-    if (rtl_timer_running) {
-        ESP_ERROR_CHECK(gptimer_stop(rtl_gptimer));
-        rtl_timer_running = false;
-    }
-    return 0;
+	if (rtl_gptimer == NULL || xPortGetCoreID() != 1)
+		return EINVAL;
+
+	/* Stop GPTimer */
+	if (rtl_timer_running) {
+		ESP_ERROR_CHECK(gptimer_stop(rtl_gptimer));
+		rtl_timer_running = false;
+	}
+
+	return 0;
 }
 
 /*
@@ -445,7 +469,7 @@ rtl_svc_clear_kstats(void)
 
 	/* Interrupt kstats. */
 	rtl_istat[RTL_ISTAT_TIMER1].prlg_time = 0L;
-	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD;
+	rtl_istat[RTL_ISTAT_TIMER1].min_time = RTL_SERVICE_PERIOD * 1000L;
 	rtl_istat[RTL_ISTAT_TIMER1].max_time = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].missed = 0L;
 	rtl_istat[RTL_ISTAT_TIMER1].nloops = 0L;
@@ -480,7 +504,7 @@ rtl_svc_display_kstats(int (*print_str)(const char *))
 	}
 
 	print_str("---------------------------------------------------------\n\r");
-	print_str("IRQ# entry[us] min[us] max[us] overrun calls NAME\n\r");
+	print_str("IRQ# prlg[ticks] min[ticks] max[ticks] missed nloops NAME\n\r");
 	print_str("---------------------------------------------------------\n\r");
 
 	for (i = 0; i < RTL_ISTAT_NUM; i++) {
@@ -518,36 +542,122 @@ rtl_suspend(void)
 	return 0;
 }
 
-/* Runs on CPU1 in GPTimer interrupt context, preserving RTL service order.
- * No unbounded catch-up loop: an overrun is recorded rather than starving IDF.
- * This build only starts heartbeat; application services stay disabled until
- * their entire driver/call graph is verified for ISR use. */
+/*
+ * GPTimer interrupt handler
+ */
 static bool
-rtl_on_alarm(gptimer_handle_t timer, const gptimer_alarm_event_data_t *event, void *arg)
+rtl_on_alarm(gptimer_handle_t timer, const gptimer_alarm_event_data_t *event,
+    void *arg)
 {
-    (void)timer;
-    (void)arg;
-    int64_t started = esp_timer_get_time();
-    rtl_timer_svc();
-    rtl_heartbeat_svc();
-    BOOL diag = mon_is_diag_mode();
-    for (int i = 0; i < RTL_SVC_POOL_SIZE && rtl_pool_svcs[i].svc; ++i) {
-        rtl_svc_t *svc = &rtl_pool_svcs[i];
-        if (svc->enabled && (!diag || svc->run_in_diag)) {
-            int64_t before = esp_timer_get_time();
-            long offset = (long)(before - started);
-            svc->svc();
-            long duration = (long)(esp_timer_get_time() - before);
-            if (offset > svc->start_time) svc->start_time = offset;
-            if (duration > svc->svc_time) svc->svc_time = duration;
-            diag = mon_is_diag_mode();
-        }
-    }
-    unsigned long duration = (unsigned long)(esp_timer_get_time() - started);
-    if (duration < rtl_istat[0].min_time) rtl_istat[0].min_time = duration;
-    if (duration > rtl_istat[0].max_time) rtl_istat[0].max_time = duration;
-    if (event->count_value > rtl_istat[0].prlg_time) rtl_istat[0].prlg_time = event->count_value;
-    if (duration >= RTL_SERVICE_PERIOD) rtl_istat[0].missed++;
-    rtl_istat[0].nloops++;
-    return false;
+	int i;
+	unsigned long nloops = 0;
+	BOOL is_diag_mode;
+	long t;
+	int64_t timer_start = esp_timer_get_time() - (int64_t)event->count_value;
+
+	(void)timer;
+	(void)arg;
+
+	/* Record max time spent in interrupt prologue. */
+	t = (long)(esp_timer_get_time() - timer_start);
+	if (rtl_istat[RTL_ISTAT_TIMER1].prlg_time < t) {
+		rtl_istat[RTL_ISTAT_TIMER1].prlg_time = t;
+	}
+
+
+/*	LATBCLR = 1 << 12;	done in interrupt prolog (PIC32 only) */
+
+	/*
+	 * Loop in case of missed interrupt,
+	 * thus avoiding redundant context switch.
+	 * ESP32-S3: the driver acknowledges the alarm before this callback.
+	 * Further pending alarms are handled by subsequent callbacks, so
+	 * this loop has a single iteration on this platform.
+	 */
+	do {
+		/* clear timer interrupt flag - already done by GPTimer driver */
+
+		/* Count number of loops in this ISR. */
+		nloops++;
+
+		/* Handle timers */
+		rtl_timer_svc();
+		/* handle heartbeat LED */
+		rtl_heartbeat_svc();
+
+		is_diag_mode = mon_is_diag_mode();
+
+		/* Run enabled services */
+		for (i = 0; (i < RTL_SVC_POOL_SIZE) &&
+		    (rtl_pool_svcs[i].svc != NULL); i++) {
+			/*
+			 * If in diagnostic mode, make sure that particular
+			 * service should run in that mode.
+			 */
+			if (rtl_pool_svcs[i].enabled &&
+			    (!is_diag_mode || rtl_pool_svcs[i].run_in_diag)) {
+				long s, t;
+
+				/*
+				 * Record start time as well as
+				 * time spent in the service.
+				 */
+				s = (long)(esp_timer_get_time() - timer_start);
+
+				rtl_pool_svcs[i].svc();
+
+				t = (long)(esp_timer_get_time() - timer_start) - s;
+
+				/* Service may have switched us to diag mode. */
+				/* Update only if not running in diag mode. */
+				if (mon_is_diag_mode() || is_diag_mode) {
+					is_diag_mode = TRUE;
+					continue;
+				}
+
+				if (rtl_pool_svcs[i].start_time < s) {
+					rtl_pool_svcs[i].start_time = s;
+				}
+
+				if (rtl_pool_svcs[i].svc_time < t) {
+					rtl_pool_svcs[i].svc_time = t;
+				}
+			}
+		}
+
+		/*
+		 * Count missed interrupts and record time spent
+		 * in this handler, but only if not in diag mode.
+		 */
+		if (!is_diag_mode) {
+			unsigned long t = (unsigned long)(esp_timer_get_time() -
+			    timer_start);
+
+			if (rtl_istat[RTL_ISTAT_TIMER1].min_time > t) {
+				rtl_istat[RTL_ISTAT_TIMER1].min_time = t;
+			}
+
+			if (rtl_istat[RTL_ISTAT_TIMER1].max_time < t) {
+				rtl_istat[RTL_ISTAT_TIMER1].max_time = t;
+			}
+
+			if (t >= RTL_SERVICE_PERIOD &&
+			    rtl_istat[RTL_ISTAT_TIMER1].missed <
+			    0xffffffff) {
+				rtl_istat[RTL_ISTAT_TIMER1].missed++;
+			}
+		}
+	} while (FALSE);
+
+	/* Update max number of loops spent in this ISR. */
+	if (!is_diag_mode) {
+		if (rtl_istat[RTL_ISTAT_TIMER1].nloops < nloops) {
+			rtl_istat[RTL_ISTAT_TIMER1].nloops = nloops;
+		}
+	}
+
+	/* turn off LED indicating CPU load */
+	/* ESP32-S3: no CPU-load LED is configured. */
+
+	return false;
 }

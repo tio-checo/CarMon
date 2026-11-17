@@ -5,7 +5,7 @@
 #include "carmon_platform.h"
 
 static int core, gpio_level, call_order[32], calls, starts, stops;
-static bool running, diag;
+static bool running, diag, enter_diag, leave_diag;
 static int64_t now_us;
 static alarm_cb_t alarm_callback;
 int xPortGetCoreID(void) { return core; }
@@ -23,8 +23,9 @@ esp_err_t gptimer_start(gptimer_handle_t h) { assert(!running); running = true; 
 esp_err_t gptimer_stop(gptimer_handle_t h) { assert(running); running = false; ++stops; return 0; }
 static void tick(void)
 { assert(running); now_us += 500; gptimer_alarm_event_data_t e = {0}; assert(!alarm_callback((void *)1, &e, NULL)); }
-static int first(void) { call_order[calls++] = 1; return 0; }
-static int second(void) { call_order[calls++] = 2; return 0; }
+static int first(void) { call_order[calls++] = 1; if (enter_diag) diag = true; return 0; }
+static int second(void) { call_order[calls++] = 2; if (leave_diag) diag = false; return 0; }
+static int third(void) { call_order[calls++] = 3; return 0; }
 
 int main(void)
 {
@@ -51,6 +52,15 @@ int main(void)
     assert(calls == 1 && call_order[0] == 2);
     assert(rtl_svc_disable(b) == 0); calls = 0; tick(); assert(calls == 0);
     assert(rtl_svc_enable(b) == 0); tick(); assert(calls == 1);
+    /* Once entered, diagnostic filtering lasts until the end of this pass,
+     * even if another service leaves diagnostic mode in the same interrupt. */
+    assert(rtl_svc_init("third", third, TRUE, FALSE) == 2);
+    diag = false; enter_diag = true; leave_diag = true; calls = 0;
+    tick();
+    assert(calls == 2 && call_order[0] == 1 && call_order[1] == 2);
+    enter_diag = false; leave_diag = false; calls = 0;
+    tick();
+    assert(calls == 3 && call_order[2] == 3);
     rtl_hb_mode(HB_MODE_ON, 0, 0); tick(); assert(gpio_level == 0);
     rtl_hb_mode(HB_MODE_OFF, 0, 0); tick(); assert(gpio_level == 1);
     assert(rtl_suspend() == 0 && !running && stops == 1);

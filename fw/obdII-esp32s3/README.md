@@ -61,7 +61,8 @@ jej nenahradí. DMA diagnostický příkaz PIC32 je zatím odmítnut, softwarov�
 - `CONFIG_GPTIMER_ISR_CACHE_SAFE` musí zůstat vypnuté: celý aplikační řetězec
   zatím není v IRAM. Při nedostupné flash cache se přerušení může opozdit.
 - Obsluha obsahuje jeden průchod službami bez neomezené doháněcí smyčky.
-  Statistiky měří mikrosekundy, počet callbacků a překročení doby 500 µs.
+  Statistiky zachovávají původní význam: časy (tick = 1 µs), překročení
+  periody a maximální počet průchodů obsluhou (`nloops`, nyní nejvýše 1).
   Nejde o přesný čítač ztracených period. Softwarové časovače zatím odpočítávají
   callbacky; při opoždění se mohou prodloužit. Reálné latence je nutné změřit.
 - Zápis médií a blokující operace bude potřeba obsluhovat mimo ISR.
