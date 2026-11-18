@@ -38,6 +38,10 @@
 #include "master_comm.h"
 #include "mon.h"
 
+#ifdef MCOM_TCP_MODULE
+#include "tcp.h"
+#endif
+
 #ifdef OBD_MODULE
 #include "obd.h"
 #endif
@@ -128,6 +132,7 @@ static BOOL mcom_use_chsum;
 /* local functions */
 /* Quit the application, jump to bootloader. */
 static void mcom_jump_to_bootloader(void);
+static void mcom_reset(void);
 
 /*
  * Quit the application, jump to bootloader.
@@ -150,7 +155,11 @@ static int
 mcom_rx_st(void)
 {
 	unsigned char ch;
+#ifdef MCOM_TCP_MODULE
+	unsigned int budget = 64;
+#endif
 
+#ifndef MCOM_TCP_MODULE
 	/*
 	 * If the device has compiled in support for communication over
 	 * USB CDC ACM, then after power on USB CDC ACM is the default.
@@ -179,6 +188,7 @@ mcom_rx_st(void)
 		}
 	}
 
+#endif /* !MCOM_TCP_MODULE */
 	/*
 	 * Attempt to completely dry out HW receive buffer.
 	 * Cancel this initiative once the whole packet has been received.
@@ -187,6 +197,9 @@ mcom_rx_st(void)
 	 * received.
 	 */
 	while (!mcom_co.fl_packet_received &&
+#ifdef MCOM_TCP_MODULE
+	    budget-- != 0 &&
+#endif
 	    (mcom_co.getchar)(&ch) == 0) {
 
 		switch (mcom_st_rx) {
@@ -251,15 +264,22 @@ mcom_decode_packet(void)
 	int ret = 0;
 	int ln = mcom_co.rx_tail;
 
+	/* Empty frames must not reuse data left by the previous command. */
+	if (ln == 0) {
+		mcom_prepare_nak_response(&mcom_resp, MCOM_NAK_EINVAL);
+		return 1;
+	}
+
 	/*
 	 * Validate CRC checksum. <Pc...> packet is an exception, since
 	 * it serves as a helper to calculate CRC-CCITT checksum
 	 * for specified data.
 	 */
-	if (mcom_use_chsum && !(mcom_co.rx_buf[0] == MCOMM_PIC_ID &&
+	if (mcom_use_chsum && !(ln >= 2 &&
+	    mcom_co.rx_buf[0] == MCOMM_PIC_ID &&
 	    mcom_co.rx_buf[1] == MCOMM_PCORE_CMD_CALCCRC)) {
 		unsigned short crc;
-		unsigned short chsum = hex2ulong(mcom_co.rx_buf + ln - 4, 4);
+		unsigned short chsum;
 
 		/* Verify we have at least received CRC and some data. */
 		if (ln < 5) {
@@ -268,6 +288,8 @@ mcom_decode_packet(void)
 
 			return 1;
 		}
+
+		chsum = hex2ulong(mcom_co.rx_buf + ln - 4, 4);
 
 		/* Calculate checksum. */
 		crc = crc_calc_array(mcom_co.rx_buf, ln - 4, 0xffff);
@@ -287,10 +309,25 @@ mcom_decode_packet(void)
 	/* Discard the first character, since it is to be processed here. */
 	ln--;
 
+#ifdef MCOM_TCP_MODULE
+	/* Only core queries and restart are ready before peripheral porting. */
+	if (!carmon_platform_ready() &&
+	    mcom_co.rx_buf[0] != MCOMM_PIC_ID &&
+	    mcom_co.rx_buf[0] != MCOM_CMD_QUIT) {
+		mcom_prepare_nak_response(&mcom_resp, MCOM_NAK_UNKNOWN_IDCMD);
+		return 1;
+	}
+#endif
+
 	/* dispatch packet to appropriate handle routines based on module ID */
 	switch (mcom_co.rx_buf[0]) {
 	/* PIC core module */
 	case MCOMM_PIC_ID:
+		if (ln < 1) {
+			mcom_prepare_nak_response(&mcom_resp, MCOM_NAK_EINVAL);
+			ret = 1;
+			break;
+		}
 		err = pcore_process_query(&mcom_co.rx_buf[1], ln);
 
 		if (err != 0) {
@@ -917,11 +954,28 @@ mcom_svc(void)
 {
 	int	i;
 
+#ifdef MCOM_TCP_MODULE
+	if (tcp_session_changed()) {
+		mcom_reset();
+		pcore_reset();
+		tcp_session_ack();
+	}
+	if (!tcp_is_connected())
+		return 0;
+#endif
+
+#ifdef MCOM_TCP_MODULE
+	/* Serialize requests while a response still refers to module buffers. */
+	if (mcom_co.resp == NULL) {
+#endif
 	/* Receive packet from master */
 	mcom_rx_st();
 
 	/* Process a packet received from master. */
 	mcom_process_packet_st();
+#ifdef MCOM_TCP_MODULE
+	}
+#endif
 
 	/*
 	 * Transmit packet to master. Loop as long as transmitter
@@ -952,27 +1006,9 @@ mcom_suspend(void)
 	return tmp;
 }
 
-/*
- * Initialize module
- */
-int
-mcom_init(void)
+static void
+mcom_reset(void)
 {
-	/* Initialize main communication object */
-
-	/*
-	 * Methods for receiving and sending char from/to master.
-	 * Initially assume master is connected via USB CDC ACM
-	 * (if available).
-	 */
-#ifdef MCOM_USBACM_MODULE
-	mcom_co.getchar = usbsacm_getchar;
-	mcom_co.putchar = usbsacm_putchars;
-#else
-	mcom_co.getchar = bt_getchar_master;
-	mcom_co.putchar = bt_putchar;
-#endif
-
 	/* receive buffer */
 	/* rx buffer tail  */
 	mcom_co.rx_tail = 0;
@@ -997,6 +1033,33 @@ mcom_init(void)
 
 	/* Support for CRC checksum disabled by default. */
 	mcom_use_chsum = FALSE;
+}
+
+/*
+ * Initialize module
+ */
+int
+mcom_init(void)
+{
+	/* Initialize main communication object */
+
+	/*
+	 * Methods for receiving and sending char from/to master.
+	 * Initially assume master is connected via USB CDC ACM
+	 * (if available).
+	 */
+#ifdef MCOM_TCP_MODULE
+	mcom_co.getchar = tcp_getchar;
+	mcom_co.putchar = tcp_putchar;
+#elif defined(MCOM_USBACM_MODULE)
+	mcom_co.getchar = usbsacm_getchar;
+	mcom_co.putchar = usbsacm_putchars;
+#else
+	mcom_co.getchar = bt_getchar_master;
+	mcom_co.putchar = bt_putchar;
+#endif
+
+	mcom_reset();
 
 	/* Register service and enable it. */
 	rtl_svc_init("MasterCom", mcom_svc, TRUE, FALSE);

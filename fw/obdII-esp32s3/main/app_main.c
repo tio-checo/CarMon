@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "carmon_platform.h"
 #include "rt_light.h"
+#include "network.h"
 
 static void port_task(void *arg)
 {
@@ -21,6 +22,7 @@ static void port_task(void *arg)
     ESP_ERROR_CHECK(rtl_svc_handler_enable());
     ESP_LOGI("carmon", "Original RTL started on CPU%d: GPTimer period=%d us; D1=GPIO9", xPortGetCoreID(), RTL_SERVICE_PERIOD);
     ESP_LOGI("carmon", "No SD/EEPROM writes or vehicle-bus traffic; hardware-test project is in examples/hardware_test");
+    ESP_ERROR_CHECK(network_init());
     for (;;) {
         if (carmon_restart_requested()) {
             rtl_svc_handler_disable();

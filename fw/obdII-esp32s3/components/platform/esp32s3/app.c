@@ -19,7 +19,12 @@ int carmon_app_init(void)
 {
     /* Keep the application linked, but do not run it against placeholder drivers.
      * In particular cm_init() would try to create a log on an existing card. */
-    if (!carmon_platform_ready()) return ENOTSUP;
+    if (!carmon_platform_ready()) {
+        /* Start only the protocol services, with the RTL timer still stopped. */
+        mcom_init();
+        pcore_init();
+        return ENOTSUP;
+    }
     int err;
 #define INIT(call) do { err = (call); if (err != 0) return err; } while (0)
     INIT(bt_init());

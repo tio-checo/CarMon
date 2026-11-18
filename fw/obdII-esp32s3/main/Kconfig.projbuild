@@ -1,0 +1,26 @@
+menu "CarMon network"
+
+    config CARMON_WIFI_SSID
+        string "Wi-Fi station SSID"
+        default "UPC5254179"
+        help
+            Router or hotspot to connect to automatically after each reset.
+            The SSID must contain 1 to 32 bytes.
+
+    config CARMON_WIFI_PASSWORD
+        string "Wi-Fi station password"
+        default ""
+        help
+            WPA2/WPA3 passphrase containing 8 to 63 bytes. An empty or invalid
+            value leaves networking stopped and prints a configuration error.
+            This value is stored in sdkconfig and compiled into the firmware.
+            The Wi-Fi driver does not save another copy in NVS.
+
+    config CARMON_TCP_PORT
+        int "TCP server port"
+        range 1024 65535
+        default 3333
+        help
+            CarMon protocol connection for one client at a time.
+
+endmenu

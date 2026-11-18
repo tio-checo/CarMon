@@ -31,6 +31,9 @@ extern long pcore_gettime_time;
 /* Initialization routine. */
 extern int pcore_init(void);
 
+/* Reset pending protocol work from the RTL owner. */
+extern void pcore_reset(void);
+
 /* Processes query from master targeted to PIC core module */
 extern int pcore_process_query(char *, int);
 

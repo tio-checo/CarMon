@@ -1,5 +1,6 @@
 #include <string.h>
 #include "esp_timer.h"
+#include "carmon_platform.h"
 
 /* Owned here on ESP32-S3; the PIC32 monitor previously supplied this symbol. */
 long pcore_gettime_time;
@@ -149,7 +150,7 @@ pcore_svc(void)
 
 #ifdef PCF8563_MODULE
 	/* initialize time from RTC */
-	if (!pcore_time_initialized) {
+	if (!pcore_time_initialized && carmon_platform_ready()) {
 		switch (pcf8563_gettime(&newtm)) {
 		/* operation in progress */
 		case EAGAIN:
@@ -320,6 +321,15 @@ pcore_settime(char *td, int ln, BOOL update_hw_clock, BOOL update_sw_clock)
 	return 0;
 }
 
+/* Discard pending replies when the TCP client changes; called only by RTL. */
+void
+pcore_reset(void)
+{
+	fl_send_ack_nak = FALSE;
+	fl_send_data = FALSE;
+	pcore_st = PCORE_ST_IDLE;
+}
+
 /*
  * Initialization routine.
  */
@@ -329,6 +339,8 @@ pcore_init(void)
 	/* initialize communication data */
 	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
 	pcore_resp_data.id = MCOMM_PIC_ID;
+	fl_send_ack_nak = FALSE;
+	fl_send_data = FALSE;
 
 	/* initialize pcore state machine */
 	pcore_st = PCORE_ST_IDLE;
@@ -356,6 +368,21 @@ pcore_process_query(char *data, int ln)
 
 	/* Assume ACK/NAK will be sent to master */
 	fl_send_ack_nak = TRUE;
+
+#ifdef MCOM_TCP_MODULE
+	/* Peripheral-dependent core commands must wait for their drivers. */
+	if (!carmon_platform_ready() &&
+	    (data[0] == MCOMM_PCORE_CMD_GETTIME ||
+	    data[0] == MCOMM_PCORE_CMD_SETTIME ||
+	    data[0] == MCOMM_PCORE_CMD_GETEEPAR ||
+	    data[0] == MCOMM_PCORE_CMD_SETEEPAR ||
+	    data[0] == MCOMM_PCORE_CMD_READI2C ||
+	    data[0] == MCOMM_PCORE_CMD_WRITEI2C ||
+	    data[0] == MCOMM_PCORE_CMD_GETTEMP)) {
+		mcom_prepare_nak_response(&pcore_resp_ack_nak, MCOM_NAK_IO_ERROR);
+		return 0;
+	}
+#endif
 
 	/* Handle particular commands */
 	switch (data[0]) {
@@ -548,8 +575,8 @@ pcore_process_query(char *data, int ln)
 			 * Do some sanity checking.
 			 * At least one data byte is required.
 			 */
-			if ((data[1] != 's' && data[1] != 'd')
-			    || ln < 24 || (ln % 2 != 0)) {
+			if (ln < 24 || (ln % 2 != 0) ||
+			    (data[1] != 's' && data[1] != 'd')) {
 				err = MCOM_NAK_EINVAL;
 				break;
 			}

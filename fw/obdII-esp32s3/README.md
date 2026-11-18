@@ -1,6 +1,6 @@
 # OBD-II: port PIC32 na ESP32-S3
 
-První sestavitelná etapa portace pro **ESP32-S3-WROOM-1-N16R8**, ESP-IDF 5.5.1,
+Portace pro **ESP32-S3-WROOM-1-N16R8**, ESP-IDF 5.5.1,
 16MB flash, 8MB Octal PSRAM a interní USB Serial/JTAG konzoli.
 
 ## Sestavení
@@ -31,7 +31,86 @@ FreeRTOS zůstává systémovou součástí ESP-IDF.
 odděleně od aplikace, takže její inicializace se kontroluje při linkování,
 ale nespouští se nad nepřenesenými ovladači. Konzole tento stav výslovně vypíše.
 Neprobíhá komunikace s ECU ani zápisy do SD nebo EEPROM. TCAN330 je držený
-v silent/shutdown režimu. Wi-Fi ani staré hardwarové testy se automaticky nespouštějí.
+v silent/shutdown režimu. Samostatně se spouští Wi-Fi podle nastavení
+v menuconfig a TCP přenos původního protokolu. Staré hardwarové testy se automaticky nespouštějí.
+
+## Wi-Fi + TCP: protokol CarMon
+
+Modul pracuje jako stanice (STA), připojuje se k routeru a získá IPv4 adresu
+přes DHCP. Výchozí SSID je `UPC5254179`, TCP port `3333`. Vlastní přístupový
+bod nevytváří. Před prvním nahráním nastav v adresáři projektu:
+
+```bash
+idf.py menuconfig
+```
+
+V nabídce **CarMon network** vyplň **Wi-Fi station SSID** a **Wi-Fi station
+password**; případně změň **TCP server port**. Heslo musí mít 8 až 63 bajtů,
+SSID 1 až 32 bajtů. Výchozí heslo je prázdné: bez platného nastavení zůstane síť
+vypnutá a konzole vypíše pokyn k nastavení; RTL s heartbeat běží dál.
+
+Potom sestav a nahraj firmware:
+
+```bash
+idf.py build
+idf.py -p /dev/cu.usbmodem1301 flash monitor
+```
+
+Po každém zapnutí se modul automaticky připojuje; USB ani zadávání hesla
+nepotřebuje. Monitor je jen pro sledování logu. Změna sítě vyžaduje nové nastavení,
+sestavení a nahrání firmwaru.
+
+Heslo se nevypisuje do provozního logu, ale je uložené v lokálním `sdkconfig`
+a je součástí firmwaru. `sdkconfig` i `sdkconfig.old` jsou v `.gitignore`;
+skutečné heslo nepřidávej do verzovaného `sdkconfig.defaults`. Wi-Fi ovladač
+neukládá další kopii přihlašovacích údajů do NVS.
+
+Po připojení očekávej například následující zprávy; adresa závisí na DHCP:
+
+```text
+carmon_wifi: Connected: IP=192.168.0.132, gateway=192.168.0.1
+carmon_tcp: CarMon server listening on port 3333
+```
+
+Mac musí být ve stejné dostupné síti. V jiném terminálu spusť s aktuální IP:
+
+```bash
+nc 192.168.0.132 3333
+```
+
+Zadej `<PC00>` a Enter. Odpověď `<PA>` potvrzuje zpracování příkazu
+původním protokolem (vypnutí CRC). Samotný text se již nevrací jako echo.
+Paket `<X>` vrátí `<MN01>` (neznámý příkaz). Odpovědi nemají konec řádku.
+Server přijímá jednoho klienta; další spojení uzavře.
+
+TCP je proud bajtů: jeden paket může přijít po částech a jeden příjem může
+obsahovat více paketů. Při odpojení (včetně uzavření vysílací poloviny socketu)
+se relace ukončí; před odpojením tedy vyčkej na odpověď. Nové spojení začíná
+s prázdnými FIFO, resetovaným parserem a vypnutým CRC.
+
+`wifi.c` udržuje připojení, vypisuje přidělenou adresu a znovu se připojuje
+po výpadku. Každý pokus včetně DHCP má limit 30 s, prodleva mezi pokusy je
+nejméně 2 s. NVS se při chybě inicializace automaticky nemaže.
+
+`tcp.c` přesouvá bajty mezi socketem a dvěma FIFO, každé o velikosti
+1024 bajtů. `tcp_getchar()` a `tcp_putchar()` jsou neblokující: vracejí 0 při
+úspěchu a `EAGAIN` při prázdném RX nebo plném TX. Odpojený TX znaky zahazuje
+stejně jako původní `bt_putchar()`. Argument `block` se ignoruje.
+Indexy FIFO používají lock-free atomické operace pro předávání mezi CPU.
+Při plném RX se pozastaví čtení socketu; částečně odeslaná TX data se zachovají.
+
+**`mcom_svc()` i `pcore_svc()` nadále volá RTL z přerušení každých 500 µs
+na CPU1.** TCP ani Wi-Fi úloha je nevolá. TCP běží na CPU0 a kontroluje FIFO
+s timeoutem `select()` 10 ms. Při nové relaci nejprve počká na reset stavů
+potvrzený RTL, potom vyprázdní FIFO a zpřístupní spojení. Příjem v jednom
+průchodu `mcom_svc()` je omezen na 64 bajtů, stejně jako původní vysílání.
+
+Aktivní jsou konfigurace CRC (`PC`), softwarový výpočet CRC (`Pcs...`),
+neznámé příkazy s NAK a požadavek restartu (`q`). Příkazy CAN, OBD a loggeru
+zatím vrací NAK; neaktivují nepřenesené služby. Čtení/nastavení času, EEPROM,
+I²C a teplota zatím vrací `<PN04>`: vedle chybějících ovladačů je třeba
+vyřešit časové funkce libc, které nepatří do ISR. Délku ISR je nutné změřit
+na desce, zejména u dlouhých CRC paketů. `rt_light.c` zůstává beze změny.
 
 ## Stav částí portu
 
@@ -39,7 +118,9 @@ v silent/shutdown režimu. Wi-Fi ani staré hardwarové testy se automaticky nes
 | --- | --- |
 | Sestavení a vstup aplikace | ESP-IDF CMake, nový `app_main`, inicializace na CPU1 |
 | RTL | Přeneseno na GPTimer/GPIO, zachováno plánování v ISR; na desce zatím neověřeno |
-| CarMon, OBD, CAN snooping, master protocol | Překládají se; aplikační služby zatím nejsou spuštěné |
+| Wi-Fi + TCP | STA, SSID a heslo z menuconfig, DHCP, reconnect a jedno klientské spojení s protokolem CarMon; nový firmware zatím bez ověření na desce |
+| Master protocol, core | Běží pod RTL; přenos přes TCP FIFO, omezená sada příkazů |
+| CarMon, OBD, CAN snooping | Překládají se; aplikační služby zatím nejsou spuštěné |
 | RTC, EEPROM, LCD, GPS parser | Překládají se nad původním neblokujícím API; ovladače sběrnic chybějí |
 | CAN/TWAI včetně transportu OBD | Původní `can_hal.c` zatím mimo sestavení; API vrací `ENOTSUP` |
 | I²C, GPS UART, externí BTM-112 | Zatím `ENOTSUP`; původní PIC32 ovladače zůstávají uložené |
@@ -75,6 +156,9 @@ jej nenahradí. DMA diagnostický příkaz PIC32 je zatím odmítnut, softwarov�
 `components/carmon/CMakeLists.txt` nyní sdružuje přenášené zdroje do jedné
 komponenty kvůli jejich vzájemným závislostem. Zdrojové adresáře `rtl`,
 `communication`, `storage`, `devices` a `platform` zůstávají oddělené.
+`communication/wifi.c` a `communication/tcp.c` poskytují síťové rozhraní;
+jejich veřejné hlavičky jsou v `communication/include/`. Spuštění síťového transportu
+s údaji z menuconfig je oddělené v `main/network.c`.
 Původní `main/pic32_main.c`, PIC32 ovladače a staré testovací soubory v `main/`
 nejsou v seznamu překladu. Aktivní vstup je `main/app_main.c`.
 
@@ -104,6 +188,17 @@ výběr CPU a konfiguraci alarmu. Neověřuje skutečnou latenci přerušení.
 Test CRC obsahuje standardní vektory a nezávislou bitovou referenci pro délky
 používané EEPROM a sektory DLFS. Shodu s původním PIC32 DMA nad skutečným
 obsahem EEPROM je ještě potřeba ověřit na uložených datech.
+
+Síťové testy překládají produkční `wifi.c`, `tcp.c` a `main/network.c` proti
+náhradám API ESP-IDF. Ověřují obnovu spojení, DHCP timeout, úklid při chybě
+inicializace a generační čítač spojení. TCP test používá skutečné localhost
+sockety a vynucuje částečné odeslání i `EAGAIN`; kontroluje skutečné rámce master protokolu, FIFO wrap, CRC, krátké chybné
+pakety, odmítnutí druhého klienta a reset rozpracované RX/TX relace.
+Stavové automaty v testu volá samostatné vlákno simulující periodické RTL;
+neověřuje skutečnou latenci přerušení na ESP32-S3.
+Test inicializace ověřuje předání údajů z konfigurace, start bez USB vstupu
+a zpracování chyb. Nejde o simulaci rádia ani DHCP serveru; tyto části je
+nutné ověřit na desce. Hostitelský TCP test potřebuje povolené lokální sockety.
 
 ## Původ
 
