@@ -7,6 +7,7 @@
 #include "esp_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "i2c_test.h"
 #include "sdcard_test.h"
 #include "wifi_test.h"
 
@@ -45,6 +46,7 @@ void app_main(void)
     printf("Flash: %" PRIu32 " MB\n", flash_size / (1024U * 1024U));
     printf("D1: GPIO9, active LOW, 500 ms ON / 500 ms OFF\n");
 
+    i2c_test_run();
     sdcard_run_test();
     wifi_test_start();
 

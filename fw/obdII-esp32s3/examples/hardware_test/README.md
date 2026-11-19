@@ -8,11 +8,11 @@ Není potřeba externí převodník USB/UART.
 
 ```bash
 source ~/.espressif/tools/activate_idf_v5.5.1.sh
-cd ~/projects/CarMon/fw/obdII-esp32s3
+cd ~/projects/CarMon/fw/obdII-esp32s3/examples/hardware_test
 idf.py build
 ```
 
-Cíl ESP32-S3, 16MB flash a USB konzole jsou nastaveny v `sdkconfig.defaults`.
+Cíl ESP32-S3, 16MB flash, 1500KiB aplikační oddíl a USB konzole jsou nastaveny v `sdkconfig.defaults`.
 Pokud změníš tyto výchozí hodnoty poté, co již vznikl `sdkconfig`, uprav také
 konfiguraci přes `idf.py menuconfig`; defaults existující nastavení nepřepisují.
 
@@ -51,7 +51,43 @@ základní běh FreeRTOS a výstup přes interní USB.
 
 8MB Octal PSRAM na 40 MHz zůstává zapnutá pro běžné použití aplikací.
 Vlastní test se šesti paměťovými vzory i bootovací test ESP-IDF jsou vypnuté.
-Po startu se rovnou provede test SD karty a pak začne blikat D1.
+Po startu se provede test I²C, potom SD karty a pak začne blikat D1.
+
+## Test I²C: EEPROM a RTC
+
+Test používá SDA na GPIO2, SCL na GPIO1, externí pull-up rezistory a 100 kHz.
+Spustí se jednou před SD a Wi-Fi; není potřeba zadávat heslo.
+Nejprve vypíše odpovídající 7bitové adresy v rozsahu 0x08–0x77.
+
+- **M24C02, 0x54** (podle původního ovladače): při prvním pokusu zapíše
+  do každé adresy 0x00–0xFF právě jeden bajt s hodnotou této adresy.
+  Potom přečte všech 256 bajtů dvakrát, porovná obě kopie i očekávaný vzor
+  a vypíše obsah hexadecimálně, po 16 bajtech na řádek.
+- **PCF8563, 0x51**: dvakrát přečte řídicí a kalendářní registry
+  s odstupem 1,2 sekundy a zkontroluje postup sekund.
+
+**Zápis přepíše celý původní obsah EEPROM.** Před prvním zápisem se do NVS
+ve flash ESP32 uloží příznak `hw_test/eep_addr_once`. Při dalších startech
+se již do EEPROM nezapisuje, pouze se čte a ověřuje adresní vzor.
+Zápisy se neopakují ani po chybě nebo resetu během testu: příznak znamená
+zahájený pokus, nikoli úspěšné dokončení. Test NVS při chybě nemaže.
+Ochrana platí, dokud příznak zůstane zachovaný; smazání NVS nebo celé flash
+umožní nový pokus. Po každém bajtovém zápisu se čeká na dokončení interního
+cyklu (bez opakování datového zápisu).
+
+`EEPROM PASS` a `RTC PASS` potvrzují komunikaci; `RTC TICK PASS` také
+postup sekund. `VL=1` znamená nespolehlivý čas po nízkém napájení,
+`STOP=1` zastavené hodiny. Při úvodním I²C testu se tyto stavy pouze vypíší.
+Po připojení Wi-Fi a úspěšném NTP se RTC nastaví podle popisu níže. Rok je zobrazen dvouciferně a stoletní bit samostatně.
+Test nepředpokládá, že dosud nenastavený kalendář obsahuje platný čas.
+
+Tyto obvody neposkytují identifikátor typu: ACK a čtení registrů samy
+neprokazují model čipu. Test s adresním vzorem ověřuje zápis a čtení 256 bajtů,
+nikoli dlouhodobou retenci nebo životnost paměti. Při jiném zapojení adresních
+vstupů EEPROM je třeba upravit `I2C_TEST_EEPROM_ADDR` v `main/i2c_test.c` (0x50–0x57);
+0x51 je již obsazena RTC a zařízení nesmí sdílet stejnou adresu.
+Pro zopakování čtení a ověření stačí reset; zápis se neopakuje.
+Při chybě I²C ostatní testy pokračují.
 
 ## Test microSD
 
@@ -127,10 +163,25 @@ Systémová událostní úloha `sys_evt` má nastaveno 4096 bajtů zásobníku.
 
 Po každém úspěšném Wi-Fi připojení se jednou provede:
 
-1. DNS překlad `dl.espressif.com`.
-2. Synchronizace hodin přes `pool.ntp.org`, s čekáním nejvýše 15 sekund.
-3. HTTPS GET malého testovacího souboru používaného v příkladu Espressifu:
+1. Synchronizace systémových hodin přes `pool.ntp.org`, nejvýše 15 sekund.
+2. Zápis systémového času v UTC do PCF8563 a ověření zpětným čtením.
+3. DNS překlad `dl.espressif.com`.
+4. HTTPS GET malého testovacího souboru používaného v příkladu Espressifu:
    `https://dl.espressif.com/dl/esp-idf/ci/esp_http_client_demo.txt`.
+
+RTC ukládá **UTC**, bez posunu na český čas nebo letní čas. Po úspěšném
+NTP se zapíše datum, čas a den týdne; podporovány jsou roky 2000–2099
+se stoletním bitem C=0. Při zápisu se krátce zastaví čítače, ověří všech
+sedm kalendářních registrů a hodiny se opět spustí v normálním režimu.
+Následně se ověří VL=0 a postup sekund. Výsledek označuje `RTC SET PASS`
+s nastavovaným časem v UTC, nebo `RTC SET FAIL` s důvodem chyby.
+Alarm, časovač a nastavení CLKOUT se nemění. Při selhání zápisu se program
+pokusí hodiny znovu spustit, ale platnost částečně zapsaného času nezaručuje.
+
+Pokud NTP selže, do RTC se nezapisuje. Nastavení RTC probíhá před DNS/HTTPS,
+aby nezáviselo na dostupnosti HTTPS serveru. Chyba RTC nezastaví test HTTPS;
+jeho `INTERNET PASS` nepotvrzuje úspěšné nastavení RTC.
+Synchronizace se provede jednou po každém připojení Wi-Fi, ne periodicky.
 
 HTTPS používá certifikační balík ESP-IDF a ověřuje řetězec, jméno serveru
 i platnost certifikátu v čase. Časové kontroly jsou výslovně zapnuté pomocí

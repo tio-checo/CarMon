@@ -1,4 +1,5 @@
 #include "internet_test.h"
+#include "i2c_test.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -24,22 +25,6 @@ static esp_err_t count_response(esp_http_client_event_t *event)
 
 bool internet_run_test(void)
 {
-    printf("Internet: resolving %s...\n", TEST_HOST);
-    const struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
-    struct addrinfo *address = NULL;
-    const int dns_result = getaddrinfo(TEST_HOST, "443", &hints, &address);
-    if (dns_result != 0 || address == NULL) {
-        printf("INTERNET FAIL: DNS lookup failed (code=%d).\n", dns_result);
-        if (address != NULL) freeaddrinfo(address);
-        return false;
-    }
-    char ip[INET_ADDRSTRLEN];
-    const struct sockaddr_in *ipv4 = (const struct sockaddr_in *)address->ai_addr;
-    const char *formatted_ip = inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
-    printf("Internet DNS PASS: %s -> %s\n", TEST_HOST,
-           formatted_ip != NULL ? formatted_ip : "IPv4 resolved");
-    freeaddrinfo(address);
-
     /* Certificate expiry checks need a valid clock after a cold start. */
     printf("Internet: synchronizing time via pool.ntp.org (up to 15 seconds)...\n");
     const esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
@@ -62,6 +47,25 @@ bool internet_run_test(void)
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S UTC", &utc);
     printf("Internet TIME PASS: %s\n", timestamp);
+
+	/* RTC synchronization does not depend on the HTTPS server. */
+	(void) i2c_test_rtc_set_time();
+
+    printf("Internet: resolving %s...\n", TEST_HOST);
+    const struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
+    struct addrinfo *address = NULL;
+    const int dns_result = getaddrinfo(TEST_HOST, "443", &hints, &address);
+    if (dns_result != 0 || address == NULL) {
+        printf("INTERNET FAIL: DNS lookup failed (code=%d).\n", dns_result);
+        if (address != NULL) freeaddrinfo(address);
+        return false;
+    }
+    char ip[INET_ADDRSTRLEN];
+    const struct sockaddr_in *ipv4 = (const struct sockaddr_in *)address->ai_addr;
+    const char *formatted_ip = inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
+    printf("Internet DNS PASS: %s -> %s\n", TEST_HOST,
+           formatted_ip != NULL ? formatted_ip : "IPv4 resolved");
+    freeaddrinfo(address);
 
     size_t received = 0;
     const esp_http_client_config_t config = {
