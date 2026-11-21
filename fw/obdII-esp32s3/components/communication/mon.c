@@ -4,9 +4,11 @@
  *
  *********************************************************************/
 
+#include "GenericTypeDefs.h"
+
+#ifndef MCOM_TCP_MODULE
 #include "xc.h"
 #include "HardwareProfile/HardwareProfile.h"
-#include "GenericTypeDefs.h"
 #include "peripheral/uart.h"
 
 #include "SD-SPI.h"
@@ -17,8 +19,16 @@
 #include "usb_device.h"
 
 #include "bt.h"
+#endif /* MCOM_TCP_MODULE */
+
 #include "mon.h"
 #include "utils.h"
+
+#ifdef MCOM_TCP_MODULE
+#include "tcp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif /* MCOM_TCP_MODULE */
 
 #ifdef MCOM_USBACM_MODULE
 #include "usb_app.h"
@@ -56,6 +66,7 @@ typedef struct mon_map_st2menu {
 	int		(*h)(unsigned char);	/* handler */
 } mon_map_st2menu_t;
 
+#ifndef MCOM_TCP_MODULE
 /* external variables */
 extern USB_VOLATILE long USBIntNum;
 extern USB_VOLATILE long USBIntSofNum;
@@ -63,19 +74,22 @@ extern USB_VOLATILE long USBIntStallNum;
 extern USB_VOLATILE long USBIntErrNum;
 extern USB_VOLATILE long USBIntTrNum;
 extern USB_VOLATILE long USBEP0Service;
+#endif /* MCOM_TCP_MODULE */
 
 /* external functions */
 /* print information about memory allocation requests */
 extern int print_alloc_requests(int (*printstr)());
 /* global variables */
 /* used to measure time spent in various functions. */
-long pcore_gettime_time;
+extern long pcore_gettime_time;
 
 /* local functions */
 /* Handler for main menu. */
 static int mon_main_menu(unsigned char);
+#ifndef MCOM_TCP_MODULE
 /* Handler for SD card menu. */
 static int mon_sd_menu(unsigned char);
+#endif /* MCOM_TCP_MODULE */
 
 /* state machine states */
 enum mon_st_menu_t {
@@ -89,6 +103,13 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
 /* prompt */
 #define MON_DIAG_PROMPT "> "
 /* main menu */
+#ifdef MCOM_TCP_MODULE
+#define MON_DIAG_MAIN_MENU \
+    "------------------------\n\r" \
+    "[e] Dump EEPROM\n\r" \
+    "[0] Quit diagnostic mode\n\r" \
+    "------------------------\n\r"
+#else
 #define MON_DIAG_MAIN_MENU \
     "------------------------\n\r" \
     "[1] SD card\n\r" \
@@ -109,7 +130,9 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "[p] Function profiler\n\r" \
     "[0] Quit diagnostic mode\n\r" \
     "------------------------\n\r"
+#endif /* MCOM_TCP_MODULE */
 
+#ifndef MCOM_TCP_MODULE
 /* SD card submenu */
 #ifdef FAT_MODULE
 #define MON_DIAG_SD_MENU \
@@ -137,13 +160,18 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
 #else
 #error "No monitor menu defined for SD card."
 #endif
+#endif /* MCOM_TCP_MODULE */
 
 /* Association between state, menu and handler */
 static mon_map_st2menu_t mon_st2menu_map[] = {
     {"", NULL},
     {"", NULL},
     {MON_DIAG_MAIN_MENU, mon_main_menu},
+#ifndef MCOM_TCP_MODULE
     {MON_DIAG_SD_MENU, mon_sd_menu},
+#else
+    {"", NULL},
+#endif
     {"", NULL}};
 
 /* bluetooth menu - NOT USED for now */
@@ -163,10 +191,17 @@ static const char *mon_diag_memory_menu = {
 */
 
 /* local variables */
+#ifdef MCOM_TCP_MODULE
+/* Preserve the first output error until diagnostic mode is restarted. */
+static int mon_tx_error;
+#endif
+
 /* TRUE if running in diagnostic mode */
 static BOOL mon_diag_mode_enabled;
+#ifndef MCOM_TCP_MODULE
 /* original communication speed of diagnostic communication port */
 static int mon_old_speed;
+#endif
 /* state of main state machine */
 static int mon_st;
 /* diagnostic mode */
@@ -180,6 +215,11 @@ static unsigned char mon_diag_mode;
 static int
 mon_getchar(unsigned char *ch, BOOL block)
 {
+#ifdef MCOM_TCP_MODULE
+	(void)block;
+
+	return (tcp_getchar(ch));
+#else
 	unsigned char dummy;
 
 #ifdef MCOM_USBACM_MODULE
@@ -221,15 +261,61 @@ mon_getchar(unsigned char *ch, BOOL block)
 	}
 
 	return 0;
+#endif /* MCOM_TCP_MODULE */
 }
 
 /*
- * Sends character to diagnostic communication port.
- * Wait until transmission of character is done.
+ * Send a character to the diagnostic communication port.
+ * TCP waits at most one second for FIFO space, yielding the CPU.
+ * Success means queued for transmission, not received by the peer.
  */
 static int
 mon_putchar(unsigned char ch)
 {
+#ifdef MCOM_TCP_MODULE
+	TickType_t start;
+	int err;
+
+	if (mon_tx_error != 0) {
+		return (mon_tx_error);
+	}
+
+	start = xTaskGetTickCount();
+
+	for (;;) {
+		if (!tcp_is_connected() || tcp_session_changed()) {
+			err = ENOTCONN;
+			break;
+		}
+
+		err = tcp_putchar(ch, FALSE);
+
+		/* tcp_putchar() also returns zero when disconnected. */
+		if (!tcp_is_connected() || tcp_session_changed()) {
+			err = ENOTCONN;
+			break;
+		}
+
+		if (err == 0) {
+			return (0);
+		}
+
+		if (err != EAGAIN) {
+			break;
+		}
+
+		if ((TickType_t)(xTaskGetTickCount() - start) >=
+		    pdMS_TO_TICKS(1000)) {
+			err = ETIMEDOUT;
+			break;
+		}
+
+		vTaskDelay(1);
+	}
+
+	mon_tx_error = err;
+	return (err);
+#else /* MCOM_TCP_MODULE */
 	unsigned char echo;
  
 #ifdef MCOM_USBACM_MODULE
@@ -261,6 +347,7 @@ mon_putchar(unsigned char ch)
 	}
 
 	return 0;
+#endif /* MCOM_TCP_MODULE */
 }
 
 /*
@@ -269,15 +356,19 @@ mon_putchar(unsigned char ch)
 static int
 mon_print_str(const char *str)
 {
-	int i;
+	int i, err;
 
-	for (i = 0; str[i] != '\0'; i++)
-		mon_putchar(str[i]);
+	for (i = 0; str[i] != '\0'; i++) {
+		err = mon_putchar(str[i]);
+		if (err != 0) {
+			return (err);
+		}
+	}
 
-	return 0;
+	return (0);
 }
 
-#ifdef FAT_MODULE
+#if defined(FAT_MODULE) && !defined(MCOM_TCP_MODULE)
 /*
  * Prints information about directory or file.
  */
@@ -309,8 +400,9 @@ mon_print_finfo(SearchRec *rec)
 
 	return 0;
 }
-#endif /* FAT_MODULE */
+#endif /* FAT_MODULE && !MCOM_TCP_MODULE */
 
+#ifndef MCOM_TCP_MODULE
 /*
  * Sets communication speed (baudrate). Returns previous value.
  */
@@ -323,6 +415,7 @@ mon_set_comm_speed(int speed)
 
 	return old_speed;
 }
+#endif /* MCOM_TCP_MODULE */
 
 /*
  * Handler for main menu.
@@ -333,12 +426,14 @@ mon_main_menu(unsigned char ch)
 {
 	int next_st = MON_ST_MAIN;
 
+#ifndef MCOM_TCP_MODULE
 	time_t t;
 	char *tstr;
 	struct tm newtm;
 	struct timeval newtv;
 
 	char str[81];
+#endif /*  MCOM_TCP_MODULE */
 
 	/* Process input */
 	switch (ch) {
@@ -348,6 +443,7 @@ mon_main_menu(unsigned char ch)
 		next_st = -1;
 		break;
 
+#ifndef  MCOM_TCP_MODULE
 	/* SD card */
 	case '1':
 		next_st = MON_ST_SD_CARD;
@@ -523,6 +619,7 @@ mon_main_menu(unsigned char ch)
 		mon_print_str("GPS not available\r\n");
 #endif
 		break;
+#endif /*  MCOM_TCP_MODULE */
 
 	/* EEPROM */
 	case 'e':
@@ -533,6 +630,7 @@ mon_main_menu(unsigned char ch)
 #endif
 		break;
 
+#ifndef  MCOM_TCP_MODULE
 	/* Function profiler. */
 	case 'p':
 		snprintf(str, sizeof (str), "pcore_gettime(): %ld\r\n",
@@ -560,6 +658,7 @@ mon_main_menu(unsigned char ch)
 		print_alloc_requests(mon_print_str);
 		break;
 #endif
+#endif /* MCOM_TCP_MODULE */
 
 	/* Unknown input */
 	default:
@@ -569,6 +668,7 @@ mon_main_menu(unsigned char ch)
 	return next_st;
 }
 
+#ifndef MCOM_TCP_MODULE
 /*
  * Handler for SD card submenu.
  *
@@ -866,6 +966,7 @@ mon_sd_menu(unsigned char ch)
 
 	return next_st;
 }
+#endif /* MCOM_TCP_MODULE */
 
 /* public functions */
 
@@ -877,6 +978,14 @@ mon_svc(void)
 {
 	unsigned char ch;
 	int next;
+
+#ifdef MCOM_TCP_MODULE
+	/* Stop diagnostic mode after a failed output operation. */
+	if (mon_tx_error != 0) {
+		(void)mon_diag_leave();
+		return (mon_tx_error);
+	}
+#endif
 
 	/*
 	 * Diagnostic mode just entered, display main menu
@@ -903,6 +1012,7 @@ mon_svc(void)
 	case MON_ST_IDLE:
 		break;
 
+#if 0
 	/*
 	 * Diagnose Bluetooth module. For now just forward characters between
 	 * Bluetooth module and diagnostic port.
@@ -946,6 +1056,7 @@ mon_svc(void)
 		mon_print_str(MON_DIAG_PROMPT);
 
 		} break;
+#endif /* 0 */
 
 	default:
 		/* Handle current menu */
@@ -993,8 +1104,12 @@ int
 mon_init(void)
 {
 	mon_st = MON_ST_IDLE;
+	mon_diag_mode_enabled = FALSE;
 
-	return 0;
+#ifdef MCOM_TCP_MODULE
+	mon_tx_error = 0;
+#endif
+	return (0);
 }
 
 /*
@@ -1003,28 +1118,38 @@ mon_init(void)
 int
 mon_diag_enter(unsigned char mode)
 {
-	/* Validate the input */
+	/* Validate the input before changing the monitor state. */
+#ifdef MCOM_TCP_MODULE
+	if (mode != MON_DIAG_MODE_TCP)
+		return (EINVAL);
+#else
 	if ((mode != MON_DIAG_MODE_BT) &&
 	    (mode != MON_DIAG_MODE_SER) &&
 	    (mode != MON_DIAG_MODE_USB)) {
-		return EINVAL;
+		return (EINVAL);
 	}
+#endif
 
 	mon_diag_mode = mode;
 
+#ifdef MCOM_TCP_MODULE
+	mon_tx_error = 0;
+#endif
 	mon_diag_mode_enabled = TRUE;
 
 	/* Wake up state machine. */
 	mon_st = MON_ST_ENTER;
 
+#ifndef MCOM_TCP_MODULE
 	/*
 	 * If communicating over UART, set communication speed
 	 * and save the original one.
 	 */
 	if (mode == MON_DIAG_MODE_SER)
 		mon_old_speed = mon_set_comm_speed(115200);
+#endif
 
-	return 0;
+	return (0);
 }
 
 /*
@@ -1038,6 +1163,7 @@ mon_diag_leave(void)
 	/* Switch state machine to idle mode. */
 	mon_st = MON_ST_IDLE;
 
+#ifndef MCOM_TCP_MODULE
 	if (mon_diag_mode != MON_DIAG_MODE_SER)
 		return 0;
 
@@ -1046,8 +1172,9 @@ mon_diag_leave(void)
 	 * to previous value.
 	 */
 	mon_set_comm_speed(mon_old_speed);
+#endif
 
-	return 0;
+	return (0);
 }
 
 /*

@@ -2,7 +2,7 @@
 # while replacing the hardware backends, rather than introducing circular IDF dependencies.
 idf_component_register(
     SRCS "carmon.c" "obd.c" "can_snoop.c"
-         "../communication/master_comm.c"
+         "../communication/master_comm.c" "../communication/mon.c"
          "../communication/wifi.c" "../communication/tcp.c"
          "../devices/ee24.c" "../devices/pcf8563.c" "../devices/lcd_term.c" "../devices/gps.c"
          "../storage/dlfs.c" "../rtl/rt_light.c"

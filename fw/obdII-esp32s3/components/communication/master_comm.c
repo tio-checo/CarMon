@@ -313,7 +313,8 @@ mcom_decode_packet(void)
 	/* Only core queries and restart are ready before peripheral porting. */
 	if (!carmon_platform_ready() &&
 	    mcom_co.rx_buf[0] != MCOMM_PIC_ID &&
-	    mcom_co.rx_buf[0] != MCOM_CMD_QUIT) {
+	    mcom_co.rx_buf[0] != MCOM_CMD_QUIT &&
+	    mcom_co.rx_buf[0] != MCOM_CMD_DIAG_MODE) {
 		mcom_prepare_nak_response(&mcom_resp, MCOM_NAK_UNKNOWN_IDCMD);
 		return 1;
 	}
@@ -956,12 +957,28 @@ mcom_svc(void)
 
 #ifdef MCOM_TCP_MODULE
 	if (tcp_session_changed()) {
+		/* A new connection starts in normal protocol mode. */
+		if (mon_is_diag_mode()) {
+			(void)mon_diag_leave();
+		}
+
 		mcom_reset();
 		pcore_reset();
 		tcp_session_ack();
 	}
-	if (!tcp_is_connected())
-		return 0;
+
+	if (!tcp_is_connected()) {
+		if (mon_is_diag_mode()) {
+			(void)mon_diag_leave();
+		}
+
+		return (0);
+	}
+
+	/* Only the monitor may consume input in diagnostic mode. */
+	if (mon_is_diag_mode()) {
+		return (mon_svc());
+	}
 #endif
 
 #ifdef MCOM_TCP_MODULE

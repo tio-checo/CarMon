@@ -33,6 +33,7 @@ carmon_app_init(void)
 	 */
 	INIT(i2c_init());
 	INIT(ee24_init());
+	INIT(mon_init());
 
 	if (!carmon_platform_ready()) {
 		/*
@@ -54,7 +55,6 @@ carmon_app_init(void)
 	INIT(can_init());
 	INIT(obd_init());
 	INIT(mcom_init());
-	INIT(mon_init());
 	INIT(pcore_init());
 	INIT(uapp_init());
 	INIT(dlfs_init());

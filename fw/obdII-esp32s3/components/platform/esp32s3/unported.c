@@ -33,11 +33,13 @@ int bt_getchar_master(unsigned char *c) { return ENOTSUP; }
 BOOL bt_is_paired(void) { return FALSE; }
 BOOL bt_is_paired_with_gps(void) { return FALSE; }
 BOOL bt_is_paired_with_master(void) { return FALSE; }
+/*
 int mon_init(void) { return ENOTSUP; }
 int mon_svc(void) { return ENOTSUP; }
 int mon_diag_enter(unsigned char c) { return ENOTSUP; }
 int mon_diag_leave(void) { return ENOTSUP; }
 BOOL mon_is_diag_mode(void) { return FALSE; }
+*/
 int uapp_init(void) { return ENOTSUP; }
 int uapp_svc(void) { return ENOTSUP; }
 int usbsacm_getchar(unsigned char *c) { return ENOTSUP; }
