@@ -25,6 +25,9 @@ pooly služeb a softwarových časovačů, jejich původní pořadí a heartbeat
 Při startu se vytvoří úloha připnutá na CPU1. Ta inicializuje GPTimer s krokem
 1 µs a periodickým přerušením po 500 µs. Obsluha RTL běží přímo v přerušení,
 nikoliv jako FreeRTOS úloha. D1 na GPIO9 používá původní heartbeat RTL.
+Ve stejném rytmu svítí zelená LED na GPIO10; červená LED na GPIO11
+zůstává zhasnutá. Obě externí LED jsou aktivní v logické jedničce,
+zatímco D1 je aktivní v nule.
 FreeRTOS zůstává systémovou součástí ESP-IDF.
 
 **Celá OBD aplikace se zatím nespouští.** `carmon_platform_ready()` vrací false

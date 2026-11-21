@@ -56,11 +56,11 @@ typedef struct rtl_svc {
 
 /* macros */
 /* turn heartbeat LED on */
-#define	HB_LED_ON	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 0)
+#define	HB_LED_ON	rtl_hb_set_level(0)
 /* turn heartbeat LED off */
-#define	HB_LED_OFF	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level = 1)
+#define	HB_LED_OFF	rtl_hb_set_level(1)
 /* toggle heartbeat LED */
-#define	HB_LED_TOGGLE	gpio_set_level(CARMON_GPIO_HEARTBEAT, hb_level ^= 1)
+#define	HB_LED_TOGGLE	rtl_hb_set_level(hb_level ^ 1)
 
 /* local variables */
 /* ESP32-S3 timer and active-low heartbeat output state. */
@@ -118,6 +118,19 @@ rtl_timer_svc(void)
 	}
 
 	return	0;
+}
+
+/*
+ * Mirror active-low D1 onto the active-high green LED.
+ * Keep the red LED off, including in warning modes.
+ */
+static void
+rtl_hb_set_level(int level)
+{
+	hb_level = level;
+	(void) gpio_set_level(CARMON_GPIO_HEARTBEAT, level);
+	(void) gpio_set_level(CARMON_GPIO_LED_RED, 0);
+	(void) gpio_set_level(CARMON_GPIO_LED_GREEN, !level);
 }
 
 /*

@@ -5,11 +5,23 @@
 #include "carmon_platform.h"
 
 static int core, gpio_level, call_order[32], calls, starts, stops;
+static int red_level, green_level, led_writes;
 static bool running, diag, enter_diag, leave_diag;
 static int64_t now_us;
 static alarm_cb_t alarm_callback;
 int xPortGetCoreID(void) { return core; }
-int gpio_set_level(int pin, int level) { assert(pin == CARMON_GPIO_HEARTBEAT); gpio_level = level; return 0; }
+int gpio_set_level(int pin, int level)
+{
+    assert(level == 0 || level == 1);
+    switch (pin) {
+    case CARMON_GPIO_HEARTBEAT: gpio_level = level; break;
+    case CARMON_GPIO_LED_RED: red_level = level; break;
+    case CARMON_GPIO_LED_GREEN: green_level = level; break;
+    default: assert(0);
+    }
+    ++led_writes;
+    return 0;
+}
 int64_t esp_timer_get_time(void) { return now_us; }
 BOOL mon_is_diag_mode(void) { return diag ? TRUE : FALSE; }
 esp_err_t gptimer_new_timer(const gptimer_config_t *c, gptimer_handle_t *h)
@@ -22,7 +34,8 @@ esp_err_t gptimer_enable(gptimer_handle_t h) { return 0; }
 esp_err_t gptimer_start(gptimer_handle_t h) { assert(!running); running = true; ++starts; return 0; }
 esp_err_t gptimer_stop(gptimer_handle_t h) { assert(running); running = false; ++stops; return 0; }
 static void tick(void)
-{ assert(running); now_us += 500; gptimer_alarm_event_data_t e = {0}; assert(!alarm_callback((void *)1, &e, NULL)); }
+{ assert(running); now_us += 500; gptimer_alarm_event_data_t e = {0}; assert(!alarm_callback((void *)1, &e, NULL));
+  if (led_writes) { assert(red_level == 0); assert(green_level == !gpio_level); } }
 static int first(void) { call_order[calls++] = 1; if (enter_diag) diag = true; return 0; }
 static int second(void) { call_order[calls++] = 2; if (leave_diag) diag = false; return 0; }
 static int third(void) { call_order[calls++] = 3; return 0; }
@@ -63,6 +76,10 @@ int main(void)
     assert(calls == 3 && call_order[2] == 3);
     rtl_hb_mode(HB_MODE_ON, 0, 0); tick(); assert(gpio_level == 0);
     rtl_hb_mode(HB_MODE_OFF, 0, 0); tick(); assert(gpio_level == 1);
+    rtl_hb_mode(HB_MODE_FIFTY_FIFTY, 2, 0);
+    int previous_writes = led_writes;
+    for (int i = 0; i < 600; ++i) { calls = 0; tick(); }
+    assert(led_writes > previous_writes);
     assert(rtl_suspend() == 0 && !running && stops == 1);
     assert(rtl_svc_handler_disable() == 0 && stops == 1);
     puts("RTL PASS: CPU affinity, 500-us alarm, pool exhaustion, timer expiry, service order/filtering and heartbeat");

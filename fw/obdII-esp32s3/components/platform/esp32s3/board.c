@@ -9,12 +9,19 @@ esp_err_t carmon_board_init(void)
     /* Active-low LED off; keep the TCAN330 silent and in shutdown. */
     esp_err_t err = gpio_set_level(CARMON_GPIO_HEARTBEAT, 1);
     if (err != ESP_OK) return err;
+    /* External LEDs are active-high and start off. */
+    err = gpio_set_level(CARMON_GPIO_LED_RED, 0);
+    if (err != ESP_OK) return err;
+    err = gpio_set_level(CARMON_GPIO_LED_GREEN, 0);
+    if (err != ESP_OK) return err;
     err = gpio_set_level(CARMON_GPIO_CAN_SILENT, 1);
     if (err != ESP_OK) return err;
     err = gpio_set_level(CARMON_GPIO_CAN_SHUTDOWN, 1);
     if (err != ESP_OK) return err;
     gpio_config_t config = {
         .pin_bit_mask = (1ULL << CARMON_GPIO_HEARTBEAT) |
+                        (1ULL << CARMON_GPIO_LED_RED) |
+                        (1ULL << CARMON_GPIO_LED_GREEN) |
                         (1ULL << CARMON_GPIO_CAN_SILENT) |
                         (1ULL << CARMON_GPIO_CAN_SHUTDOWN),
         .mode = GPIO_MODE_OUTPUT,
