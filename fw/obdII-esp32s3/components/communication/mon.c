@@ -86,10 +86,8 @@ extern long pcore_gettime_time;
 /* local functions */
 /* Handler for main menu. */
 static int mon_main_menu(unsigned char);
-#ifndef MCOM_TCP_MODULE
 /* Handler for SD card menu. */
 static int mon_sd_menu(unsigned char);
-#endif /* MCOM_TCP_MODULE */
 
 /* state machine states */
 enum mon_st_menu_t {
@@ -106,6 +104,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
 #ifdef MCOM_TCP_MODULE
 #define MON_DIAG_MAIN_MENU \
     "------------------------\n\r" \
+    "[1] SD card\n\r" \
     "[e] Dump EEPROM\n\r" \
     "[0] Quit diagnostic mode\n\r" \
     "------------------------\n\r"
@@ -132,7 +131,6 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "------------------------\n\r"
 #endif /* MCOM_TCP_MODULE */
 
-#ifndef MCOM_TCP_MODULE
 /* SD card submenu */
 #ifdef FAT_MODULE
 #define MON_DIAG_SD_MENU \
@@ -160,18 +158,13 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
 #else
 #error "No monitor menu defined for SD card."
 #endif
-#endif /* MCOM_TCP_MODULE */
 
 /* Association between state, menu and handler */
 static mon_map_st2menu_t mon_st2menu_map[] = {
     {"", NULL},
     {"", NULL},
     {MON_DIAG_MAIN_MENU, mon_main_menu},
-#ifndef MCOM_TCP_MODULE
     {MON_DIAG_SD_MENU, mon_sd_menu},
-#else
-    {"", NULL},
-#endif
     {"", NULL}};
 
 /* bluetooth menu - NOT USED for now */
@@ -443,12 +436,12 @@ mon_main_menu(unsigned char ch)
 		next_st = -1;
 		break;
 
-#ifndef  MCOM_TCP_MODULE
 	/* SD card */
 	case '1':
 		next_st = MON_ST_SD_CARD;
 		break;
 
+#ifndef  MCOM_TCP_MODULE
 	/*
 	 * Bluetooth module. Disabled if Bluetooth is in use as a diag
 	 * communication device.
@@ -668,7 +661,6 @@ mon_main_menu(unsigned char ch)
 	return next_st;
 }
 
-#ifndef MCOM_TCP_MODULE
 /*
  * Handler for SD card submenu.
  *
@@ -870,7 +862,8 @@ mon_sd_menu(unsigned char ch)
 	case '2':
 		mon_print_str("Log records\r\n<");
 
-		for (i = 0; i < DLFS_GET_MAX_INODES; i++) {
+		for (i = 0; carmon_media_present() &&
+		    i < DLFS_GET_MAX_INODES; i++) {
 			unsigned long long b;
 
 			/*
@@ -897,8 +890,19 @@ mon_sd_menu(unsigned char ch)
 			/* Display number of blocks occupied by this inode */
 			b = dlfs_blocks_in_use(i);
 
+			/* Read error */
+			if (!carmon_media_present()) {
+				break;
+			}
+
 			snprintf(str, sizeof (str), "(%llu)", b);
 			mon_print_str(str);
+		}
+
+		/* Read error */
+		if (!carmon_media_present()) {
+			mon_print_str("\r\nSD card read error, aborting.");
+			break;
 		}
 
 		mon_print_str(" >\r\n");
@@ -909,7 +913,8 @@ mon_sd_menu(unsigned char ch)
 	case '3':
 		mon_print_str("Inode table\r\n<");
 
-		for (i = 0; i < DLFS_GET_MAX_INODES; i++) {
+		for (i = 0; carmon_media_present() &&
+		    i < DLFS_GET_MAX_INODES; i++) {
 			if (dlfs_inode_in_use(i)) {
 				mon_print_str("I");
 			} else if (dlfs_inode_used_by_db(i)) {
@@ -921,6 +926,12 @@ mon_sd_menu(unsigned char ch)
 				snprintf(str, sizeof (str), "?%d", i);
 				mon_print_str(str);
 			}
+		}
+
+		/* Read error */
+		if (!carmon_media_present()) {
+			mon_print_str("\r\nSD card read error, aborting.");
+			break;
 		}
 
 		mon_print_str(" >\r\n");
@@ -966,7 +977,6 @@ mon_sd_menu(unsigned char ch)
 
 	return next_st;
 }
-#endif /* MCOM_TCP_MODULE */
 
 /* public functions */
 

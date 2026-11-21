@@ -64,8 +64,9 @@ typedef struct {
 /* filesystem inode - 512 bytes in total */
 typedef struct {
 	char 			magic[4];	/* 4b - inode identifier */
+	char			dummy1[4];	/* 4b - dummy */
 	unsigned long long 	ctime;		/* 8b - creation time in UTC */
-	char			dummy[498];
+	char			dummy2[494];
 	unsigned short	crc;			/* 2b - checksum */
 } dlfs_inode_t;
 
@@ -76,6 +77,18 @@ typedef struct {
 	unsigned short	crc;		/*   2b - checksum */
 } dlfs_db_t;
 
+_Static_assert(sizeof (dlfs_sb_t) == 512,
+    "Invalid DLFS superblock size");
+_Static_assert(sizeof (dlfs_inode_t) == 512,
+    "Invalid DLFS inode size");
+_Static_assert(sizeof (dlfs_db_t) == 512,
+    "Invalid DLFS data block size");
+
+_Static_assert(offsetof(dlfs_inode_t, ctime) == 8,
+    "Invalid DLFS inode time offset");
+_Static_assert(offsetof(dlfs_inode_t, crc) == 510,
+    "Invalid DLFS inode CRC offset");
+
 /* sector buffer - can be interpreted in several ways */
 typedef union {
 	char			buf[DLFS_SECTOR_SIZE];
@@ -85,6 +98,9 @@ typedef union {
 	dlfs_db_t		db;
 	dlfs_sb_t		sb;
 } dlfs_sec_buf_t;
+
+_Static_assert(sizeof (dlfs_sec_buf_t) == 512,
+    "Invalid DLFS sector buffer size");
 
 /* structure holding state of open file */
 typedef struct {

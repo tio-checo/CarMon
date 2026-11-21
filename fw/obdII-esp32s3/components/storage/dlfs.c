@@ -1,6 +1,3 @@
-#include <inttypes.h>
-#include <stdio.h>
-#include "carmon_media.h"
 /*********************************************************************
  *
  * Implements dambi log-structured filesystem (DLFS).
@@ -65,11 +62,15 @@
 #include "pic_core.h"
 #include "utils.h"
 
+#include "carmon_media.h"
+
 #include <errno.h>
+#include <inttypes.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 /* constants */
@@ -301,25 +302,37 @@ dlfs_clean_db_data(dlfs_db_t *db)
 }
 
 /*
- * Mounts media.
+ * Attach media using the original PIC32 layout.
+ * Legacy cards need not contain a valid superblock.
  *
- * Returns: 0      - success
+ * Returns: 0      - media attached, filesystem format not verified
  *          ENODEV - media not available
- *          EINVAL - the super block has an invalid magic number
+ *          EIO    - sector read failed
+ *          EINVAL - media too small
  */
 static int
 dlfs_mount(void)
 {
 	int fd = 0;
+	int err;
+
+	dlfs_media_mounted = FALSE;
 
 	/* Media not available, do not proceed. */
 	if (!dlfs_media_ready) {
 		return ENODEV;
 	}
 
+	/* Require space for the reserved area and one complete inode slot. */
+	 if (carmon_media_capacity() <
+	     DLFS_1STINODE_SECTOR + DLFS_SECS_PER_INODE) {
+		return (EINVAL);
+	}
+
 	/* Load super-block. */
-	if (dlfs_read_sector(DLFS_SB_SECTOR, &dlfs_files[fd]) != 0) {
-		return ENODEV;
+	err = dlfs_read_sector(DLFS_SB_SECTOR, &dlfs_files[fd]);
+	if (err != 0) {
+		return (err);
 	}
 
 	/* Validate super-block - magic number and CRC. */
@@ -472,9 +485,10 @@ dlfs_flush(unsigned long long sec, BOOL write_eof_mark, BOOL update_inode_time)
 /*
  * Initialization routine.
  *
- * Returns: 0      - success
+ * Returns: 0      - media attached
  *          ENODEV - storage not available
- *          EINVAL - mount failed
+ *          EIO    - sector read failed
+ *          EINVAL - media too small
  */
 int
 dlfs_init(void)
@@ -522,11 +536,7 @@ dlfs_init(void)
 	 * Make an attempt to "mount" media.
 	 * As a side effect, sets dlfs_media_mounted.
 	 */
-	if (dlfs_mount() != 0) {
-		return EINVAL;
-	}
-
-	return 0;
+	return (dlfs_mount());
 }
 
 #if 0

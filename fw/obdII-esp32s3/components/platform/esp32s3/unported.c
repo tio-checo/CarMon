@@ -48,8 +48,3 @@ int usbsacm_putchars(unsigned char c, BOOL b) { return ENOTSUP; }
 int carmon_gps_uart_init(void) { return ENOTSUP; }
 int carmon_gps_uart_read(unsigned char *c) { return ENOTSUP; }
 int carmon_gps_uart_suspend(void) { return ENOTSUP; }
-void carmon_media_init(void) { }
-bool carmon_media_present(void) { return false; }
-bool carmon_media_read_sector(uint64_t s, uint8_t *p) { return false; }
-bool carmon_media_write_sector(uint64_t s, const void *p, bool a) { return false; }
-uint64_t carmon_media_capacity(void) { return 0; }
