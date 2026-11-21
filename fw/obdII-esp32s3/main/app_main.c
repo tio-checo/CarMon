@@ -5,6 +5,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "carmon_platform.h"
+#include "master_comm.h"
+#include "pic_core.h"
 #include "rt_light.h"
 #include "network.h"
 
@@ -39,7 +41,14 @@ port_task(void *arg)
 			esp_restart();
 		}
 
-		vTaskDelay(pdMS_TO_TICKS(100));
+		vTaskDelay(pdMS_TO_TICKS(10));
+
+		/*
+		 * Call service routines which do not need to be called
+		 * from RTL
+		 */
+		mcom_svc();
+		pcore_svc();
 	}
 }
 

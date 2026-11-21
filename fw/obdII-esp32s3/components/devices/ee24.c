@@ -17,14 +17,18 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <string.h>
 #include <time.h>
-
 
 #include "master_comm.h"
 #include "i2c_hal.h"
 #include "ee24.h"
 #include "rt_light.h"
 #include "utils.h"
+
+#include "driver/i2c_master.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /* constants */
 /* I2C address of 24Cxx EEPROM chip */
@@ -53,6 +57,9 @@
 /* local types */
 
 /* local variables */
+/* EEPROM device on the shared I2C bus. */
+static i2c_master_dev_handle_t ee24_dev;
+
 /* EEPROM read to RWM */
 static BOOL ee24_copied2ram;
 
@@ -277,6 +284,56 @@ ee24_getpar_offset(int num)
 int
 ee24_init(void)
 {
+	i2c_master_bus_handle_t bus;
+	i2c_device_config_t config = {
+		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+		.device_address = EE24_I2C_ADDRESS,
+		.scl_speed_hz = 100000,
+	};
+	unsigned char address = 0;
+	int err;
+
+	ee24_param_crc_valid = FALSE;
+	ee24_nv_crc_valid = FALSE;
+	ee24_copied2ram = FALSE;
+	ee24_st = EE24_ST_IDLE;
+
+	/* Initialize pointers to the in-memory copy. */
+	ee24_param_list = ee24_ram_copy;
+	ee24_nv_state = ee24_ram_copy + EE24_NV_OFFSET;
+
+	/* Attach EEPROM to the previously initialized I2C bus. */
+	err = i2c_master_get_bus_handle(I2C_NUM_0, &bus);
+	if (err != ESP_OK)
+		return (err);
+
+	err = i2c_master_bus_add_device(bus, &config, &ee24_dev);
+	if (err != ESP_OK)
+		return (err);
+
+	/* Read both regions, including their CRC, in one transaction. */
+	err = i2c_master_transmit_receive(ee24_dev,
+	    &address, sizeof (address),
+	    ee24_ram_copy, sizeof (ee24_ram_copy), 100);
+	if (err != ESP_OK)
+		goto fail;
+
+	/* Validate the two regions independently. */
+	ee24_param_crc_valid =
+	    (crc_dma_calc_array(ee24_param_list, EE24_PAR_SIZE) == 0);
+	ee24_nv_crc_valid =
+	    (crc_dma_calc_array(ee24_nv_state, EE24_NV_SIZE) == 0);
+
+	ee24_copied2ram = TRUE;
+
+	return (0);
+
+fail:
+	(void)i2c_master_bus_rm_device(ee24_dev);
+	ee24_dev = NULL;
+	return (err);
+
+#if 0
 	/* Register and enable ee24 service. */
 	rtl_svc_init("ee24", ee24_svc, TRUE, FALSE);
 
@@ -300,6 +357,7 @@ ee24_init(void)
 	ee24_st = EE24_ST_INIT1;
 
 	return 0;
+#endif
 }
 
 /*
@@ -321,37 +379,133 @@ ee24_svc_busy(void)
 int
 ee24_getpar(int num, int *size, unsigned char **pvalue)
 {
-	int offset;
+	int offset, length, remaining;
 
 	/* Invalid EEPROM content or parameter number. */
-	if (num < 1 || num > EE24_NUM_PARS || !ee24_params_valid()) {
+	if (num < 1 || num > EE24_NUM_PARS || size == NULL || pvalue == NULL ||
+	    !ee24_initialized() || !ee24_params_valid()) {
 		return EINVAL;
 	}
 
 	offset = ee24_getpar_offset(num);
 
-	if (offset == -1) {
+	if (offset < 0 || offset >= EE24_PAR_SIZE - 2) {
 		return EINVAL;
 	}
 
-	*size = ee24_param_list[offset];
+	length = ee24_param_list[offset];
+
+	/* Reserve at least a length byte for each following parameter. */
+	remaining = EE24_NUM_PARS - num;
+	if (length > EE24_PAR_SIZE - 2 - offset - 1 - remaining)
+		return (EINVAL);
+
+	*size = length;
 	*pvalue = &ee24_param_list[offset + 1];
 
-	return 0;
+	return (0);
 }
 
 /*
- * Set EEPROM parameter.
- * Data provided in form of HEX ASCII string.
+ * Set EEPROM parameter synchronously.
+ * Must be called from a task, never from an interrupt.
  *
  * Return values:
- *       0 - operation commenced, data are to be written to the device
- *  EINVAL - invalid parameter number
- *  EBUSY  - module currently busy with previous operation
+ *       0 - parameter written and read back successfully
+ *  EINVAL - invalid parameter or value
+ *  EBUSY  - previous operation still in progress
+ *  ENODEV - EEPROM not initialized
+ *     EIO - write or verification failed
  */
 int
 ee24_setpar(int num, int ln, char *value)
 {
+	unsigned char pending[EE24_PAR_SIZE];
+	unsigned char verify[EE24_PAR_SIZE];
+	unsigned char page[EE24_PAGE_SIZE + 1];
+	unsigned char address = EE24_PAR_OFFSET;
+	unsigned short crc;
+	int offset, size, index, remaining;
+	esp_err_t err;
+
+	if (!ee24_initialized())
+		return (ENODEV);
+
+	if (num < 1 || num > EE24_NUM_PARS ||
+	    value == NULL || ln <= 0 || (ln % 2) != 0)
+		return (EINVAL);
+
+	/*
+	 * If EEPROM content is invalid, only the first parameter
+	 * can be written. Start with an empty parameter region.
+	 */
+	if (!ee24_params_valid()) {
+		if (num != 1)
+			return (EINVAL);
+
+		memset(pending, 0, sizeof (pending));
+	} else {
+		memcpy(pending, ee24_param_list, sizeof (pending));
+	}
+
+	offset = ee24_getpar_offset(num);
+	size = ln / 2;
+
+	/* The length byte must be inside the parameter region. */
+	if (offset < 0 || offset >= EE24_PAR_SIZE - 2)
+		return (EINVAL);
+
+	/*
+	 * Reserve the CRC and at least a length byte for each
+	 * following parameter.
+	 */
+	remaining = EE24_NUM_PARS - num;
+	if (size > EE24_PAR_SIZE - 2 - offset - 1 - remaining)
+		return (EINVAL);
+
+	/* Decode into the working copy, leaving current data untouched. */
+	if (hex2ucharbuf(value, &pending[offset + 1], ln) != 0)
+		return (EINVAL);
+
+	pending[offset] = size;
+
+	/* Calculate CRC, then store CRC most significant byte first. */
+	crc = crc_dma_calc_array(pending, sizeof (pending) - 2);
+	pending[EE24_PAR_SIZE - 2] = crc >> 8;
+	pending[EE24_PAR_SIZE - 1] = crc & 0xff;
+
+	/* Write the last page first, as in the original implementation. */
+	for (index = EE24_PAR_SIZE - EE24_PAGE_SIZE; index >= 0;
+	    index -= EE24_PAGE_SIZE) {
+		page[0] = EE24_PAR_OFFSET + index;
+		memcpy(page + 1, pending + index, EE24_PAGE_SIZE);
+
+		err = i2c_master_transmit(ee24_dev, page, sizeof (page),
+		    100);
+		if (err != ESP_OK)
+			goto fail;
+
+		/* Wait for internal programming, including tick phase. */
+		vTaskDelay(pdMS_TO_TICKS(10) + 1);
+	}
+
+	/* Verify the actual EEPROM contents before reporting success. */
+	err = i2c_master_transmit_receive(ee24_dev,
+	    &address, sizeof (address), verify, sizeof (verify), 100);
+	if (err != ESP_OK ||
+	    memcmp(pending, verify, sizeof (pending)) != 0)
+		goto fail;
+
+	memcpy(ee24_param_list, pending, sizeof (pending));
+	ee24_param_crc_valid = TRUE;
+
+	return (0);
+
+fail:
+	/* A failed operation may have written only part of the region. */
+	ee24_param_crc_valid = FALSE;
+	return (EIO);
+#if 0
 	int offset, ms;
 	unsigned short crc;
 
@@ -408,6 +562,7 @@ ee24_setpar(int num, int ln, char *value)
 	ee24_st = EE24_ST_STORE_PAR1;
 
 	return 0;
+#endif
 }
 
 /*

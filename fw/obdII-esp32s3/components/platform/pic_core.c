@@ -70,8 +70,9 @@ static unsigned char i2c_buf[PCORE_I2C_BUF_SIZE];
 /* state machine handling I2C communication */
 static enum {
 	PCORE_ST_IDLE = 0,	/* state machine idle */
-
+#if 0
 	PCORE_EE_ST_WAIT4SETPAR,	/* send ACK after EEPROM written */
+#endif /* 0 */
 
 #ifdef I2CHAL_MODULE
 	PCORE_I2C_ST_READ1,	/* Read from device */
@@ -131,9 +132,9 @@ pcore_send_data_response_to_master(void *buf, int ln, int type)
 }
 
 /*
- * Main acquisition service routine - called periodically from timer interrupt.
+ * Main acquisition service routine - called periodically from port_task().
  */
-static int
+int
 pcore_svc(void)
 {
 #ifdef PCF8563_MODULE
@@ -180,7 +181,7 @@ pcore_svc(void)
 	/* Idle */
 	case PCORE_ST_IDLE:
 		break;
-
+#if 0
 	/*
 	 * Wait for EEPROM parameter stored in EEPROM,
 	 * send ACK to master afterwards.
@@ -194,6 +195,7 @@ pcore_svc(void)
 		mcom_prepare_ack_response(&pcore_resp_ack_nak);
 		fl_send_ack_nak = TRUE;
 		break;
+#endif /* 0 */
 
 #ifdef I2CHAL_MODULE
 	/* Read from I2C device - grab the bus*/
@@ -321,7 +323,7 @@ pcore_settime(char *td, int ln, BOOL update_hw_clock, BOOL update_sw_clock)
 	return 0;
 }
 
-/* Discard pending replies when the TCP client changes; called only by RTL. */
+/* Discard pending replies when the TCP client changes. */
 void
 pcore_reset(void)
 {
@@ -348,10 +350,10 @@ pcore_init(void)
 	/* initialize pointer to I2C data buffer */
 	i2c_msg.buf = i2c_buf;
 #endif
-
+#if 0
 	/* Register and enable pcore service */
 	rtl_svc_init("PicCore", pcore_svc, TRUE, TRUE);
-
+#endif
 	return 0;
 }
 
@@ -370,19 +372,27 @@ pcore_process_query(char *data, int ln)
 	fl_send_ack_nak = TRUE;
 
 #ifdef MCOM_TCP_MODULE
-	/* Peripheral-dependent core commands must wait for their drivers. */
+	/* EEPROM commands require initialized EEPROM access. */
+	if (!ee24_initialized() &&
+	    (data[0] == MCOMM_PCORE_CMD_GETEEPAR ||
+	    data[0] == MCOMM_PCORE_CMD_SETEEPAR)) {
+		mcom_prepare_nak_response(&pcore_resp_ack_nak,
+		    MCOM_NAK_IO_ERROR);
+		return (0);
+	}
+
+	/* Other peripheral commands must wait for their drivers. */
 	if (!carmon_platform_ready() &&
 	    (data[0] == MCOMM_PCORE_CMD_GETTIME ||
 	    data[0] == MCOMM_PCORE_CMD_SETTIME ||
-	    data[0] == MCOMM_PCORE_CMD_GETEEPAR ||
-	    data[0] == MCOMM_PCORE_CMD_SETEEPAR ||
 	    data[0] == MCOMM_PCORE_CMD_READI2C ||
 	    data[0] == MCOMM_PCORE_CMD_WRITEI2C ||
 	    data[0] == MCOMM_PCORE_CMD_GETTEMP)) {
-		mcom_prepare_nak_response(&pcore_resp_ack_nak, MCOM_NAK_IO_ERROR);
-		return 0;
+		mcom_prepare_nak_response(&pcore_resp_ack_nak,
+		    MCOM_NAK_IO_ERROR);
+		return (0);
 	}
-#endif
+#endif /* MCOM_TCP_MODULE */
 
 	/* Handle particular commands */
 	switch (data[0]) {
@@ -446,8 +456,37 @@ pcore_process_query(char *data, int ln)
 			}
 		} break;
 
-		/* Set EEPROM parameter */
+		/* Set EEPROM parameter and wait for verified completion. */
 		case MCOMM_PCORE_CMD_SETEEPAR: {
+			int result;
+
+			/*
+			 * Require parameter number followed by at least
+			 * one byte encoded as two hexadecimal characters.
+			 */
+			if (ln < 5 || (ln % 2 == 0)) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
+
+			result = ee24_setpar(hex2ulong(data + 1, 2),
+			    ln - 3, data + 3);
+
+			switch (result) {
+			case 0:
+				err = 0;
+				break;
+			case EINVAL:
+				err = MCOM_NAK_EINVAL;
+				break;
+			case EBUSY:
+				err = MCOM_NAK_MODULE_BUSY;
+				break;
+			default:
+				err = MCOM_NAK_IO_ERROR;
+				break;
+			}
+#if 0
 			/*
 			 * At least parameter number and one byte of value has
 			 * to be provided.
@@ -470,6 +509,7 @@ pcore_process_query(char *data, int ln)
 					fl_send_ack_nak = FALSE;
 				}
 			}
+#endif
 		} break;
 #endif
 

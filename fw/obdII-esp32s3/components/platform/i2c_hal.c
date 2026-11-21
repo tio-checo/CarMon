@@ -5,7 +5,9 @@
  *********************************************************************/
 
 #include <errno.h>
+#include <stdbool.h>
 
+/*
 #include "HardwareProfile.h"
 #include "xc.h"
 
@@ -14,6 +16,10 @@
 #else
 #error "No I2C low level driver avialable."
 #endif
+*/
+
+#include "driver/i2c_master.h"
+#include "carmon_platform.h"
 #include "i2c_hal.h"
 
 #include "rt_light.h"
@@ -21,6 +27,9 @@
 /* local types */
 
 /* local variables */
+/* I2C bus */
+static i2c_master_bus_handle_t i2c_bus;
+
 /* TRUE if I2C bus is currently granted to consumer. */
 static BOOL i2c_bus_granted;
 
@@ -44,6 +53,7 @@ static enum {
 /*
  * Returns TRUE if underlying I2C bus is busy sending or receiving word.
  */
+#if 0
 static BOOL
 i2c_bus_busy(void)
 {
@@ -244,6 +254,7 @@ i2c_svc(void)
 
 	return 0;
 }
+#endif /* 0 */
 
 /* global functions */
 /*
@@ -252,6 +263,20 @@ i2c_svc(void)
 int
 i2c_init(void)
 {
+	i2c_master_bus_config_t config = {
+		.i2c_port = I2C_NUM_0,
+		.sda_io_num = CARMON_GPIO_I2C_SDA,
+		.scl_io_num = CARMON_GPIO_I2C_SCL,
+		.clk_source = I2C_CLK_SRC_DEFAULT,
+		.glitch_ignore_cnt = 7,
+
+		/* The board provides external pull-up resistors. */
+		.flags.enable_internal_pullup = false,
+	};
+
+	return (i2c_new_master_bus(&config, &i2c_bus));
+
+#if 0
 #ifdef I2CSW_MODULE
 	i2csw_init();
 #endif
@@ -267,8 +292,10 @@ i2c_init(void)
 	rtl_svc_init("i2c", i2c_svc, TRUE, FALSE);
 
 	return 0;
+#endif
 }
 
+#if 0
 /*
  * Grants I2C bus to a consumer. Must be called by consumer before
  * communication with I2C device is commenced. That assures that
@@ -486,3 +513,4 @@ i2c_random_read(unsigned char addr, unsigned char data_addr,
 
 	return EAGAIN;
 }
+#endif /* 0 */

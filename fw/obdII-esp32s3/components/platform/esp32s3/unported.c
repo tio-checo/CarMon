@@ -19,7 +19,7 @@ int can_configure(int a, int b, int c, UINT32 d, UINT32 e, BOOL f) { return ENOT
 BOOL can_configuration_in_progress(void) { return FALSE; }
 int can_obd_send(unsigned char *p, int n) { return ENOTSUP; }
 int can_obd_recv(unsigned char **p, int *n) { return ENOTSUP; }
-int i2c_init(void) { return ENOTSUP; }
+/* int i2c_init(void) { return ENOTSUP; } */
 int i2c_request_bus(void) { return ENOTSUP; }
 int i2c_release_bus(void) { return ENOTSUP; }
 int i2c_write(unsigned char a, unsigned char *p, int n) { return ENOTSUP; }

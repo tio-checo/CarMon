@@ -949,7 +949,7 @@ mcom_tx_st(void)
 /*
  * Main service routine
  */
-static int
+int
 mcom_svc(void)
 {
 	int	i;
@@ -1060,10 +1060,10 @@ mcom_init(void)
 #endif
 
 	mcom_reset();
-
+#if 0
 	/* Register service and enable it. */
 	rtl_svc_init("MasterCom", mcom_svc, TRUE, FALSE);
-
+#endif
 	return 0;
 }
 

@@ -103,6 +103,9 @@ typedef struct mcom_response {
 /* initialize master communication module */
 extern int mcom_init(void);
 
+/* master communication service */
+extern int mcom_svc(void);
+
 /* Initialize response structure. */
 extern int mcom_response_init(mcom_response_t *, char);
 
