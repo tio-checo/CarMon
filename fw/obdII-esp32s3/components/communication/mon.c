@@ -106,6 +106,7 @@ MON_ST_BLUETOOTH	/* Bluetooth menu */
     "------------------------\n\r" \
     "[1] SD card\n\r" \
     "[e] Dump EEPROM\n\r" \
+    "[r] Read pcf8563 registers\n\r" \
     "[0] Quit diagnostic mode\n\r" \
     "------------------------\n\r"
 #else
@@ -633,6 +634,7 @@ mon_main_menu(unsigned char ch)
 		pcore_gettime_time = 0;
 
 		break;
+#endif /* MCOM_TCP_MODULE */
 
 	case 'r':
 #ifdef PCF8563_MODULE
@@ -651,7 +653,6 @@ mon_main_menu(unsigned char ch)
 		print_alloc_requests(mon_print_str);
 		break;
 #endif
-#endif /* MCOM_TCP_MODULE */
 
 	/* Unknown input */
 	default:

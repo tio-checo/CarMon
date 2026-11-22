@@ -1,4 +1,6 @@
+#include <stdlib.h>
 #include <string.h>
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "carmon_platform.h"
 
@@ -84,6 +86,56 @@ static enum {
 } pcore_st;
 
 /* local functions */
+#ifdef PCF8563_MODULE
+/*
+ * Initialize system time from RTC once during application startup.
+ * Both RTC and protocol timestamps use UTC.
+ */
+static int
+pcore_time_init(void)
+{
+	struct tm rtc_tm, check_tm;
+	struct timeval tv = { 0 };
+	time_t t;
+	int err;
+
+	pcore_time_initialized = FALSE;
+
+	/* mktime() uses the process timezone. Keep it explicitly UTC. */
+	if (setenv("TZ", "UTC0", 1) != 0)
+		return (errno);
+	tzset();
+
+	err = pcf8563_gettime(&rtc_tm);
+	if (err != 0)
+		return (err);
+
+	if (rtc_tm.tm_year < 100 || rtc_tm.tm_year > 199)
+		return (EINVAL);
+
+	/* Reject dates which mktime() would silently normalize. */
+	check_tm = rtc_tm;
+	t = mktime(&check_tm);
+	if (t == (time_t)-1)
+		return (EINVAL);
+
+	if (check_tm.tm_year != rtc_tm.tm_year ||
+	    check_tm.tm_mon != rtc_tm.tm_mon ||
+	    check_tm.tm_mday != rtc_tm.tm_mday ||
+	    check_tm.tm_hour != rtc_tm.tm_hour ||
+	    check_tm.tm_min != rtc_tm.tm_min ||
+	    check_tm.tm_sec != rtc_tm.tm_sec)
+		return (EINVAL);
+
+	tv.tv_sec = t;
+	if (settimeofday(&tv, NULL) != 0)
+		return (errno);
+
+	pcore_time_initialized = TRUE;
+	return (0);
+}
+#endif
+
 /*
  * Takes care of sending response to master. Two responses might be scheduled
  * for transmission - ack/nak one and data one.
@@ -137,45 +189,12 @@ pcore_send_data_response_to_master(void *buf, int ln, int type)
 int
 pcore_svc(void)
 {
-#ifdef PCF8563_MODULE
-	time_t t;
-	struct tm newtm;
-	struct timeval newtv;
-#endif
 
 	/* Update time of the day. */
 	/* Wall clock is maintained by ESP-IDF, not the RTL interrupt. */
 
 	/* Handle communication service. */
 	pcore_comm_svc();
-
-#ifdef PCF8563_MODULE
-	/* initialize time from RTC */
-	if (!pcore_time_initialized && carmon_platform_ready()) {
-		switch (pcf8563_gettime(&newtm)) {
-		/* operation in progress */
-		case EAGAIN:
-			break;
-
-		/* operation successfully finished */
-		case 0:
-			t = mktime(&newtm);
-			if (t != (time_t) -1) {
-				newtv.tv_sec = t;
-				newtv.tv_usec = 0;
-
-				settimeofday(&newtv, NULL);
-			}
-
-			__attribute__((fallthrough));
-
-		/* operation failed - do not initialize core time from RTC */
-		default:
-			pcore_time_initialized = TRUE;
-			break;
-		} /*switch*/
-	}
-#endif
 
 	switch (pcore_st) {
 	/* Idle */
@@ -255,23 +274,37 @@ pcore_svc(void)
 
 /* global functions */
 /*
- * Sets date and time. Validates provided data.
- * Returns EINVAL value if provided configuration is invalid.
+ * Sets UTC date and time. Validates provided data.
+ * Returns: EINVAL - invalid input
+ *          EIO - clock update failure
+ *          ENOTSUP - the requested hardware clock is unavailable
  */
 int
 pcore_settime(char *td, int ln, BOOL update_hw_clock, BOOL update_sw_clock)
 {
 	time_t t;
-	struct tm newtm;
+	struct tm newtm = { 0 };
+	struct tm check_tm;
 	struct timeval newtv;
+	int i;
+#ifdef PCF8563_MODULE
+	int err;
+#endif
 
-	/* malformed packet */
-	if (ln != 14)
-		return EINVAL;
+	/* Require exactly fourteen decimal digits. */
+	if (td == NULL || ln != 14) {
+		return (EINVAL);
+	}
+
+	for (i = 0; i < ln; i++) {
+		if (td[i] < '0' || td[i] > '9') {
+			return (EINVAL);
+		}
+	}
 
 	/* td[0..3] - year */
 	newtm.tm_year = (int) dec2ulong(td, 4);
-	if (newtm.tm_year < 1970 || newtm.tm_year > 2038)
+	if (newtm.tm_year < 2000 || newtm.tm_year > 2038)
 		return EINVAL;
 	newtm.tm_year -= 1900;
 
@@ -300,27 +333,46 @@ pcore_settime(char *td, int ln, BOOL update_hw_clock, BOOL update_sw_clock)
 	if (newtm.tm_sec < 0 || newtm.tm_sec > 59)
 		return EINVAL;
 
-	t = mktime(&newtm);
-	if (t == (time_t) -1)
-		return EINVAL;
+	/*
+	 * UTC was configured during pcore_time_init().
+	 * Reject invalid dates instead of accepting normalization.
+	 */
+	check_tm = newtm;
+	t = mktime(&check_tm);
+	if (t == (time_t)-1)
+		return (EINVAL);
 
-	newtv.tv_sec = t;
-	newtv.tv_usec = 0;
-
-	if (update_sw_clock) {
-		if (settimeofday(&newtv, NULL) != 0) {
-			return EINVAL;
-		}
-	}
+	if (check_tm.tm_year != newtm.tm_year ||
+	    check_tm.tm_mon != newtm.tm_mon ||
+	    check_tm.tm_mday != newtm.tm_mday ||
+	    check_tm.tm_hour != newtm.tm_hour ||
+	    check_tm.tm_min != newtm.tm_min ||
+	    check_tm.tm_sec != newtm.tm_sec)
+		return (EINVAL);
 
 #ifdef PCF8563_MODULE
-	/* Set time in RTC */
+	/* Update RTC first; keep system time unchanged on I2C failure. */
 	if (update_hw_clock) {
-		pcf8563_settime(&newtm);
+		err = pcf8563_settime(&check_tm);
+		if (err != 0)
+			return (EIO);
 	}
+#else
+	if (update_hw_clock)
+		return (ENOTSUP);
 #endif
 
-	return 0;
+	if (update_sw_clock) {
+		newtv.tv_sec = t;
+		newtv.tv_usec = 0;
+
+		if (settimeofday(&newtv, NULL) != 0)
+			return (EIO);
+
+		pcore_time_initialized = TRUE;
+	}
+
+	return (0);
 }
 
 /* Discard pending replies when the TCP client changes. */
@@ -338,6 +390,10 @@ pcore_reset(void)
 int
 pcore_init(void)
 {
+#ifdef PCF8563_MODULE
+	int err;
+#endif
+
 	/* initialize communication data */
 	pcore_resp_ack_nak.id = MCOMM_PIC_ID;
 	pcore_resp_data.id = MCOMM_PIC_ID;
@@ -354,7 +410,17 @@ pcore_init(void)
 	/* Register and enable pcore service */
 	rtl_svc_init("PicCore", pcore_svc, TRUE, TRUE);
 #endif
-	return 0;
+
+#ifdef PCF8563_MODULE
+	err = pcore_time_init();
+	if (err != 0) {
+		ESP_LOGW("pcore", "System time not initialized from RTC: %d",
+		    err);
+	} else {
+		ESP_LOGI("pcore", "System time initialized from RTC (UTC)");
+	}
+#endif
+	return (0);
 }
 
 /*
@@ -383,9 +449,7 @@ pcore_process_query(char *data, int ln)
 
 	/* Other peripheral commands must wait for their drivers. */
 	if (!carmon_platform_ready() &&
-	    (data[0] == MCOMM_PCORE_CMD_GETTIME ||
-	    data[0] == MCOMM_PCORE_CMD_SETTIME ||
-	    data[0] == MCOMM_PCORE_CMD_READI2C ||
+	    (data[0] == MCOMM_PCORE_CMD_READI2C ||
 	    data[0] == MCOMM_PCORE_CMD_WRITEI2C ||
 	    data[0] == MCOMM_PCORE_CMD_GETTEMP)) {
 		mcom_prepare_nak_response(&pcore_resp_ack_nak,
@@ -410,14 +474,20 @@ pcore_process_query(char *data, int ln)
 		case MCOMM_PCORE_CMD_SETTIME:
 			/* Update both sw and hw clock. */
 			err = pcore_settime(data + 1, ln - 1, TRUE, TRUE);
-			/* The only error returned is EINVAL for now. */
-			if (err != 0) {
+			if (err == EINVAL) {
 				err = MCOM_NAK_EINVAL;
+			} else if (err != 0) {
+				err = MCOM_NAK_IO_ERROR;
 			}
 			break;
 
 		/* Get time and date */
 		case MCOMM_PCORE_CMD_GETTIME:
+			if (ln != 1) {
+				err = MCOM_NAK_EINVAL;
+				break;
+			}
+
 			tds = pcore_gettime();
 
 			pcore_send_data_response_to_master(tds, strlen(tds),

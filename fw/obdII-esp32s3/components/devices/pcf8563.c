@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <string.h>
 #include <time.h>
 
 
@@ -15,6 +16,8 @@
 #include "i2c_hal.h"
 #include "pcf8563.h"
 #include "rt_light.h"
+
+#include "driver/i2c_master.h"
 
 /* constants */
 /* I2C address of PCF8563 chip */
@@ -52,6 +55,7 @@
 #define PCF8563_CTRL1_TEST1	7	/* 1 enables EXT_CLK test mode */
 #define PCF8563_CTRL1_STOP	5	/* 1 stops RTC - flip-flops set to 0 */
 #define PCF8563_CTRL1_TESTC	3	/* 1 enables power on reset override */
+#define PCF8563_STOP_MSK	(1 << PCF8563_CTRL1_STOP)
 
 /* Control status register 2 bits */
 #define PCF8563_CTRL2_TI_TP	4	/* see datasheet */
@@ -69,205 +73,140 @@
 /* local types */
 
 /* local variables */
-/* state machine handling communication with the sensor */
-static enum {
-	PCF8563_ST_IDLE = 0,	/* state machine idle */
-
-	PCF8563_ST_GETTIME1,	/* Get time and date */
-	PCF8563_ST_GETTIME2,
-
-	PCF8563_ST_SETTIME1,	/* Set time and date */
-	PCF8563_ST_SETTIME2
-} pcf8563_st;
+/* RTC device on the shared I2C bus. */
+static i2c_master_dev_handle_t pcf8563_dev;
 
 /* data buffer used for getting/setting time and date */
 static unsigned char pcf8563_data[16 + 1];
 
 /* local functions */
 
-/*
- * Main service routine - called periodically from timer interrupt.
- * Handles communication with PCF8563.
- */
-static int
-pcf8563_svc(void)
-{
-	switch (pcf8563_st) {
-	/* service idle */
-	case PCF8563_ST_IDLE:
-		break;
-
-	/*
-	 * Get time and date - phase 1.
-	 *
-	 * Grab I2C bus.
-	 */
-	case PCF8563_ST_GETTIME1:
-		if (i2c_request_bus() != 0)
-			break;
-
-		pcf8563_st = PCF8563_ST_GETTIME2;
-		break;
-
-	/*
-	 * Get time and date - phase 2
-	 *
-	 * Read time and date from RTC.
-	 */
-	case PCF8563_ST_GETTIME2:
-		if (i2c_random_read(PCF8563_I2C_ADDRESS,
-		    PCF8563_REG_VL_SECONDS, pcf8563_data, 7) == EAGAIN)
-			break;
-
-		/* Release I2C bus */
-		i2c_release_bus();
-
-		pcf8563_st = PCF8563_ST_IDLE;
-		break;
-
-	/*
-	 * Set time and date - phase 1
-	 *
-	 * Grab I2C bus.
-	 */
-	case PCF8563_ST_SETTIME1:
-		if (i2c_request_bus() != 0)
-			break;
-
-		pcf8563_st = PCF8563_ST_SETTIME2;
-		break;
-
-	/*
-	 * Set time and date - phase 2
-	 *
-	 * Write RTC time and date registers. First byte in data buffer
-	 * contains address of RTC register to be written first. RTC
-	 * automatically increments address pointer after each byte is
-	 * processed.
-	 */
-	case PCF8563_ST_SETTIME2:
-		if (i2c_write(PCF8563_I2C_ADDRESS, pcf8563_data, 8) == EAGAIN)
-			break;
-
-		/* Release I2C bus */
-		i2c_release_bus();
-
-		pcf8563_st = PCF8563_ST_IDLE;
-		break;
-
-	} /* switch */
-
-	return 0;
-}
-
-/*
- * Returns TRUE if the service is currently busy. Otherwise returns FALSE.
- */
-static BOOL
-pcf8563_svc_busy(void)
-{
-	return (pcf8563_st != PCF8563_ST_IDLE);
-}
-
 /* global functions */
 /*
  * Initialization routine.
+ * The shared I2C bus must already be initialized.
  */
 int
 pcf8563_init(void)
 {
-	/* Register and enable PCF8563 service. */
-	rtl_svc_init("pcf8563", pcf8563_svc, TRUE, FALSE);
+	i2c_master_bus_handle_t bus;
+	i2c_device_config_t config = {
+		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+		.device_address = PCF8563_I2C_ADDRESS,
+		.scl_speed_hz = 100000,
+	};
+	int err;
 
-	/* State machine is IDLE */
-	pcf8563_st = PCF8563_ST_IDLE;
+	/* Avoid registering the device more than once. */
+	if (pcf8563_dev != NULL)
+		return (0);
 
-	return 0;
+	/* Use the bus already initialized by i2c_init(). */
+	err = i2c_master_get_bus_handle(I2C_NUM_0, &bus);
+	if (err != ESP_OK)
+		return (err);
+
+	/* Verify that the RTC acknowledges its address. */
+	err = i2c_master_probe(bus, PCF8563_I2C_ADDRESS, 100);
+	if (err != ESP_OK)
+		return (err);
+
+	return (i2c_master_bus_add_device(bus, &config, &pcf8563_dev));
 }
 
 /*
- * Get time and date.
+ * Get time and date synchronously. Must be called from task context.
  *
  * Return values:
- *       0 - operation finished, valid data available
- *  EAGAIN - reading in progress
- *  EFAULT - RTC contains invalid data - Low voltage indicator found set
+ *       0 - operation finished, data available
+ *  EINVAL - invalid output pointer
+ *  ENODEV - RTC driver not initialized
+ *  EFAULT - RTC voltage low flag set or clock stopped
+ *
+ * I2C errors are returned unchanged as ESP-IDF error codes.
  */
 int
 pcf8563_gettime(struct tm *currtm)
 {
-	static BOOL op_in_progress = FALSE;
+	struct tm newtm = { 0 };
+	unsigned char address = PCF8563_REG_CTRL_STS_1;
+	int err;
 
-	/* If operation is in progress, check if it finished. */
-	if (op_in_progress) {
-		/* Operation not finished yet, return. */
-		if (pcf8563_svc_busy())
-			return EAGAIN;
+	if (currtm == NULL)
+		return (EINVAL);
 
-		/* Operation finished */
-		op_in_progress = FALSE;
+	if (pcf8563_dev == NULL)
+		return (ENODEV);
 
-		/* Low voltage flag set signals corrupted RTC data, return */
-		if (pcf8563_data[0] & PCF8563_VL_MSK)
-			return EFAULT;
+	/*
+	 * Read control registers and all time registers together.
+	 * Wait for completion, with a timeout of 100 ms.
+	 */
+	err = i2c_master_transmit_receive(pcf8563_dev,
+	    &address, sizeof (address), pcf8563_data, 9, 100);
+	if (err != ESP_OK)
+		return (err);
 
-		/* Fill in time structure */
-		/* Seconds */
-		currtm->tm_sec = BCD2DEC(pcf8563_data[0] & 0x7f);
-
-		/* Minutes */
-		currtm->tm_min = BCD2DEC(pcf8563_data[1] & 0x7f);
-
-		/* Hours */
-		currtm->tm_hour = BCD2DEC(pcf8563_data[2] & 0x3f);
-
-		/* Days */
-		currtm->tm_mday = BCD2DEC(pcf8563_data[3] & 0x3f);
-
-		/* Months */
-		currtm->tm_mon = BCD2DEC(pcf8563_data[5] & 0x1f) - 1;
-
-		/* Years */
-		currtm->tm_year = BCD2DEC(pcf8563_data[6]) + 2000 - 1900;
-
-		return 0;
+	/* Low voltage flag set signals unreliable RTC data. */
+	if ((pcf8563_data[PCF8563_REG_CTRL_STS_1] & PCF8563_STOP_MSK) ||
+	    (pcf8563_data[PCF8563_REG_VL_SECONDS] & PCF8563_VL_MSK)) {
+		return (EFAULT);
 	}
 
-	/* Kick off getting process. */
-	pcf8563_st = PCF8563_ST_GETTIME1;
-	op_in_progress = TRUE;
+	/* Fill in time structure. */
+	/* Seconds */
+	newtm.tm_sec = BCD2DEC(pcf8563_data[PCF8563_REG_VL_SECONDS] & 0x7f);
 
-	return EAGAIN;
+	/* Minutes */
+	newtm.tm_min = BCD2DEC(pcf8563_data[PCF8563_REG_MINUTES] & 0x7f);
+
+	/* Hours */
+	newtm.tm_hour = BCD2DEC(pcf8563_data[PCF8563_REG_HOURS] & 0x3f);
+
+	/* Days */
+	newtm.tm_mday = BCD2DEC(pcf8563_data[PCF8563_REG_DAYS] & 0x3f);
+
+	/* Months */
+	newtm.tm_mon = BCD2DEC(pcf8563_data[PCF8563_REG_CENT_MONTHS] &
+	    0x1f) - 1;
+
+	/* Years - preserve the existing 2000-2099 convention. */
+	newtm.tm_year = BCD2DEC(pcf8563_data[PCF8563_REG_YEARS]) + 2000 - 1900;
+
+	/* Publish the result only after a successful read. */
+	*currtm = newtm;
+
+	return (0);
 }
 
 /*
- * Set time and date.
+ * Set time and date synchronously. Must be called from task context.
+ * The caller is responsible for validating the calendar date.
  *
  * Return values:
- *       0 - operation finished, data have been written to the device
- *  EAGAIN - writing in progress
+ *       0 - operation finished, data written to the device
+ *  EINVAL - invalid input pointer or unsupported year
+ *  ENODEV - RTC driver not initialized
+ *
+ * I2C errors are returned unchanged as ESP-IDF error codes.
  */
 int
 pcf8563_settime(struct tm *newtm)
 {
-	static BOOL op_in_progress = FALSE;
+	unsigned char control[2] = { PCF8563_REG_CTRL_STS_1, 0 };
+	int err;
 
-	/* If operation is in progress, check if it finished. */
-	if (op_in_progress) {
-		/* Operation not finished yet, return. */
-		if (pcf8563_svc_busy())
-			return EAGAIN;
+	if (newtm == NULL)
+		return (EINVAL);
 
-		/* Operation finished */
-		op_in_progress = FALSE;
+	if (pcf8563_dev == NULL)
+		return (ENODEV);
 
-		return 0;
-	}
+	/* Match the 2000-2099 convention used by pcf8563_gettime(). */
+	if (newtm->tm_year < 100 || newtm->tm_year > 199)
+		return (EINVAL);
 
-	/* Setting time and date should be commenced. */
-	/* Populate message to be sent to RTC */
-	/* Do not validate provided data - caller is responsible for this. */
-
+	/* Populate message to be sent to RTC. */
 	/*
 	 * First register address to be written. RTC increments address
 	 * pointer automatically after each byte is written.
@@ -295,30 +234,58 @@ pcf8563_settime(struct tm *newtm)
 	/* Years */
 	pcf8563_data[7] = DEC2BCD(newtm->tm_year % 100);
 
-	/* Kick off setting process. */
-	pcf8563_st = PCF8563_ST_SETTIME1;
-	op_in_progress = TRUE;
+	/* Write all time and date registers in one transaction. */
+	err = i2c_master_transmit(pcf8563_dev, pcf8563_data, 8, 100);
+	if (err != ESP_OK)
+		return (err);
 
-	return EAGAIN;
+	/* Enable normal clock operation, clearing STOP and test bits. */
+	return (i2c_master_transmit(pcf8563_dev, control,
+	    sizeof (control), 100));
 }
 
 /*
- * Displays last read values.
+ * Reads and displays RTC registers, including invalid clock states.
+ * Must be called from task context.
  */
 void
 pcf8563_display_read_values(int (*print_str)(const char *))
 {
+	unsigned char address = PCF8563_REG_CTRL_STS_1;
 	char s[81];
-	int i;
+	int i, err;
+
+	if (pcf8563_dev == NULL) {
+		print_str("RTC driver not initialized\n\r");
+		return;
+	}
+
+	/*
+	 * Read registers directly so that VL and STOP do not prevent
+	 * diagnostics from displaying the current hardware state.
+	 */
+	err = i2c_master_transmit_receive(pcf8563_dev,
+	    &address, sizeof (address), pcf8563_data, 9, 100);
+	if (err != ESP_OK) {
+		snprintf(s, sizeof (s), "RTC read failed: %d\n\r", err);
+		print_str(s);
+		return;
+	}
 
 	/* header */
 	print_str("-------------------------------------\n\r");
 
-	for (i = 0; i < 8; i++) {
-		snprintf(s, sizeof (s), " %02X", pcf8563_data[i]);
+	for (i = 0; i < 9; i++) {
+		snprintf(s, sizeof (s), "reg %02X: %02X\n\r",
+		    (unsigned int)i, (unsigned int)pcf8563_data[i]);
 		print_str(s);
 	}
 
+	snprintf(s, sizeof (s), "VL=%d, STOP=%d\n\r",
+	    !!(pcf8563_data[PCF8563_REG_VL_SECONDS] & PCF8563_VL_MSK),
+	    !!(pcf8563_data[PCF8563_REG_CTRL_STS_1] & PCF8563_STOP_MSK));
+	print_str(s);
+
 	/* footer */
-	print_str("\n\r-------------------------------------\n\r");
+	print_str("-------------------------------------\n\r");
 }

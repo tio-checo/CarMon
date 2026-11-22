@@ -37,6 +37,7 @@ carmon_app_init(void)
 	 */
 	INIT(i2c_init());
 	INIT(ee24_init());
+	INIT(pcf8563_init());
 	INIT(mon_init());
 
 	/*
@@ -65,8 +66,6 @@ carmon_app_init(void)
 	Bluetooth is unused on ESP32-S3
 	INIT(bt_init());
 */
-
-	INIT(pcf8563_init());
 	INIT(lcdterm_init());
 	INIT(can_init());
 	INIT(obd_init());
