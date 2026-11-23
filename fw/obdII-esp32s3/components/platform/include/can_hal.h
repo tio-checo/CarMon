@@ -53,6 +53,9 @@ typedef enum {
 /* Initialization routine. */
 extern int can_init(void);
 
+/* Periodic service routine, called from CAN task. */
+extern int can_svc(void);
+
 /* Suspend the module. */
 extern int can_suspend(void);
 

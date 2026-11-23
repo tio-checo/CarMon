@@ -1,6 +1,6 @@
 /*********************************************************************
  *
- * Copyright(c) 2015, 2023
+ * Copyright(c) 2015, 2026
  *
  * Handles OBD communication layer with ECU. This layer is independent
  * on real communication protocol used (KWP2000, CAN ...).
@@ -253,6 +253,9 @@ typedef struct _obd_pid_groups_t {
 
 /* Initialization routine */
 extern int obd_init(void);
+
+/* Periodic service routine, called from CAN task. */
+extern int obd_svc(void);
 
 /* Processes query from master targeted to ECU module */
 extern int obd_process_query(char *, int);

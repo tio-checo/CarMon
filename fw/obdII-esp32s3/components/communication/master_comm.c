@@ -310,9 +310,11 @@ mcom_decode_packet(void)
 	ln--;
 
 #ifdef MCOM_TCP_MODULE
-	/* Only core queries and restart are ready before peripheral porting. */
+	/* Allow the ported services before enabling the full application. */
 	if (!carmon_platform_ready() &&
 	    mcom_co.rx_buf[0] != MCOMM_PIC_ID &&
+	    mcom_co.rx_buf[0] != MCOMM_CAN_ID &&
+	    mcom_co.rx_buf[0] != MCOMM_ECU_ID &&
 	    mcom_co.rx_buf[0] != MCOM_CMD_QUIT &&
 	    mcom_co.rx_buf[0] != MCOM_CMD_DIAG_MODE) {
 		mcom_prepare_nak_response(&mcom_resp, MCOM_NAK_UNKNOWN_IDCMD);
@@ -341,6 +343,12 @@ mcom_decode_packet(void)
 #ifdef CANHAL_MODULE
 	/* CAN module */
 	case MCOMM_CAN_ID:
+		if (ln < 1) {
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_EINVAL);
+			ret = 1;
+			break;
+		}
 		err = can_process_query(&mcom_co.rx_buf[1], ln);
 
 		if (err != 0) {
@@ -404,6 +412,12 @@ mcom_decode_packet(void)
 #ifdef OBD_MODULE
 	/* module handling communication with ECUs */
 	case MCOMM_ECU_ID:
+		if (ln < 2) {
+			mcom_prepare_nak_response(&mcom_resp,
+			    MCOM_NAK_EINVAL);
+			ret = 1;
+			break;
+		}
 		err = obd_process_query(&mcom_co.rx_buf[1], ln);
 
 		if (err != 0) {

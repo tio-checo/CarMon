@@ -977,9 +977,9 @@ obd_comm_master_svc(void)
 
 
 /*
- * Main service routine
+ * Main service routine - called periodically from CAN task.
  */
-static int
+int
 obd_svc(void)
 {
 	/* Handle OBD communication with ECU */
@@ -1589,6 +1589,8 @@ obd_process_query(char *data, int ln)
 int
 obd_init(void)
 {
+	int err;
+
 	/* Initialize ECU state machine */
 	obd_ecu_st = OBD_ECU_ST_IDLE;
 	obd_goto_idle_flag = FALSE;
@@ -1608,15 +1610,23 @@ obd_init(void)
 	pkt_num = 1;
 
 	/* Select CAN 11bit ID, 500kbit as default communication layer. */
-	obd_set_comm_mode(OBD_COMM_MODE_CAN_SID_500);
+	err = obd_set_comm_mode(OBD_COMM_MODE_CAN_SID_500);
+	if (err != 0) {
+		return (err);
+	}
 
 	/* Set default sample rate during periodic PID acquisition to 50ms. */
 	obd_sr = 50 * 1000;
 	obd_timer = NULL;
-	rtl_timer_init(&obd_timer, 0);
+	err = rtl_timer_init(&obd_timer, 0);
+	if (err != 0) {
+		return (err);
+	}
 
+#if 0
 	/* register and enable OBD service */
 	rtl_svc_init("Obd", obd_svc, TRUE, FALSE);
+#endif /* 0 */
 
 	return 0;
 }

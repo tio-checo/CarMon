@@ -3,6 +3,8 @@
 
 #include "GenericTypeDefs.h"
 
+#include "stdatomic.h"
+
 /* period of calling main service loop in us */
 #define RTL_SERVICE_PERIOD	500
 
@@ -21,8 +23,8 @@
 typedef unsigned long rtl_time_t;
 /* timer */
 typedef struct _rtl_timer_t {
-	BOOL		allocated;
-	rtl_time_t	tout;
+	_Atomic BOOL		allocated;
+	_Atomic rtl_time_t	tout;
 } rtl_timer_t;
 
 /* condition variable */

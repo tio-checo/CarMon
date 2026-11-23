@@ -52,14 +52,16 @@ carmon_app_init(void)
 		    "DLFS media attached; legacy format not verified");
 	}
 
-	if (!carmon_platform_ready()) {
-		/*
-		 * Start only the protocol services, with the RTL timer
-		 * still stopped.
-		 */
-		INIT(mcom_init());
-		INIT(pcore_init());
+	/*
+	 * Initialize the ported services while the RTL timer
+	 * is still stopped.
+	 */
+	INIT(mcom_init());
+	INIT(pcore_init());
+	INIT(can_init());
+	INIT(obd_init());
 
+	if (!carmon_platform_ready()) {
 		return (ENOTSUP);
 	}
 /*
@@ -67,10 +69,12 @@ carmon_app_init(void)
 	INIT(bt_init());
 */
 	INIT(lcdterm_init());
+/*
 	INIT(can_init());
 	INIT(obd_init());
 	INIT(mcom_init());
 	INIT(pcore_init());
+*/
 	INIT(uapp_init());
 	INIT(cm_init());
 	INIT(gps_init());

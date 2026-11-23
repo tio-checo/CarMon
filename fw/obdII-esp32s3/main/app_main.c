@@ -5,7 +5,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "carmon_platform.h"
+#include "can_hal.h"
 #include "master_comm.h"
+#include "mon.h"
+#include "obd.h"
 #include "pic_core.h"
 #include "rt_light.h"
 #include "network.h"
@@ -22,8 +25,9 @@ port_task(void *arg)
 	int result = carmon_app_init();
 
 	if (result == ENOTSUP) {
-		ESP_LOGW("carmon", "Build-port stage: OBD application disabled;"
-		    " CAN/I2C/SD/UART/USB-protocol backends not ported");
+		ESP_LOGW("carmon",
+		    "Partial port: protocol and CAN/OBD services enabled;"
+		    " remaining application services disabled");
 	} else {
 		ESP_ERROR_CHECK(result);
 	}
@@ -31,8 +35,6 @@ port_task(void *arg)
 	ESP_ERROR_CHECK(rtl_svc_handler_enable());
 	ESP_LOGI("carmon", "Original RTL started on CPU%d: GPTimer period=%d"
 	    " us; D1=GPIO9", xPortGetCoreID(), RTL_SERVICE_PERIOD);
-	ESP_LOGI("carmon", "No SD/EEPROM writes or vehicle-bus traffic; "
-	    "hardware-test project is in examples/hardware_test");
 	ESP_ERROR_CHECK(network_init());
 
 	for (;;) {
@@ -49,6 +51,12 @@ port_task(void *arg)
 		 */
 		mcom_svc();
 		pcore_svc();
+
+		if (!mon_is_diag_mode()) {
+			if (can_svc() == 0) {
+				obd_svc();
+			}
+		}
 	}
 }
 

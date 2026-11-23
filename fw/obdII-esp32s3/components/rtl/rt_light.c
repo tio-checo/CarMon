@@ -672,5 +672,5 @@ rtl_on_alarm(gptimer_handle_t timer, const gptimer_alarm_event_data_t *event,
 	/* turn off LED indicating CPU load */
 	/* ESP32-S3: no CPU-load LED is configured. */
 
-	return false;
+	return (false);
 }
