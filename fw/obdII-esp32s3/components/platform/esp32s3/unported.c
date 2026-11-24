@@ -17,7 +17,6 @@ int can_process_query(char *p, int n) { return ENOTSUP; }
 int can_send_data_response_to_master(char *a, char *b) { return ENOTSUP; }
 BOOL can_response_inuse(void) { return FALSE; }
 int can_configure(int a, int b, int c, UINT32 d, UINT32 e, BOOL f) { return ENOTSUP; }
-BOOL can_configuration_in_progress(void) { return FALSE; }
 int can_obd_send(unsigned char *p, int n) { return ENOTSUP; }
 int can_obd_recv(unsigned char **p, int *n) { return ENOTSUP; }
 */

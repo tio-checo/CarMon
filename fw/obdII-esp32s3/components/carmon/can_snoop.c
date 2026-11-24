@@ -1,6 +1,5 @@
 #include <inttypes.h>
 #include <string.h>
-#include "carmon_can_frame.h"
 /*********************************************************************
  *
  * CAN bus analyzer.
@@ -264,7 +263,7 @@ can_snoop_inc_dropped_frames(void)
  * 
  */
 static void
-can_snoop_encode_response(carmon_can_frame_t *rxm)
+can_snoop_encode_response(can_frame_t *rxm)
 {
 	int i;
 	char tb[10];
@@ -375,7 +374,7 @@ can_snoop_busy(void)
  * Pass-through analysis.
  */
 static void
-can_snoop_pass_through(carmon_can_frame_t *rxm)
+can_snoop_pass_through(can_frame_t *rxm)
 {
 	/*
 	 * If module is now busy with sending previous response,
@@ -395,7 +394,7 @@ can_snoop_pass_through(carmon_can_frame_t *rxm)
  * Address analysis.
  */
 static void
-can_snoop_collect_ids(carmon_can_frame_t *rxm)
+can_snoop_collect_ids(can_frame_t *rxm)
 {
 	int i;
 	UINT32 id;
@@ -460,7 +459,7 @@ can_snoop_collect_ids(carmon_can_frame_t *rxm)
  * Data analysis.
  */
 static void
-can_snoop_data_analysis(carmon_can_frame_t *rxm)
+can_snoop_data_analysis(can_frame_t *rxm)
 {
 	int i, index;
 	UINT32 id;
@@ -560,7 +559,7 @@ can_snoop_data_analysis(carmon_can_frame_t *rxm)
  * Timing analysis.
  */
 static void
-can_snoop_time_analysis(carmon_can_frame_t *rxm)
+can_snoop_time_analysis(can_frame_t *rxm)
 {
 	UINT32 tdif;
 
@@ -776,7 +775,7 @@ can_snoop_process_query(char *data, int ln)
  * Lets received frame undergo process of analysis.
  */
 int
-can_snoop_process_frame(carmon_can_frame_t *rxm)
+can_snoop_process_frame(can_frame_t *rxm)
 {
 	switch (can_snoop_mode) {
 	/* Analysis disabled */

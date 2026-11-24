@@ -1,4 +1,3 @@
-#include "carmon_can_frame.h"
 /*********************************************************************
  *
  * Handles OBD communication layer with ECU. This layer is independent
@@ -79,9 +78,7 @@ static enum {
 	OBD_ECU_ST_GETPID,	/* ask for PID value */
 	OBD_ECU_ST_SENDPID,	/* send PID value to master */
 	OBD_ECU_ST_NEXTPID,	/* move to the next PID */
-	OBD_ECU_ST_WAIT4CANACTIVE1,	/* wait on activity on CAN bus */
-	OBD_ECU_ST_WAIT4CANACTIVE2,
-	OBD_ECU_ST_WAIT4CANACTIVE3,
+	OBD_ECU_ST_WAIT4CANACTIVE2,	/* wait for CAN bus activity */
 	OBD_ECU_ST_WAIT4SAMPLETIME,	/* wait for sample time */
 	OBD_ECU_ST_GETPERMDTC,	/* get confirmed DTC */
 	OBD_ECU_ST_SENDDTC,	/* send DTC to master */
@@ -96,9 +93,7 @@ static unsigned char obd_packet_ecu[OBD_ECU_PACKET_MAXLN];
 /* state machine handling sending response to master */
 static enum {
 	OBD_COMM_ST_IDLE = 0,		/* machine idle */
-	OBD_COMM_ST_WAIT4KWP2KCONFDONE,	/* wait until KWP 2000 module is done
-					   with configuration */
-	OBD_COMM_ST_WAIT4CANCONFDONE	/* wait until CAN module is done
+	OBD_COMM_ST_WAIT4KWP2KCONFDONE	/* wait until KWP 2000 module is done
 					   with configuration */
 } obd_comm_st;
 /* structure holding ACK/NAK response to master */
@@ -767,11 +762,16 @@ obd_comm_ecu_svc(void)
 				 * bus when CAN bus is active.
 				 */
 				err = can_configure(MODE_LISTEN_ONLY,
-				    SPEED_500k, 0x01, 0x2c0, 0x7f0, FALSE);
+				    SPEED_500k, 0x01, 0x2c0, 0x7f0);
 
 				/* If cannot reconfigure CAN, re-try send. */
 				if (err == 0) {
-					obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE1;
+					/*
+					 * Configuration is complete. Wait for
+					 * activity received in the new mode.
+					 */
+					obd_can_frame_received = FALSE;
+					obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE2;
 				} else {
 					obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
 				}
@@ -780,22 +780,6 @@ obd_comm_ecu_svc(void)
 			obd_ecu_st = OBD_ECU_ST_IDLE;
 		}
 
-		break;
-
-	/* Wait until CAN enters 'monitor' mode. */
-	case OBD_ECU_ST_WAIT4CANACTIVE1:
-		if (can_configuration_in_progress()) {
-			break;
-		}
-
-		/*
-		 * Clear flag indicating that OBD layer has been provided
-		 * with received CAN frame. Flag is set in obd_can_rx_cb()
-		 * callback function.
-		 */
-		obd_can_frame_received = FALSE;
-
-		obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE2;
 		break;
 
 	/* Wait until CAN bus becomes active (CAN frame is received). */
@@ -808,14 +792,20 @@ obd_comm_ecu_svc(void)
 
 		/* Can frame received. Switch CAN to OBD mode. */
 		err = can_configure(MODE_NORMAL,
-		    SPEED_500k, 0x01, 0x7df, 0x7c0, FALSE);
+		    SPEED_500k, 0x01, 0x7df, 0x7c0);
 
 		/*
 		 * If cannot reconfigure CAN, make an attempt
 		 * to obtain PID value.
 		 */
 		if (err == 0) {
-			obd_ecu_st = OBD_ECU_ST_WAIT4CANACTIVE3;
+			/*
+			 * Configuration is complete. Resume acquisition
+			 * after the next sample interval.
+			 */
+			rtl_timer_init(&obd_timer, obd_sr);
+
+			obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
 		} else {
 			/* Re-initialize sample rate timer. */
 			rtl_timer_init(&obd_timer, obd_sr);
@@ -824,20 +814,6 @@ obd_comm_ecu_svc(void)
 		}
 
 	} break;
-
-	/* Wait until reconfiguration is done, then resume. */
-	case OBD_ECU_ST_WAIT4CANACTIVE3:
-		if (can_configuration_in_progress()) {
-			break;
-		}
-
-		/* Re-initialize sample rate timer. */
-		rtl_timer_init(&obd_timer, obd_sr);
-
-		/* And wait until it expires, then resume. */
-		obd_ecu_st = OBD_ECU_ST_WAIT4SAMPLETIME;
-		
-		break;
 
 	/* Send DTC to master. */
 	case OBD_ECU_ST_SENDDTC:
@@ -960,16 +936,6 @@ obd_comm_master_svc(void)
 
 			obd_comm_st = OBD_COMM_ST_IDLE;
 			break;
-
-		/* Wait until CAN module is done with configuration. */
-		case OBD_COMM_ST_WAIT4CANCONFDONE:
-			if (can_configuration_in_progress())
-				break;
-
-			obd_send_ack_response_to_master();
-
-			obd_comm_st = OBD_COMM_ST_IDLE;
-			break;
 	} /* switch */
 
 	return 0;
@@ -992,10 +958,13 @@ obd_svc(void)
 }
 
 /*
- * Selects communication mode.
+ * Configure the OBD communication mode.
+ * CAN configuration completes before returning.
+ *
  * Returns:
- *        0 - configuration process successfully commenced
- *   EINVAL - input data invalid
+ *   0       Communication mode selected successfully.
+ *   EINVAL  Invalid packet length or unsupported communication mode.
+ *   EIO     CAN configuration failed.
  */
 static int
 obd_set_comm_mode(OBD_COMM_MODE mode)
@@ -1019,8 +988,6 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		obd_send = can_obd_send;
 		obd_recv = can_obd_recv;
 
-		/* For now just make sure ACK is sent to master. */
-		obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
 		break;
 
 #ifdef KWP2K_MODULE
@@ -1060,15 +1027,7 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		 * Accept frames with SID addresses 0x2C0 - 0x2CF.
 		 */
 		err = can_configure(MODE_LISTEN_ONLY, SPEED_500k, 0x01,
-		    0x2c0, 0x7f0, FALSE);
-
-		/*
-		 * If CAN module successfully commenced changing the mode,
-		 * wait until the switch is done, then send ACK to master.
-		 */
-		if (err == 0) {
-			obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
-		}
+		    0x2c0, 0x7f0);
 
 		break;
 #else
@@ -1133,19 +1092,9 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 		 *  - "Normal Operation" mode
 		 *  - set communication speed
 		 *  - configure acceptance filter
-		 *  - instruct CAN module not to send ACK to master,
-		 *    since OBD module will take care of it.
 		 */
 		err = can_configure(MODE_NORMAL, can_speed, filter_mode,
-		    filter, mask, FALSE);
-
-		/*
-		 * If CAN module successfully commenced changing the mode,
-		 * wait until the switch is done, then send ACK to master.
-		 */
-		if (err == 0) {
-			obd_comm_st = OBD_COMM_ST_WAIT4CANCONFDONE;
-		}
+		    filter, mask);
 
 		break;
 
@@ -1162,10 +1111,13 @@ obd_set_comm_mode(OBD_COMM_MODE mode)
 }
 
 /*
- * Configures the module.
+ * Configure the OBD communication mode.
+ * CAN configuration completes before returning.
+ *
  * Returns:
- *        0 - configuration process successfully commenced
- *   EINVAL - input data invalid
+ *   0       Communication mode selected successfully.
+ *   EINVAL  Invalid packet length or unsupported communication mode.
+ *   EIO     CAN configuration failed.
  */
 static int
 obd_conf(char *data, int ln)
@@ -1188,7 +1140,7 @@ obd_conf(char *data, int ln)
  * Callback routine processing received CAN frames.
  */
 int
-obd_can_rx_cb(carmon_can_frame_t *rxm)
+obd_can_rx_cb(can_frame_t *rxm)
 {
 	int i, j;
 	int id = CAN_GET_ID(rxm);
@@ -1426,10 +1378,10 @@ obd_process_query(char *data, int ln)
 
 			if (err != 0) {
 				respond_with_ack = FALSE;
-			} else {
+			} else if (obd_comm_st != OBD_COMM_ST_IDLE) {
 				/*
-				 * Let OBD service respond later once
-				 * configuration process is finished.
+				 * Only a configuration explicitly deferred
+				 * by the lower layer needs a later response.
 				 */
 				respond_now = FALSE;
 			}

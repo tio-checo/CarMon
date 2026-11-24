@@ -19,8 +19,6 @@
 #include "rt_light.h"
 #include "utils.h"
 
-#include "esp_timer.h"
-
 /* constants */
 /* OBD specific definitions */
 /* tester SID */
@@ -96,29 +94,13 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 /* local types */
 
 /* local variables */
-/* state machine handling packets received from CAN module */
-static enum {
-	CAN_RX_ST_IDLE = 0,	/* idle */
-	CAN_RX_ST_RECEIVEPKT	/* receive frame */
-} can_rx_st;
-
-/* state machine handling packets transmitted by CAN module */
-static enum {
-	CAN_TX_ST_IDLE = 0,	/* idle */
-	CAN_TX_ST_WAIT4TXDONE,	/* wait for transmission to be done */
-	/* wait for transmission to be done, send result to master */
-	CAN_TX_ST_WAIT4TXDONE_SENDRES,
-	CAN_TX_ST_ABORT,	/* abort transmission */
-	/* abort transmission, inform master */
-	CAN_TX_ST_ABORT_SENDRES,
-	CAN_TX_ST_FAULT,	/* driver could not be safely stopped */
-	CAN_TX_ST_CONF1		/* apply configuration to the CAN module */
-} can_tx_st;
+/* Set until the controller is successfully configured or suspended. */
+static BOOL can_faulted = TRUE;
 
 /* Set to TRUE when CAN frame is received. Must be cleared by consumer. */
 static BOOL can_frame_received;
 /* Copy of received frame waiting for processing by OBD layer. */
-static carmon_can_frame_t can_rx_frame;
+static can_frame_t can_rx_frame;
 
 /* communication with master */
 /* structure holding ACK/NAK response to master */
@@ -141,13 +123,9 @@ static int can_filter_mode;
 static UINT32 can_filter;
 /* Filter mask. */
 static UINT32 can_filter_mask;
-/* If TRUE, sends ACK to master after done with configuration. */
-static BOOL can_conf_send_ack;
 
 /* OBD RX timeout timer */
 static rtl_timer_t *can_obd_rx_to_timer;
-/* CAN TX deadline, in microseconds; owned by the CAN/OBD task. */
-static int64_t can_tx_deadline;
 
 /* local functions */
 
@@ -204,22 +182,25 @@ can_send_nak_response_to_master(unsigned char e)
 }
 
 /*
- * Schedules CAN frame for transmission.
+ * Send a CAN frame and wait for transmission completion.
+ *
  * Returns:
- *       0  - packet successfully scheduled for transmission
- *   EBUSY  - module is currently busy transmitting previous packet
- *   EINVAL - invalid packet format
+ *   0       Frame transmitted successfully.
+ *   EBUSY   CAN configuration or another transmission is pending.
+ *   EINVAL  Invalid packet format or frame parameters.
+ *   EIO     Transmission failed, completion wait expired,
+ *           or the CAN node is unavailable for transmission.
  */
 static int
-can_send_frame(char *pkt, int ln)
+can_send_decode(char *pkt, int ln)
 {
-	carmon_can_frame_t frame = { 0 };
-	carmon_can_frame_t *txm = &frame;
+	can_frame_t frame = { 0 };
+	can_frame_t *txm = &frame;
 	int dlc, type, id, i;
 	int err;
 
-	if (can_tx_st != CAN_TX_ST_IDLE) {
-		return (EBUSY);
+	if (can_faulted) {
+		return (EIO);
 	}
 
 	/*
@@ -270,234 +251,88 @@ can_send_frame(char *pkt, int ln)
 		txm->data[i] = hex2ulong(pkt + 12 + (2 * i), 2);
 	}
 
-	/* Schedule a copy of the prepared frame for transmission. */
-	err = can_twai_transmit(txm);
+	/* Send the prepared frame and wait for completion. */
+	err = can_twai_send(txm, CAN_TX_TIMEOUT / 1000);
 	if (err != 0) {
 		return (err == EBUSY || err == EINVAL ? err : EIO);
 	}
 
-	/* Arm TX timeout. */
-	can_tx_deadline = esp_timer_get_time() + CAN_TX_TIMEOUT;
-
-	/* Wait for transmission completion before responding to master. */
-	can_tx_st = CAN_TX_ST_WAIT4TXDONE_SENDRES;
-
 	return (0);
 }
 
 /*
- * Service processing received CAN frames.
+ * Receive one CAN frame without waiting.
+ * Called from task context with exclusive access to CAN.
+ * The output frame is valid only when the function returns 0.
+ *
+ * Returns:
+ *   0       A matching frame was received.
+ *   EAGAIN  CAN is disabled, the queue is empty, or the received
+ *           frame does not match the requested SID/EID selection.
+ *   EINVAL  The output pointer is NULL.
+ *   ENODEV  The TWAI node or receive queue is unavailable.
+ *   EIO     CAN initialization or configuration has failed.
  */
-static int
-can_rx_svc(void)
+int
+can_receive(can_frame_t *frame)
 {
-	carmon_can_frame_t rxm;
+	can_frame_t rxm;
 	int err;
 
-	switch (can_rx_st) {
-	/* service idle */
-	case CAN_RX_ST_IDLE:
-		break;
+	if (frame == NULL) {
+		return (EINVAL);
+	}
 
-	/* Wait for received message. */
-	case CAN_RX_ST_RECEIVEPKT:
-		err = can_twai_receive(&rxm);
-		if (err == EAGAIN) {
-			break;
-		}
-		if (err != 0) {
-			return (err);
-		}
+	if (can_faulted) {
+		return (EIO);
+	}
 
-		/*
-		 * An unrestricted hardware filter can accept both types.
-		 * Preserve the requested SID/EID selection.
-		 */
-		if (CAN_GET_MODE != MODE_LISTEN_ALL_MESSAGES &&
-		    rxm.msgEID.IDE != ((can_filter_mode >> 1) & 1)) {
-			break;
-		}
+	if (CAN_GET_MODE == MODE_DISABLED) {
+		return (EAGAIN);
+	}
 
-		/* Let the received frame undergo process of analysis. */
-		can_snoop_process_frame(&rxm);
+	err = can_twai_receive(&rxm);
+	if (err != 0) {
+		return (err);
+	}
 
-		/*
-		 * If OBD layer is operating in KWP2000/CAN mixed mode,
-		 * then this OBD callback takes care of processing
-		 * non-OBD CAN frames.
-		 */
-		obd_can_rx_cb(&rxm);
+	/*
+	 * An unrestricted hardware filter can accept both types.
+	 * Preserve the requested SID/EID selection.
+	 */
+	if (CAN_GET_MODE != MODE_LISTEN_ALL_MESSAGES &&
+	    rxm.msgEID.IDE != ((can_filter_mode >> 1) & 1)) {
+		return (EAGAIN);
+	}
 
-		/*
-		 * Pass received message to upper layer.
-		 * Discard the frame if upper layer is not done with processing
-		 * previously received frame.
-		 */
-		if (!can_frame_received) {
-			/*
-			 * Keep a separate copy valid after this function
-			 * returns and while subsequent frames are received.
-			 */
-			can_rx_frame = rxm;
-
-			can_frame_received = TRUE;
-		}
-
-		break;
-
-	/* Should not happen. */
-	default:
-		break;
-	} /* switch */
+	*frame = rxm;
 
 	return (0);
 }
 
 /*
- * Applies prepared configuration to the CAN module.
- *
- * Initializes
- *   - CAN mode
- *   - speed
- *   - acceptance filter.
+ * Apply the prepared CAN configuration synchronously.
+ * Received data from the previous configuration are discarded.
+ * On failure, keep CAN services disabled until reconfiguration.
  */
 static int
 can_conf_apply(void)
 {
 	int err;
 
-	/* Discard the frame retained for the previous configuration. */
+	can_faulted = TRUE;
 	can_frame_received = FALSE;
+	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
 
 	err = can_twai_configure(CAN_GET_MODE, can_speeds[can_speed],
 	    can_filter_mode, can_filter, can_filter_mask);
 	if (err != 0) {
-		return (err);
+		return (err == EINVAL ? EINVAL : EIO);
 	}
 
-	can_rx_st = CAN_GET_MODE == MODE_DISABLED ?
-	    CAN_RX_ST_IDLE : CAN_RX_ST_RECEIVEPKT;
+	can_faulted = FALSE;
 
 	return (0);
-}
-
-/*
- * Service transmitting CAN frames.
- */
-static int
-can_tx_svc(void)
-{
-	int err;
-	BOOL send_response;
-
-	switch (can_tx_st) {
-	/* service idle */
-	case CAN_TX_ST_IDLE:
-		break;
-
-	/* service faulted */
-	case CAN_TX_ST_FAULT:
-		return (EIO);
-
-	/* Wait for packet to be transmitted. */
-	case CAN_TX_ST_WAIT4TXDONE:
-	case CAN_TX_ST_WAIT4TXDONE_SENDRES:
-		err = can_twai_tx_result();
-
-		if (err == EAGAIN) {
-			if (esp_timer_get_time() < can_tx_deadline) {
-				break;
-			}
-
-			/* Abort transmission, since timeout expired. */
-			can_tx_st =
-			    can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES ?
-			    CAN_TX_ST_ABORT_SENDRES : CAN_TX_ST_ABORT;
-
-			break;
-		}
-
-		/*
-		 * Unexpected backend state: stop the driver before
-		 * allowing its TX storage to be reused.
-		 */
-		if (err != 0 && err != EIO) {
-			can_tx_st =
-			    can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES ?
-			    CAN_TX_ST_ABORT_SENDRES : CAN_TX_ST_ABORT;
-
-			break;
-		}
-
-		/*
-		 * If master initiated transmission, inform master about
-		 * the result.
-		 * Send NAK response containing error code in case of error;
-		 * ACK otherwise.
-		 */
-		if (can_tx_st == CAN_TX_ST_WAIT4TXDONE_SENDRES) {
-			if (err == 0) {
-				can_send_ack_response_to_master();
-			} else {
-				can_send_nak_response_to_master(
-				    MCOM_NAK_IO_ERROR);
-			}
-		}
-
-		can_tx_st = CAN_TX_ST_IDLE;
-		break;
-
-	/* Abort transmission. */
-	case CAN_TX_ST_ABORT:
-	case CAN_TX_ST_ABORT_SENDRES:
-		send_response = can_tx_st == CAN_TX_ST_ABORT_SENDRES;
-
-		err = can_twai_abort();
-		if (err == 0) {
-			err = can_conf_apply();
-		}
-
-		/* Discard the frame retained for the previous transaction. */
-		can_frame_received = FALSE;
-
-		can_tx_st = err == 0 ?
-		    CAN_TX_ST_IDLE : CAN_TX_ST_FAULT;
-
-		if (send_response) {
-			can_send_nak_response_to_master(MCOM_NAK_IO_ERROR);
-		}
-
-		if (err != 0) {
-			return (err);
-		}
-
-		break;
-
-	/* Switch to configuration mode. */
-	case CAN_TX_ST_CONF1:
-		err = can_conf_apply();
-
-		can_tx_st = err == 0 ?
-		    CAN_TX_ST_IDLE : CAN_TX_ST_FAULT;
-
-		if (can_conf_send_ack) {
-			can_conf_send_ack = FALSE;
-
-			if (err == 0) {
-				can_send_ack_response_to_master();
-			} else {
-				can_send_nak_response_to_master(
-				    MCOM_NAK_IO_ERROR);
-			}
-		}
-
-		return (err);
-
-	default:
-		break;
-	} /* switch */
-
-	return 0;
 }
 
 /*
@@ -506,19 +341,45 @@ can_tx_svc(void)
 int
 can_svc(void)
 {
+	can_frame_t rxm;
 	int err;
 
 	/* Snoop callback function. Handles snooping timers. */
 	can_snoop_cb();
 
-	/* Handle packets to be transmitted by CAN module. */
-	err = can_tx_svc();
+	err = can_receive(&rxm);
+	if (err == EAGAIN) {
+		return (0);
+	}
 	if (err != 0) {
 		return (err);
 	}
 
-	/* Handle packets received by CAN module. */
-	return (can_rx_svc());
+	/* Let the received frame undergo process of analysis. */
+	can_snoop_process_frame(&rxm);
+
+	/*
+	 * If OBD layer is operating in KWP2000/CAN mixed mode,
+	 * then this OBD callback takes care of processing
+	 * non-OBD CAN frames.
+	 */
+	obd_can_rx_cb(&rxm);
+
+	/*
+	 * Pass received message to upper layer.
+	 * Discard the frame if upper layer is not done with processing
+	 * previously received frame.
+	 */
+	if (!can_frame_received) {
+		/*
+		 * Keep a separate copy valid after this function
+		 * returns and while subsequent frames are received.
+		 */
+		can_rx_frame = rxm;
+		can_frame_received = TRUE;
+	}
+
+	return (0);
 }
 
 /*
@@ -597,9 +458,9 @@ can_configure_decode(char *data, int ln)
 		/* Obtain speed. */
 		speed = (int) hex2ulong(data + 4, 2);
 
-		/* Let the service finish process of configuration. */
+		/* Apply the requested configuration synchronously. */
 		return can_configure(mode, speed, -1, 0xffffffff,
-		    0xffffffff, TRUE);
+		    0xffffffff);
 	} else {
 		/* Mode #2 */
 		int mode;
@@ -623,41 +484,26 @@ can_configure_decode(char *data, int ln)
 		/* Only 29 bits are relevant. */
 		mask &= 0x1fffffff;
 
-		/* Let the service finish process of configuration. */
-		return can_configure(-1, -1, mode, filter, mask, TRUE);
+		/* Apply the requested configuration synchronously. */
+		return can_configure(-1, -1, mode, filter, mask);
 	}
 }
 
 /* global functions */
 /*
- * Checks if configuration process is in progress.
+ * Configure the CAN module synchronously.
+ * Called from task context with exclusive access to CAN.
+ * Does not send protocol responses.
+ *
  * Returns:
- *   TRUE if configuration is in progress; FALSE otherwise.
- */
-BOOL
-can_configuration_in_progress(void) {
-	return (can_tx_st == CAN_TX_ST_CONF1);
-}
-
-/*
- * Configures the CAN module.
- * Returns:
- *   0      - success.
- *   EINVAL - specified mode or speed not supported.
- *   EBUSY  - module currently busy, speed can't be set.
+ *   0       Configuration applied successfully.
+ *   EINVAL  Unsupported mode, speed, or filter configuration.
+ *   EIO     Controller could not be stopped, created, or configured.
  */
 int
 can_configure(int mode, int speed, int filter_mode, UINT32 filter,
-    UINT32 mask, BOOL send_ack)
+    UINT32 mask)
 {
-	/*
-	 * Transmit service is used to apply configuration, so check if that
-	 * service is currently available.
-	 */
-	if (can_tx_st != CAN_TX_ST_IDLE) {
-		return EBUSY;
-	}
-
 	if (mode < -1 || mode >= CAN_NUM_SUPPORTED_MODES ||
 	    speed < -1 || speed >= CAN_NUM_SUPPORTED_SPEEDS ||
 	    filter_mode < -1 || filter_mode > 3) {
@@ -708,12 +554,8 @@ can_configure(int mode, int speed, int filter_mode, UINT32 filter,
 		can_filter_mask = mask;
 	}
 
-	/* If TRUE, sends ACK to master once configuration is finished. */
-	can_conf_send_ack = send_ack;
-
-	can_tx_st = CAN_TX_ST_CONF1;
-
-	return 0;
+	/* Apply the configuration before returning to the caller. */
+	return (can_conf_apply());
 }
 
 /*
@@ -741,12 +583,11 @@ can_init(void)
 	can_filter_mask = 0x7c0;
 	can_filter = 0x7df;
 
-	/* Initialize state machine for receiving CAN frames. */
-	can_rx_st = CAN_RX_ST_RECEIVEPKT;
+	/* No received frame is waiting for OBD processing. */
 	can_frame_received = FALSE;
 
-	/* Initialize state machine for transmitting CAN frames. */
-	can_tx_st = CAN_TX_ST_IDLE;
+	/* Keep CAN services disabled until initialization succeeds. */
+	can_faulted = TRUE;
 
 	/* Initialize state machine for receiveing USDT frames. */
 	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
@@ -765,58 +606,33 @@ can_init(void)
 		return (err);
 	}
 
-#if 0
-	/* Initialize CAN TX timeout timer. */
-	can_tx_to_timer = NULL;
-	rtl_timer_init(&can_tx_to_timer, 0);
-
-	/* Register and enable RFID service. */
-	rtl_svc_init("Can", can_svc, TRUE, FALSE);
-#endif /* 0 */
-
 	/*
 	 * Initialize CAN module.
 	 */
-	err = can_hw_init();
-	if (err != 0) {
-		can_tx_st = CAN_TX_ST_FAULT;
-	}
-
-	return (err);
+	return (can_hw_init());
 }
 
 /*
- * Suspend the module.
- * Called only from the CAN/OBD task after stopping OBD processing.
+ * Suspend the module synchronously.
+ * Called from task context after stopping OBD processing.
+ * Returns 0 on success or EIO if the controller cannot be released.
  */
 int
 can_suspend(void)
 {
 	int err;
 
-	/*
-	 * Let a pending transmission or configuration finish first.
-	 * FAULT permits another attempt to release the controller.
-	 */
-	if (can_tx_st != CAN_TX_ST_IDLE &&
-	    can_tx_st != CAN_TX_ST_FAULT) {
-		return (EBUSY);
-	}
-
 	err = can_twai_abort();
 
-	can_rx_st = CAN_RX_ST_IDLE;
 	can_frame_received = FALSE;
 	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+	can_faulted = err != 0;
 
 	if (err != 0) {
-		can_tx_st = CAN_TX_ST_FAULT;
-		return (err);
+		return (EIO);
 	}
 
 	CAN_SET_MODE(MODE_DISABLED);
-	can_conf_send_ack = FALSE;
-	can_tx_st = CAN_TX_ST_IDLE;
 
 	return (0);
 }
@@ -849,15 +665,6 @@ can_process_query(char *data, int ln)
 			/* configure module */
 			err = can_configure_decode(data + 1, ln - 1);
 
-			/*
-			 * If configuration process has been successfully
-			 * commenced, ack/nak will be sent later -
-			 * once the process of configuration is finished.
-			 */
-			if (err == 0) {
-				fl_send_ack_nak = FALSE;
-			}
-
 			break;
 
 		/* Analyze the bus. */
@@ -868,17 +675,8 @@ can_process_query(char *data, int ln)
 
 		/* Send CAN frame. */
 		case MCOMM_CAN_CMD_SEND_FRAME:
-			/* Schedule packet for transmission. */
-			err = can_send_frame(data + 1, ln - 1);
-
-			/*
-			 * If packet has been successfully scheduled
-			 * for transmission, ack/nak will be sent later -
-			 * once the process of transmission is finished.
-			 */
-			if (err == 0) {
-				fl_send_ack_nak = FALSE;
-			}
+			/* Send packet and wait for result before responding. */
+			err = can_send_decode(data + 1, ln - 1);
 
 			break;
 
@@ -900,8 +698,7 @@ can_process_query(char *data, int ln)
 			 * Return an empty status for this known condition.
 			 */
 			if (err == ENODEV &&
-			    CAN_GET_MODE == MODE_DISABLED &&
-			    can_tx_st == CAN_TX_ST_IDLE) {
+			    CAN_GET_MODE == MODE_DISABLED && !can_faulted) {
 				memset(&status, 0, sizeof (status));
 				err = 0;
 			}
@@ -959,18 +756,24 @@ can_process_query(char *data, int ln)
 }
 
 /*
- * Sends USDT frame to the bus.
+ * Send a USDT frame and wait for transmission completion.
+ * Called from task context with exclusive access to CAN.
  *
  * Returns:
- *        0 - packet scheduled for transmission
- *   EBUSY  - currently busy with sending previous packets
- *   EINVAL - unsupported type of frame
+ *   0       Frame transmitted successfully.
+ *   EBUSY   CAN service is not ready, or another transmission
+ *           is pending.
+ *   EINVAL  Unsupported frame type or invalid frame parameters.
+ *   EIO     Transmission failed, completion wait expired,
+ *           or the CAN node is unavailable for transmission.
+ *
+ * A timeout does not cancel the outstanding transmission.
  */
 int
 can_usdt_send_frame(int frame_type, unsigned char *data, int ln)
 {
-	carmon_can_frame_t frame = { 0 };
-	carmon_can_frame_t *txm = &frame;
+	can_frame_t frame = { 0 };
+	can_frame_t *txm = &frame;
 	int i, err;
 
 	/* Validate frame type. */
@@ -983,8 +786,8 @@ can_usdt_send_frame(int frame_type, unsigned char *data, int ln)
 		return (EINVAL);
 	}
 
-	if (can_tx_st != CAN_TX_ST_IDLE) {
-		return (EBUSY);
+	if (can_faulted) {
+		return (EIO);
 	}
 
 	/*
@@ -1026,29 +829,28 @@ can_usdt_send_frame(int frame_type, unsigned char *data, int ln)
 		txm->data[0] = CAN_USDT_PCI_FC;
 	}
 
-	/* Schedule a copy of the prepared frame for transmission. */
-	err = can_twai_transmit(txm);
+	/* Send the prepared frame and wait for completion. */
+	err = can_twai_send(txm, CAN_TX_TIMEOUT / 1000);
 	if (err != 0) {
 		return (err == EBUSY || err == EINVAL ? err : EIO);
 	}
-
-	/* Arm TX timeout. */
-	can_tx_deadline = esp_timer_get_time() + CAN_TX_TIMEOUT;
-
-	/* Wait for transmission completion. */
-	can_tx_st = CAN_TX_ST_WAIT4TXDONE;
 
 	return (0);
 }
 
 /*
- * Encodes OBD packet to USDT Single Frame and sends the resulting packet
- * to the bus.
+ * Encode an OBD packet into a USDT Single Frame, transmit it,
+ * and start the response timeout after successful transmission.
  *
  * Returns:
- *        0 - packet scheduled for transmission
- *   EBUSY  - currently busy with sending previous packets
- *   EINVAL - unsupported type of frame
+ *   0       Frame transmitted; waiting for an ECU response.
+ *   EBUSY   CAN service is not ready, or another transmission
+ *           is pending.
+ *   EINVAL  Invalid frame parameters.
+ *   EIO     Transmission failed, completion wait expired,
+ *           or the CAN node is unavailable for transmission.
+ *
+ * A timeout does not cancel the outstanding transmission.
  */
 int
 can_obd_send(unsigned char *data, int ln)
@@ -1095,7 +897,7 @@ can_obd_recv(unsigned char **data, int *ln)
 	static unsigned char usdt_data[CAN_USDT_MAX_DATA_SIZE];
 	static int rln, tail;
 
-	carmon_can_frame_t *rxm;
+	can_frame_t *rxm;
 	int id, ft;
 	int dln, i;
 

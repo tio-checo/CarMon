@@ -36,7 +36,7 @@ static uint8_t can_twai_tx_data[8];
  */
 static StaticQueue_t can_twai_rx_queue_control;
 static uint8_t can_twai_rx_queue_storage[
-    CAN_TWAI_RX_QUEUE_SIZE * sizeof (carmon_can_frame_t)];
+    CAN_TWAI_RX_QUEUE_SIZE * sizeof (can_frame_t)];
 static QueueHandle_t can_twai_rx_queue;
 static atomic_uint can_twai_rx_drop_count;
 
@@ -51,13 +51,14 @@ static bool can_twai_stop_required;
 /*
  * Copy the received frame into the application queue.
  * Protocol processing is performed later by the CAN/OBD task.
+ * Called from ISR when CAN frame is received.
  */
 static bool
 can_twai_on_rx_done(twai_node_handle_t node,
     const twai_rx_done_event_data_t *event, void *arg)
 {
 	BaseType_t task_woken = pdFALSE;
-	carmon_can_frame_t frame = { 0 };
+	can_frame_t frame = { 0 };
 	twai_frame_t rx = {
 		.buffer = frame.data,
 		.buffer_len = sizeof (frame.data),
@@ -163,7 +164,7 @@ can_twai_create(int mode, uint32_t bitrate)
 
 	if (can_twai_rx_queue == NULL) {
 		can_twai_rx_queue = xQueueCreateStatic(
-		    CAN_TWAI_RX_QUEUE_SIZE, sizeof (carmon_can_frame_t),
+		    CAN_TWAI_RX_QUEUE_SIZE, sizeof (can_frame_t),
 		    can_twai_rx_queue_storage,
 		    &can_twai_rx_queue_control);
 
@@ -201,7 +202,7 @@ can_twai_create(int mode, uint32_t bitrate)
  * Called from task context only.
  */
 int
-can_twai_receive(carmon_can_frame_t *frame)
+can_twai_receive(can_frame_t *frame)
 {
 	if (frame == NULL) {
 		return (EINVAL);
@@ -233,7 +234,7 @@ can_twai_rx_dropped(void)
  * Both the descriptor and its payload remain valid until completion.
  */
 int
-can_twai_transmit(const carmon_can_frame_t *frame)
+can_twai_transmit(const can_frame_t *frame)
 {
 	esp_err_t err;
 	uint32_t id;
@@ -536,4 +537,94 @@ can_twai_get_status(can_twai_status_t *status)
 	}
 
 	return (0);
+}
+
+/*
+ * Send one frame and wait for transmission completion.
+ * Called from task context with exclusive access to CAN.
+ * timeout_ms must be positive and specifies the completion wait.
+ *
+ * Returns:
+ *   0          Frame transmitted successfully.
+ *   EINVAL     Invalid frame pointer, identifier, data length,
+ *              or nonpositive timeout.
+ *   ENODEV     CAN node has not been created.
+ *   EBUSY      Previous transmission is still pending, or the
+ *              driver could not accept the new frame immediately.
+ *   ENOTSUP    Transmission is not supported in the current mode,
+ *              for example listen-only mode.
+ *   ETIMEDOUT  Frame was accepted, but the completion wait expired.
+ *   EIO        Transmission failed, a driver operation failed,
+ *              or the completion state was inconsistent.
+ *
+ * A completion wait failure does not cancel the transmission,
+ * stop the node, or release storage still used by the driver.
+ * The frame may be transmitted after ETIMEDOUT is returned.
+ *
+ * Before submitting a new frame, the next call checks that the
+ * previous transmission has finished, consumes and discards its
+ * result, and releases its storage.
+ *
+ * Do not combine this interface with the asynchronous TX service.
+ */
+int
+can_twai_send(const can_frame_t *frame, int timeout_ms)
+{
+	esp_err_t err;
+	int result;
+
+	if (timeout_ms <= 0) {
+		return (EINVAL);
+	}
+
+	if (can_twai_node == NULL) {
+		return (ENODEV);
+	}
+
+	/*
+	 * A previous call may have timed out. Do not reuse its frame
+	 * storage until the driver has finished the transmission.
+	 */
+	err = twai_node_transmit_wait_all_done(can_twai_node, 0);
+	if (err == ESP_ERR_TIMEOUT) {
+		return (EBUSY);
+	}
+	if (err != ESP_OK) {
+		return (EIO);
+	}
+
+	/*
+	 * Release storage belonging to a completed previous request.
+	 * Its late result is discarded; this call sends a new frame.
+	 */
+	result = can_twai_tx_result();
+	if (result != ENOENT && result != 0 && result != EIO) {
+		return (EIO);
+	}
+
+	result = can_twai_transmit(frame);
+	if (result != 0) {
+		return (result);
+	}
+
+	/* Wait for completion without cancelling on timeout. */
+	err = twai_node_transmit_wait_all_done(can_twai_node,
+	    timeout_ms);
+	if (err == ESP_ERR_TIMEOUT) {
+		return (ETIMEDOUT);
+	}
+	if (err != ESP_OK) {
+		return (EIO);
+	}
+
+	/*
+	 * An idle transmitter does not necessarily mean success.
+	 * Read the result published by the completion callback.
+	 */
+	result = can_twai_tx_result();
+	if (result == 0 || result == EIO) {
+		return (result);
+	}
+
+	return (EIO);
 }

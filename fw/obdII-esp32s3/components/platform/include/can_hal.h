@@ -8,6 +8,7 @@
 #ifndef __CAN_HAL_H
 #define __CAN_HAL_H
 
+#include <stdint.h>
 #include "GenericTypeDefs.h"
 
 /* constants */
@@ -30,6 +31,24 @@
     (frame)->msgSID.SID)
 
 /* types */
+/*
+ * Logical CAN frame, independent of the controller message RAM layout.
+ * Backends populate the fields explicitly.
+ */
+typedef struct {
+	struct {
+		uint32_t SID;
+		uint32_t CMSGTS;
+	} msgSID;
+	struct {
+		uint32_t EID;
+		uint32_t IDE;
+		uint32_t RTR;
+		uint32_t DLC;
+	} msgEID;
+	uint8_t data[8];
+} can_frame_t;
+
 /* supported modes */
 typedef enum {
 	MODE_NORMAL,
@@ -69,20 +88,31 @@ extern int can_send_data_response_to_master(char *, char *);
 extern BOOL can_response_inuse(void);
 
 /*
- * Configures the CAN module.
+ * Configure the CAN module synchronously.
+ * Called from task context with exclusive access to CAN.
+ * Does not send protocol responses.
+ *
  * Returns:
- *   0      - speed configured.
- *   EINVAL - specified mode or speed not supported.
- *   EBUSY  - module currently busy, speed can't be set.
+ *   0       Configuration applied successfully.
+ *   EINVAL  Unsupported mode, speed, or filter configuration.
+ *   EIO     Controller could not be stopped, created, or configured.
  */
-extern int can_configure(int, int, int, UINT32, UINT32, BOOL);
+extern int can_configure(int, int, int, UINT32, UINT32);
 
 /*
- * Checks if configuration process is in progress.
+ * Receive one CAN frame without waiting.
+ * Called from task context with exclusive access to CAN.
+ * The output frame is valid only when the function returns 0.
+ *
  * Returns:
- *   TRUE if configuration is in progress; FALSE otherwise.
+ *   0       A matching frame was received.
+ *   EAGAIN  CAN is disabled, the queue is empty, or the received
+ *           frame does not match the requested SID/EID selection.
+ *   EINVAL  The output pointer is NULL.
+ *   ENODEV  The TWAI node or receive queue is unavailable.
+ *   EIO     CAN initialization or configuration has failed.
  */
-extern BOOL can_configuration_in_progress(void);
+extern int can_receive(can_frame_t *);
 
 /*
  * Encodes OBD packet to CAN frame and sends the resulting packet to the bus.
