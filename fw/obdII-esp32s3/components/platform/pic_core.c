@@ -72,9 +72,6 @@ static unsigned char i2c_buf[PCORE_I2C_BUF_SIZE];
 /* state machine handling I2C communication */
 static enum {
 	PCORE_ST_IDLE = 0,	/* state machine idle */
-#if 0
-	PCORE_EE_ST_WAIT4SETPAR,	/* send ACK after EEPROM written */
-#endif /* 0 */
 
 #ifdef I2CHAL_MODULE
 	PCORE_I2C_ST_READ1,	/* Read from device */
@@ -200,21 +197,6 @@ pcore_svc(void)
 	/* Idle */
 	case PCORE_ST_IDLE:
 		break;
-#if 0
-	/*
-	 * Wait for EEPROM parameter stored in EEPROM,
-	 * send ACK to master afterwards.
-	 */
-	case PCORE_EE_ST_WAIT4SETPAR:
-		if (ee24_svc_busy()) {
-			break;
-		}
-
-		pcore_st = PCORE_ST_IDLE;
-		mcom_prepare_ack_response(&pcore_resp_ack_nak);
-		fl_send_ack_nak = TRUE;
-		break;
-#endif /* 0 */
 
 #ifdef I2CHAL_MODULE
 	/* Read from I2C device - grab the bus*/
@@ -556,30 +538,6 @@ pcore_process_query(char *data, int ln)
 				err = MCOM_NAK_IO_ERROR;
 				break;
 			}
-#if 0
-			/*
-			 * At least parameter number and one byte of value has
-			 * to be provided.
-			 */
-			if (ln < 5 || (ln % 2 == 0)) {
-				err = MCOM_NAK_EINVAL;
-			} else {
-				err = ee24_setpar(hex2ulong(data + 1, 2),
-				    ln - 3, data + 3);
-
-				/* The only error returned is EINVAL. */
-				if (err != 0) {
-					err = MCOM_NAK_EINVAL;
-				} else {
-					/*
-					 * Wait until parameter is stored
-					 * to EEPROM, then send ACK.
-					 */
-					pcore_st = PCORE_EE_ST_WAIT4SETPAR;
-					fl_send_ack_nak = FALSE;
-				}
-			}
-#endif
 		} break;
 #endif
 

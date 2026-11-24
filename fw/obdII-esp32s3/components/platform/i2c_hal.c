@@ -30,25 +30,6 @@
 /* I2C bus */
 static i2c_master_bus_handle_t i2c_bus;
 
-/* TRUE if I2C bus is currently granted to consumer. */
-static BOOL i2c_bus_granted;
-
-/* I2C message */
-static i2c_msg_t i2c_msg;
-
-/* state machine handling communication - upper layer */
-static enum {
-	I2C_UL_ST_IDLE = 0,	/* state machine idle */
-	I2C_UL_ST_WRITE1,		/* Write bytes to device */
-	I2C_UL_ST_WRITE2,
-	I2C_UL_ST_WRITE3,
-
-	I2C_UL_ST_RANDOM_READ1,	/* Read bytes from given address */
-	I2C_UL_ST_RANDOM_READ2,
-	I2C_UL_ST_CURRENT_READ1,	/* Read bytes from current address */
-	I2C_UL_ST_CURRENT_READ2
-} i2c_ul_st;
-
 /* local functions */
 /*
  * Returns TRUE if underlying I2C bus is busy sending or receiving word.

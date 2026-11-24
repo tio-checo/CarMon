@@ -49,9 +49,6 @@
 /* max number of parameteres stored in EEPROM */
 #define EE24_NUM_PARS		2
 
-/* Max write time per datasheet is 10ms. */
-#define EE24_EEW_DELAY		10000
-
 /* macros */
 
 /* local types */
@@ -62,19 +59,6 @@ static i2c_master_dev_handle_t ee24_dev;
 
 /* EEPROM read to RWM */
 static BOOL ee24_copied2ram;
-
-/* state machine handling communication with the sensor */
-static enum {
-	EE24_ST_IDLE = 0,	/* state machine idle */
-
-	EE24_ST_INIT1,		/* reads eeprom parameters into memory */
-	EE24_ST_INIT2,
-
-	EE24_ST_STORE_PAR1,	/* store parameter list to EEPROM */
-	EE24_ST_STORE_NV1,	/* store nv state to EEPROM */
-	EE24_ST_STORE_NVPAR2,
-	EE24_ST_STORE_NVPAR3
-} ee24_st;
 
 /* TRUE if EEPROM section keeping user parameters is valid; FALSE otherwise. */
 static BOOL ee24_param_crc_valid;
@@ -91,164 +75,7 @@ static unsigned char *ee24_param_list;
 /* pointer to in-memory non-volatile carmon service state  */
 static unsigned char *ee24_nv_state;
 
-/* Timer used by EEPROM write operation. */
-static rtl_timer_t *ee24_eew_timer;
-
 /* local functions */
-
-/*
- * Main service routine - called periodically from timer interrupt.
- * Handles communication with 24Cxx EEPROM.
- */
-static int
-ee24_svc(void)
-{
-	static int index;
-	static int ee_offset;
-	static unsigned char buf[EE24_PAGE_SIZE + 1];
-	static unsigned char *data;
-	int i;
-
-	switch (ee24_st) {
-	/* service idle */
-	case EE24_ST_IDLE:
-		break;
-
-	/*
-	 * Reads EEPROM parameters and non-volatile
-	 * state from the device to RAM.
-	 */
-	case EE24_ST_INIT1:
-		/* Grab i2c bus. */
-		if (i2c_request_bus() != 0) {
-			break;
-		}
-
-		ee24_st = EE24_ST_INIT2;
-		break;
-
-	/* Read the whole EEPROM content to RAM. */
-	case EE24_ST_INIT2: {
-		unsigned short crc;
-		int ms;
-
-		if (i2c_random_read(EE24_I2C_ADDRESS, 0, ee24_ram_copy,
-		    EE24_TOTAL_SIZE) == EAGAIN)
-			break;
-
-		/* Release I2C bus */
-		i2c_release_bus();
-
-		/* Validate EEPROM content - section of user parameters. */
-		ms = EE24_PAR_SIZE;
-		crc = crc_dma_calc_array(ee24_param_list, ms);
-
-		ee24_param_crc_valid = (crc == 0);
-
-		/* Validate EEPROM content - section of nv state. */
-		ms = EE24_NV_SIZE;
-		crc = crc_dma_calc_array(ee24_nv_state, ms);
-
-		ee24_nv_crc_valid = (crc == 0);
-
-		/* EEPROM content copied to RWM */
-		ee24_copied2ram = TRUE;
-
-		ee24_st = EE24_ST_IDLE;
-	} break;
-
-	/* Store parameter list to EEPROM */
-	case EE24_ST_STORE_PAR1:
-		/* Grab i2c bus. */
-		if (i2c_request_bus() != 0) {
-			break;
-		}
-
-		/* Write last page first. */
-		index = EE24_PAR_SIZE - EE24_PAGE_SIZE;
-		ee_offset = EE24_PAR_OFFSET;
-		data = ee24_param_list;
-
-		/*
-		 * Address of the 1st byte in EEPROM page
-		 * followed by array of bytes to be written.
-		 * The whole page will be written at once
-		 * to speed up the write operation.
-		 */
-		buf[0] = ee_offset + index;
-		for (i = 0; i < EE24_PAGE_SIZE; i++) {
-			buf[i + 1] = data[index + i];
-		}
-
-		ee24_st = EE24_ST_STORE_NVPAR2;
-		break;
-
-	/* Store nv state to EEPROM */
-	case EE24_ST_STORE_NV1:
-		/* Grab i2c bus. */
-		if (i2c_request_bus() != 0) {
-			break;
-		}
-
-		/* Write last page first. */
-		index = EE24_NV_SIZE - EE24_PAGE_SIZE;
-		ee_offset = EE24_NV_OFFSET;
-		data = ee24_nv_state;
-
-		/*
-		 * Address of the 1st byte in EEPROM page
-		 * followed by array of bytes to be written.
-		 * The whole page will be written at once
-		 * to speed up the write operation.
-		 */
-		buf[0] = ee_offset + index;
-		for (i = 0; i < EE24_PAGE_SIZE; i++) {
-			buf[i + 1] = data[index + i];
-		}
-
-		ee24_st = EE24_ST_STORE_NVPAR2;
-		break;
-
-	/* Write one byte to EEPROM */
-	case EE24_ST_STORE_NVPAR2:
-		if (i2c_write(EE24_I2C_ADDRESS, buf, sizeof (buf)) == EAGAIN) {
-			break;
-		}
-
-		/* Now wait 10ms until the page write is completed. */
-		rtl_timer_init(&ee24_eew_timer, EE24_EEW_DELAY);
-
-		ee24_st = EE24_ST_STORE_NVPAR3;
-		break;
-
-	/* Wait 10ms until the byte is written. */
-	case EE24_ST_STORE_NVPAR3:
-		if (!rtl_timer_expired(ee24_eew_timer)) {
-			break;
-		}
-
-		/* Proceed with writing another page, if there is any. */
-		index -= EE24_PAGE_SIZE;
-		if (index < 0) {
-			/* Release I2C bus */
-			i2c_release_bus();
-
-			ee24_st = EE24_ST_IDLE;
-
-			break;
-		}
-
-		buf[0] = ee_offset + index;
-		for (i = 0; i < EE24_PAGE_SIZE; i++) {
-			buf[i + 1] = data[index + i];
-		}
-
-		ee24_st = EE24_ST_STORE_NVPAR2;
-		break;
-	} /* switch */
-
-	return 0;
-}
 
 /*
  * Locates parameter in the list of parameters.
@@ -296,7 +123,6 @@ ee24_init(void)
 	ee24_param_crc_valid = FALSE;
 	ee24_nv_crc_valid = FALSE;
 	ee24_copied2ram = FALSE;
-	ee24_st = EE24_ST_IDLE;
 
 	/* Initialize pointers to the in-memory copy. */
 	ee24_param_list = ee24_ram_copy;
@@ -332,41 +158,6 @@ fail:
 	(void)i2c_master_bus_rm_device(ee24_dev);
 	ee24_dev = NULL;
 	return (err);
-
-#if 0
-	/* Register and enable ee24 service. */
-	rtl_svc_init("ee24", ee24_svc, TRUE, FALSE);
-
-	ee24_param_crc_valid = FALSE;
-	ee24_nv_crc_valid = FALSE;
-
-	/* Initialize EEPROM write timer. */
-	ee24_eew_timer = NULL;
-	rtl_timer_init(&ee24_eew_timer, 0);
-
-	ee24_copied2ram = FALSE;
-
-	/*
-	 * Initialize pointers to in-memory
-	 * copy of user parameters and nv-state.
-	 */
-	ee24_param_list = ee24_ram_copy;
-	ee24_nv_state = ee24_ram_copy + EE24_NV_OFFSET;
-
-	/* State machine is IDLE */
-	ee24_st = EE24_ST_INIT1;
-
-	return 0;
-#endif
-}
-
-/*
- * Returns TRUE if the service is currently busy. Otherwise returns FALSE.
- */
-BOOL
-ee24_svc_busy(void)
-{
-	return (ee24_st != EE24_ST_IDLE);
 }
 
 /*
@@ -413,7 +204,6 @@ ee24_getpar(int num, int *size, unsigned char **pvalue)
  * Return values:
  *       0 - parameter written and read back successfully
  *  EINVAL - invalid parameter or value
- *  EBUSY  - previous operation still in progress
  *  ENODEV - EEPROM not initialized
  *     EIO - write or verification failed
  */
@@ -505,99 +295,68 @@ fail:
 	/* A failed operation may have written only part of the region. */
 	ee24_param_crc_valid = FALSE;
 	return (EIO);
-#if 0
-	int offset, ms;
-	unsigned short crc;
-
-	/* Previous operation still in progress. */
-	if (ee24_svc_busy()) {
-		return EBUSY;
-	}
-
-	/* Check for invalid parameter number. */
-	if (num < 1 || num > EE24_NUM_PARS) {
-		return EINVAL;
-	}
-
-	/*
-	 * If EEPROM content is invalid, then only
-	 * the first parameter can be written.
-	 */
-	if (!ee24_params_valid() && (num != 1)) {
-		return EINVAL;
-	}
-
-	/* Locate parameter in the list. */
-	offset = ee24_getpar_offset(num);
-
-	if (offset == -1) {
-		return EINVAL;
-	}
-
-	/* Make sure that parameter and its size fits the available space. */
-	if (ln / 2 + offset + 1 > EE24_PAR_SIZE) {
-		return EINVAL;
-	}
-
-	/* Populate the parameter */
-	if (hex2ucharbuf(value, &ee24_param_list[offset + 1], ln) != 0) {
-		return EINVAL;
-	}
-
-	/* Store parameter's size */
-	ee24_param_list[offset] = ln / 2;
-
-	/* Recalculate CRC */
-	ms = EE24_PAR_SIZE;
-	/*
-	 * DMA CRC calculation relies on message being appended
-	 * with 16 zero bits.
-	 */
-	ee24_param_list[ms - 2] = ee24_param_list[ms - 1] = 0;
-	crc = crc_dma_calc_array(ee24_param_list, ms);
-	ee24_param_list[ms - 2] = crc >> 8;
-	ee24_param_list[ms - 1] = crc & 0xff;
-
-	/* Initiate process of storing parameter list to EEPROM */
-	ee24_st = EE24_ST_STORE_PAR1;
-
-	return 0;
-#endif
 }
 
 /*
- * Store nv state of carmon service to EEPROM.
+ * Store nv state of carmon service to EEPROM synchronously.
+ * Must be called from a task, never from an interrupt.
+ * EEPROM access and modifications of its RAM copy must be serialized
+ * by the caller for the entire operation, including programming delays.
  *
  * Return values:
- *      0 - operation commenced, data are to be written to the device
- *  EBUSY - module currently busy with previous operation
+ *       0 - nv state written without reported I2C errors
+ *  ENODEV - EEPROM not initialized
+ *     EIO - I2C write failed
  */
 int
 ee24_save_nv_state(void)
 {
-	int ms;
+	unsigned char address;
 	unsigned short crc;
+	int index;
+	esp_err_t err;
+	i2c_master_transmit_multi_buffer_info_t buffers[2] = {
+		{
+			.write_buffer = &address,
+			.buffer_size = sizeof (address)
+		},
+		{
+			.buffer_size = EE24_PAGE_SIZE
+		}
+	};
 
-	/* Previous operation still in progress. */
-	if (ee24_svc_busy()) {
-		return EBUSY;
+	if (!ee24_initialized())
+		return (ENODEV);
+
+	/* Calculate CRC directly in the RAM copy, MSB first. */
+	crc = crc_dma_calc_array(ee24_nv_state, EE24_NV_SIZE - 2);
+	ee24_nv_state[EE24_NV_SIZE - 2] = crc >> 8;
+	ee24_nv_state[EE24_NV_SIZE - 1] = crc & 0xff;
+
+	/* Write the last page first, as in the original implementation. */
+	for (index = EE24_NV_SIZE - EE24_PAGE_SIZE; index >= 0;
+	    index -= EE24_PAGE_SIZE) {
+		address = EE24_NV_OFFSET + index;
+		buffers[1].write_buffer = ee24_nv_state + index;
+
+		/* Send the EEPROM address followed by one page of data. */
+		err = i2c_master_multi_buffer_transmit(ee24_dev, buffers,
+		    sizeof (buffers) / sizeof (buffers[0]), 100);
+		if (err != ESP_OK)
+			goto fail;
+
+		/* Wait for internal programming, including tick phase. */
+		vTaskDelay(pdMS_TO_TICKS(10) + 1);
 	}
 
-	/* Recalculate CRC */
-	ms = EE24_NV_SIZE;
-	/*
-	 * DMA CRC calculation relies on message being appended
-	 * with 16 zero bits.
-	 */
-	ee24_nv_state[ms - 2] = ee24_nv_state[ms - 1] = 0;
-	crc = crc_dma_calc_array(ee24_nv_state, ms);
-	ee24_nv_state[ms - 2] = crc >> 8;
-	ee24_nv_state[ms - 1] = crc & 0xff;
+	ee24_nv_crc_valid = TRUE;
 
-	/* Initiate process of storing nv state to EEPROM */
-	ee24_st = EE24_ST_STORE_NV1;
+	return (0);
 
-	return 0;
+fail:
+	/* A failed operation may have written only part of the region. */
+	ee24_nv_crc_valid = FALSE;
+	return (EIO);
 }
 
 /*

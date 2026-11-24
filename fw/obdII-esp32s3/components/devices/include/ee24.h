@@ -16,9 +16,6 @@
 /* Initialization routine. */
 extern int ee24_init(void);
 
-/* Returns TRUE if the service is currently busy. Otherwise returns FALSE. */
-extern BOOL ee24_svc_busy(void);
-
 /*
  * Gets EEPROM parameter.
  *
@@ -47,11 +44,15 @@ extern BOOL ee24_params_valid(void);
 extern unsigned char *ee24_get_nv_state(void);
 
 /*
- * Store nv state of carmon service to EEPROM.
+ * Store nv state of carmon service to EEPROM synchronously.
+ * Must be called from a task, never from an interrupt.
+ * EEPROM access and modifications of its RAM copy must be serialized
+ * by the caller for the entire operation, including programming delays.
  *
  * Return values:
- *      0 - operation commenced, data are to be written to the device
- *  EBUSY - module currently busy with previous operation
+ *       0 - nv state written without reported I2C errors
+ *  ENODEV - EEPROM not initialized
+ *     EIO - I2C write failed
  */
 extern int ee24_save_nv_state(void);
 

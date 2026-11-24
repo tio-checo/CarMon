@@ -3,6 +3,8 @@
 
 #include <GenericTypeDefs.h>
 
+#include <stdatomic.h>
+
 /* module IDs and commands */
 #define	MCOMM_CAN_ID		'C'	/* CAN module ID */
 #define	MCOMM_CM_ID		'L'	/* Carmon logger module ID */
@@ -74,6 +76,12 @@
 /* Structure encapsulating response to master */
 typedef struct mcom_response {
 	char id;			/* module ID */
+
+	/* Set while the response is queued or being transmitted. */
+	atomic_uint in_use;
+
+	/* NAK error code stored for the lifetime of this response. */
+	unsigned char nak_error;
 /*
  * Number of words sent in one fragment. If set to MCOM_DONT_FRAGMENT,
  * response is not fragmented and is sent to master as one message.

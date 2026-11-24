@@ -40,7 +40,6 @@ int mon_diag_enter(unsigned char c) { assert(0); return 0; }
 int can_process_query(char *p, int n) { assert(0); return 0; }
 int cm_process_query(char *p, int n) { assert(0); return 0; }
 int obd_process_query(char *p, int n) { assert(0); return 0; }
-BOOL ee24_svc_busy(void) { assert(0); return FALSE; }
 BOOL ee24_initialized(void) { assert(0); return FALSE; }
 int ee24_getpar(int a, int *b, unsigned char **c) { assert(0); return 0; }
 int ee24_setpar(int a, int b, char *c) { assert(0); return 0; }

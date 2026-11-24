@@ -58,6 +58,9 @@
 #include "usb_app.h"
 #endif
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
 #include "utils.h"
 
 #include <errno.h>
@@ -92,6 +95,9 @@
 
 /* max length of packet */
 #define MCOM_PACKET_MAXLN	4096
+
+/* size of response queue */
+#define	MCOM_RESPONSE_QUEUE_SIZE	16
 
 /* local variables */
 /*
@@ -129,10 +135,21 @@ static int mcom_st_tx;
 /* TRUE indicates that packets are protected by CRC checksum */
 static BOOL mcom_use_chsum;
 
+/*
+ * Pending responses from application tasks.
+ * The queue stores pointers; response objects and their data must remain
+ * valid and unchanged until transmission is completed.
+ */
+static QueueHandle_t mcom_response_queue;
+static StaticQueue_t mcom_response_queue_control;
+static uint8_t mcom_response_queue_storage[
+    MCOM_RESPONSE_QUEUE_SIZE * sizeof (mcom_response_t *)];
+
 /* local functions */
 /* Quit the application, jump to bootloader. */
 static void mcom_jump_to_bootloader(void);
 static void mcom_reset(void);
+static int mcom_append_response(mcom_response_t *);
 
 /*
  * Quit the application, jump to bootloader.
@@ -935,7 +952,11 @@ mcom_tx_st(void)
 		if (mcom_fragment_response(r) && !mcom_is_last_fragment(r)) {
 			r->cur_pos += r->chunk_size;
 
-			mcom_queue_response(r);
+			mcom_append_response(r);
+		} else {
+			/* The producer may reuse the response now. */
+			atomic_store_explicit(&r->in_use, 0,
+			    memory_order_release);
 		}
 
 		/* 
@@ -959,6 +980,26 @@ mcom_tx_st(void)
 	}
 
 	return 0;
+}
+
+/*
+ * Move pending responses to the transmitter's private list.
+ * Bound the work so that producers cannot keep this function running
+ * indefinitely.
+ */
+static void
+mcom_accept_responses(void)
+{
+	mcom_response_t *resp;
+	unsigned int i;
+
+	for (i = 0; i < MCOM_RESPONSE_QUEUE_SIZE; i++) {
+		if (xQueueReceive(mcom_response_queue, &resp, 0) != pdPASS) {
+			break;
+		}
+
+		(void)mcom_append_response(resp);
+	}
 }
 
 /*
@@ -995,6 +1036,9 @@ mcom_svc(void)
 	}
 #endif
 
+	/* Consume responses from other modules. */
+	mcom_accept_responses();
+
 #ifdef MCOM_TCP_MODULE
 	/* Serialize requests while a response still refers to module buffers. */
 	if (mcom_co.resp == NULL) {
@@ -1007,6 +1051,9 @@ mcom_svc(void)
 #ifdef MCOM_TCP_MODULE
 	}
 #endif
+
+	/* Process responses just prepared by other modules. */
+	mcom_accept_responses();
 
 	/*
 	 * Transmit packet to master. Loop as long as transmitter
@@ -1040,14 +1087,36 @@ mcom_suspend(void)
 static void
 mcom_reset(void)
 {
+	mcom_response_t *resp, *next;
+	unsigned int i;
+
 	/* receive buffer */
 	/* rx buffer tail  */
 	mcom_co.rx_tail = 0;
 	/* flag indicating that buffer contains received packet */
 	mcom_co.fl_packet_received = FALSE;
 
-	/* pointer to current response to master */
+	/* Discard active responses and release their objects. */
+	resp = mcom_co.resp;
 	mcom_co.resp = NULL;
+
+	while (resp != NULL) {
+		next = resp->next;
+		resp->next = NULL;
+		atomic_store_explicit(&resp->in_use, 0,
+		    memory_order_release);
+		resp = next;
+	}
+
+	/* Discard responses still waiting in the FreeRTOS queue. */
+	for (i = 0; i < MCOM_RESPONSE_QUEUE_SIZE; i++) {
+		if (xQueueReceive(mcom_response_queue, &resp, 0) != pdPASS) {
+			break;
+		}
+
+		atomic_store_explicit(&resp->in_use, 0,
+		    memory_order_release);
+	}
 
 	/* local structure holding response to master - unset module ID */
 	mcom_resp.id = MCOMM_COMM_ID;
@@ -1073,6 +1142,17 @@ int
 mcom_init(void)
 {
 	/* Initialize main communication object */
+
+	/* Create the pending response queue once during initialization. */
+	if (mcom_response_queue == NULL) {
+		mcom_response_queue = xQueueCreateStatic(
+		    MCOM_RESPONSE_QUEUE_SIZE, sizeof (mcom_response_t *),
+		    mcom_response_queue_storage, &mcom_response_queue_control);
+
+		if (mcom_response_queue == NULL) {
+			return (ENOMEM);
+		}
+	}
 
 	/*
 	 * Methods for receiving and sending char from/to master.
@@ -1105,17 +1185,18 @@ int
 mcom_response_init(mcom_response_t *resp, char module_id)
 {
 	resp->id = module_id;
-	
+	atomic_init(&resp->in_use, 0);
 	resp->next = NULL;
 
 	return 0;
 }
 
 /*
- * Put response to master to the end of transmit queue.
+ * Append a response to the transmitter's private list.
+ * Called only by the master communication task.
  */
-int
-mcom_queue_response(mcom_response_t *resp)
+static int
+mcom_append_response(mcom_response_t *resp)
 {
 	mcom_response_t *r;
 
@@ -1170,6 +1251,49 @@ mcom_queue_response(mcom_response_t *resp)
 }
 
 /*
+ * Queue a prepared response without blocking.
+ *
+ * Each response object has one producer. After successful submission,
+ * the object and its buffers must remain unchanged until in_use clears.
+ *
+ * Returns:
+ *   0       Response queued.
+ *   EINVAL  NULL response pointer.
+ *   ENODEV  Response queue is not initialized.
+ *   EBUSY   Response is already queued or being transmitted.
+ *   EAGAIN  Queue is full; the response remains owned by the caller.
+ *
+ * Called from task context only.
+ */
+int
+mcom_queue_response(mcom_response_t *resp)
+{
+	unsigned int expected = 0;
+
+	if (resp == NULL) {
+		return (EINVAL);
+	}
+
+	if (mcom_response_queue == NULL) {
+		return (ENODEV);
+	}
+
+	/* Reserve the object before publishing its pointer to the consumer. */
+	if (!atomic_compare_exchange_strong_explicit(&resp->in_use,
+	    &expected, 1, memory_order_acquire, memory_order_relaxed)) {
+		return (EBUSY);
+	}
+
+	if (xQueueSend(mcom_response_queue, &resp, 0) != pdPASS) {
+		atomic_store_explicit(&resp->in_use, 0,
+		    memory_order_release);
+		return (EAGAIN);
+	}
+
+	return (0);
+}
+
+/*
  * Send generic response to master.
  * Return EAGAIN if structure already contains data to be transmitted.
  */
@@ -1215,34 +1339,38 @@ mcom_prepare_ack_response(mcom_response_t *resp)
 }
 
 /*
- * Send NAK response to master.
+ * Prepare a NAK response using storage owned by the response object.
+ *
+ * Returns:
+ *   0       Response prepared.
+ *   EAGAIN  Response is already queued or being transmitted.
  */
 int
 mcom_prepare_nak_response(mcom_response_t *resp, unsigned char err)
 {
-	static unsigned char e;
+	int ret;
 
-	e = err;
-	return mcom_prepare_generic_response(resp, MCOM_RESP_NAK, &e,
-	    MCOM_DATA_TYPE_BYTE, 1, MCOM_DONT_FRAGMENT);
+	ret = mcom_prepare_generic_response(resp, MCOM_RESP_NAK,
+	    &resp->nak_error, MCOM_DATA_TYPE_BYTE, 1, MCOM_DONT_FRAGMENT);
+	if (ret != 0) {
+		return (ret);
+	}
+
+	/* Update the error code only after the response is found available. */
+	resp->nak_error = err;
+
+	return (0);
 }
 
 /*
- * Returns TRUE if given response structure is in use; FALSE otherwise.
- *
- * Structure is in use if it is queued to be sent to master.
- * Transmit queue is assumed to be really short, so walking the whole queue
- * is not supposed to take very long.
+ * Returns TRUE while the response is queued or being transmitted.
+ * The producer must not modify the response or its buffers in this state.
  */
 BOOL
 mcom_response_inuse(mcom_response_t *resp)
 {
-	mcom_response_t *r;
-
-	for (r = mcom_co.resp; (r != NULL) && (r != resp); r = r->next)
-		;
-
-	return (r == resp);
+	return (atomic_load_explicit(&resp->in_use,
+	    memory_order_acquire) != 0);
 }
 
 /*
