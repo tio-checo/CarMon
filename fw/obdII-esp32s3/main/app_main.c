@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "carmon_platform.h"
 #include "can_hal.h"
+#include "can_snoop.h"
 #include "master_comm.h"
 #include "mon.h"
 #include "obd.h"
@@ -17,6 +18,9 @@
 static void
 port_task(void *arg)
 {
+	can_frame_t frame;
+	int err;
+
 	(void)arg;
 
 	ESP_ERROR_CHECK(carmon_board_init());
@@ -53,7 +57,20 @@ port_task(void *arg)
 		pcore_svc();
 
 		if (!mon_is_diag_mode()) {
-			if (can_svc() == 0) {
+			/* Handle analyzer timing independently of reception. */
+			can_snoop_cb();
+
+			err = 0;
+
+			/*
+			 * Leave response frames queued for synchronous
+			 * OBD reception while its response window is active.
+			 */
+			if (!can_obd_rx_active()) {
+				err = can_receive(&frame, 0);
+			}
+
+			if (err == 0 || err == EAGAIN) {
 				obd_svc();
 			}
 		}

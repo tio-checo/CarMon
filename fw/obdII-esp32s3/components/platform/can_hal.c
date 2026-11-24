@@ -19,6 +19,8 @@
 #include "rt_light.h"
 #include "utils.h"
 
+#include "esp_timer.h"
+
 /* constants */
 /* OBD specific definitions */
 /* tester SID */
@@ -67,15 +69,7 @@
 /* Extracts data length from USDT frame */
 #define	CAN_USDT_GET_DL(x)	\
     (CAN_USDT_IS_SF(x) ? (x)->data[0] & CAN_USDT_PCI_DATA_MSK : \
-    ((x)->data[0] & CAN_USDT_PCI_DATA_MSK) + (x)->data[1])
-
-/* State machine handling re-assemling OBD message from USDT frames. */
-static enum {
-	CAN_USDT_RX_ST_IDLE = 0,	/* idle */
-	CAN_USDT_RX_ST_SF_FF,		/* waits for SF or FF */
-	CAN_USDT_RX_ST_CF		/* receives CFs */
-} can_usdt_rx_st;
-
+    (((x)->data[0] & CAN_USDT_PCI_DATA_MSK) << 8) + (x)->data[1])
 
 /* Map symbolic supported speeds to real values. */
 static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
@@ -96,11 +90,6 @@ static const UINT32 can_speeds[CAN_NUM_SUPPORTED_SPEEDS] = {
 /* local variables */
 /* Set until the controller is successfully configured or suspended. */
 static BOOL can_faulted = TRUE;
-
-/* Set to TRUE when CAN frame is received. Must be cleared by consumer. */
-static BOOL can_frame_received;
-/* Copy of received frame waiting for processing by OBD layer. */
-static can_frame_t can_rx_frame;
 
 /* communication with master */
 /* structure holding ACK/NAK response to master */
@@ -261,25 +250,34 @@ can_send_decode(char *pkt, int ln)
 }
 
 /*
- * Receive one CAN frame without waiting.
+ * Receive one matching CAN frame.
  * Called from task context with exclusive access to CAN.
+ * timeout_ms specifies the total wait budget; zero means no waiting.
  * The output frame is valid only when the function returns 0.
  *
+ * Each matching frame is passed to the CAN analyzer and the OBD
+ * activity/passive-data callback before being returned to the caller.
+ *
  * Returns:
- *   0       A matching frame was received.
- *   EAGAIN  CAN is disabled, the queue is empty, or the received
- *           frame does not match the requested SID/EID selection.
- *   EINVAL  The output pointer is NULL.
- *   ENODEV  The TWAI node or receive queue is unavailable.
- *   EIO     CAN initialization or configuration has failed.
+ *   0          A matching frame was received.
+ *   EAGAIN     CAN is disabled, or no matching frame was returned
+ *              by a nonblocking receive.
+ *   ETIMEDOUT  No matching frame was received before timeout.
+ *   EINVAL     The output pointer is NULL or timeout_ms is negative.
+ *   ENODEV     The TWAI node or receive queue is unavailable.
+ *   EIO        CAN initialization or configuration has failed.
+ *
+ * Queue waits have FreeRTOS tick resolution. Scheduling may delay
+ * the return beyond the requested timeout.
  */
 int
-can_receive(can_frame_t *frame)
+can_receive(can_frame_t *frame, int timeout_ms)
 {
 	can_frame_t rxm;
-	int err;
+	int64_t deadline, remaining;
+	int wait_ms, err;
 
-	if (frame == NULL) {
+	if (frame == NULL || timeout_ms < 0) {
 		return (EINVAL);
 	}
 
@@ -291,23 +289,55 @@ can_receive(can_frame_t *frame)
 		return (EAGAIN);
 	}
 
-	err = can_twai_receive(&rxm);
-	if (err != 0) {
-		return (err);
+	deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+	wait_ms = timeout_ms;
+
+	for (;;) {
+		err = can_twai_receive(&rxm, wait_ms);
+		if (err != 0 && err != ETIMEDOUT) {
+			return (err);
+		}
+
+		if (err == 0) {
+			/*
+			 * An unrestricted hardware filter can accept
+			 * both types. Preserve the requested SID/EID
+			 * selection.
+			 */
+			if (CAN_GET_MODE == MODE_LISTEN_ALL_MESSAGES ||
+			    rxm.msgEID.IDE == ((can_filter_mode >> 1) & 1)) {
+				/* Let the received frame undergo analysis. */
+				can_snoop_process_frame(&rxm);
+
+				/*
+				 * Record CAN activity and process passive
+				 * OBD data in KWP2000/CAN mixed mode.
+				 */
+				obd_can_rx_cb(&rxm);
+
+				*frame = rxm;
+
+				return (0);
+			}
+		}
+
+		/* Preserve one-frame polling for a nonblocking call. */
+		if (timeout_ms == 0) {
+			return (EAGAIN);
+		}
+
+		/*
+		 * Discarded frames must not restart the timeout.
+		 * Recheck elapsed time also after a tick-based wait.
+		 */
+		remaining = deadline - esp_timer_get_time();
+		if (remaining <= 0) {
+			return (ETIMEDOUT);
+		}
+
+		/* Round the remaining microseconds up to milliseconds. */
+		wait_ms = (int)((remaining + 999) / 1000);
 	}
-
-	/*
-	 * An unrestricted hardware filter can accept both types.
-	 * Preserve the requested SID/EID selection.
-	 */
-	if (CAN_GET_MODE != MODE_LISTEN_ALL_MESSAGES &&
-	    rxm.msgEID.IDE != ((can_filter_mode >> 1) & 1)) {
-		return (EAGAIN);
-	}
-
-	*frame = rxm;
-
-	return (0);
 }
 
 /*
@@ -321,8 +351,10 @@ can_conf_apply(void)
 	int err;
 
 	can_faulted = TRUE;
-	can_frame_received = FALSE;
-	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+
+	if (can_obd_rx_to_timer != NULL) {
+		rtl_timer_init(&can_obd_rx_to_timer, 0);
+	}
 
 	err = can_twai_configure(CAN_GET_MODE, can_speeds[can_speed],
 	    can_filter_mode, can_filter, can_filter_mask);
@@ -331,53 +363,6 @@ can_conf_apply(void)
 	}
 
 	can_faulted = FALSE;
-
-	return (0);
-}
-
-/*
- * Main service routine - called periodically from CAN task.
- */
-int
-can_svc(void)
-{
-	can_frame_t rxm;
-	int err;
-
-	/* Snoop callback function. Handles snooping timers. */
-	can_snoop_cb();
-
-	err = can_receive(&rxm);
-	if (err == EAGAIN) {
-		return (0);
-	}
-	if (err != 0) {
-		return (err);
-	}
-
-	/* Let the received frame undergo process of analysis. */
-	can_snoop_process_frame(&rxm);
-
-	/*
-	 * If OBD layer is operating in KWP2000/CAN mixed mode,
-	 * then this OBD callback takes care of processing
-	 * non-OBD CAN frames.
-	 */
-	obd_can_rx_cb(&rxm);
-
-	/*
-	 * Pass received message to upper layer.
-	 * Discard the frame if upper layer is not done with processing
-	 * previously received frame.
-	 */
-	if (!can_frame_received) {
-		/*
-		 * Keep a separate copy valid after this function
-		 * returns and while subsequent frames are received.
-		 */
-		can_rx_frame = rxm;
-		can_frame_received = TRUE;
-	}
 
 	return (0);
 }
@@ -583,14 +568,8 @@ can_init(void)
 	can_filter_mask = 0x7c0;
 	can_filter = 0x7df;
 
-	/* No received frame is waiting for OBD processing. */
-	can_frame_received = FALSE;
-
 	/* Keep CAN services disabled until initialization succeeds. */
 	can_faulted = TRUE;
-
-	/* Initialize state machine for receiveing USDT frames. */
-	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
 
 	/* Set module ID for purposes of communication with master. */
 	mcom_response_init(&can_resp_ack_nak, MCOMM_CAN_ID);
@@ -624,9 +603,11 @@ can_suspend(void)
 
 	err = can_twai_abort();
 
-	can_frame_received = FALSE;
-	can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
 	can_faulted = err != 0;
+
+	if (can_obd_rx_to_timer != NULL) {
+		rtl_timer_init(&can_obd_rx_to_timer, 0);
+	}
 
 	if (err != 0) {
 		return (EIO);
@@ -861,15 +842,17 @@ can_obd_send(unsigned char *data, int ln)
 	if (ret == 0) {
 		/* Arm Rx timer */
 		rtl_timer_init(&can_obd_rx_to_timer, CAN_OBD_RX_TIMEOUT);
-
-		can_usdt_rx_st = CAN_USDT_RX_ST_SF_FF;
 	}
 
 	return ret;
 }
 
 /*
- * Receives and re-assembles OBD packet.
+ * Receive and reassemble one complete OBD packet synchronously.
+ * Called from task context with exclusive access to CAN.
+ * Uses the response timeout started by can_obd_send().
+ * The returned buffer remains valid until the next receive call.
+ *
  * Implements "Unacknowledged Segmented Data Transfer" (USDT)
  * mechanism used to support multiple consecutive frame responses
  * to a single frame request.
@@ -887,180 +870,186 @@ can_obd_send(unsigned char *data, int ln)
  *    capabilities of the receiver
  *
  * Returns:
- *        0 - packet received
- *   EAGAIN - operation in progress
- *   EIO    - ECU not responded or malformed packet received
+ *   0   - A complete OBD packet was received
+ *   EIO - The response timeout expired, CAN reception or Flow Control
+ *         transmission failed, or the received packet was malformed.
  */
 int
 can_obd_recv(unsigned char **data, int *ln)
 {
 	static unsigned char usdt_data[CAN_USDT_MAX_DATA_SIZE];
-	static int rln, tail;
+	int rln, tail;
 
-	can_frame_t *rxm;
+	can_frame_t frame;
+	can_frame_t *rxm = &frame;
+	rtl_time_t remaining;
+	int timeout_ms, err;
 	int id, ft;
 	int dln, i;
 
-	/* If ECU has not responded in given time, abort. */
-	if (rtl_timer_expired(can_obd_rx_to_timer)) {
-		/* Reset re-assembly state machine. */
-		can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+	rln = 0;
+	tail = 0;
 
-		return EIO;
-	}
-
-	/* Packet not received yet. */
-	if (!can_frame_received) {
-		return EAGAIN;
-	}
-
-	/* Save pointer to received frame and clear the flag. */
-	rxm = &can_rx_frame;
-	can_frame_received = FALSE;
-
-	/*
-	 * Acceptance mask allows packets within ID range 0x7c0 - 0x7ff.
-	 * Thus, filter out packets not coming from ECU.
-	 */
-	id = CAN_GET_ID(rxm);
-	if ((id & CAN_OBD_ECU_SID_MSK) != CAN_OBD_ECU_SID) {
-		return EAGAIN;
-	}
-
-	/* Verify size of data payload - must be always 8 per standard. */
-	if (rxm->msgEID.DLC != CAN_USDT_DLC) {
-		return EIO;
-	}
-
-	/* Decode frame type. */
-	ft = rxm->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK;
-
-	/* USDT re-assembly state machine */
-	switch (can_usdt_rx_st) {
-	/* idle */
-	case CAN_USDT_RX_ST_IDLE:
-		break;
-
-	/* Waits for SF or FF. */
-	case CAN_USDT_RX_ST_SF_FF:
-		/* Validate packet type */
-		if ((ft != CAN_USDT_PCI_SF) && (ft != CAN_USDT_PCI_FF)) {
-			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-			return EIO;
+	for (;;) {
+		/*
+		 * Keep the response timeout started by can_obd_send().
+		 * The RTL timer contains the number of remaining ticks.
+		 */
+		remaining = can_obd_rx_to_timer->tout;
+		if (remaining == 0) {
+			return (EIO);
 		}
-
-		/* Extract size of data payload. */
-		dln = CAN_USDT_GET_DL(rxm);
-
-		/* Single Frame */
-		if (ft == CAN_USDT_PCI_SF) {
-			/* Invalid length of data payload. */
-			if ((dln > CAN_USDT_SF_MAX_DATA_SIZE) || (dln == 0)) {
-				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-				return EIO;
-			}
-
-			/* Extract data payload. Skip PCI byte. */
-			for (i = 0; i < dln; i++) {
-				usdt_data[i] = rxm->data[i + 1];
-			}
-
-			/*
-			 * We are done, pass pointer to local storage
-			 * and its size to the caller.
-			 */
-			*data = usdt_data;
-			*ln = dln;
-
-			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-			return 0;
-		}
-
-		/* First Frame */
-		if (ft == CAN_USDT_PCI_FF) {
-			/*
-			 * Invalid length of data payload.
-			 * 7 and less data bytes should be always delivered
-			 * in form of Single Frames.
-			 */
-			if ((dln > CAN_USDT_MAX_DATA_SIZE) || (dln < 8)) {
-				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-				return EIO;
-			}
-
-			/*
-			 * Extract data payload. Skip PCI and DL bytes.
-			 * First Frame always carries 6 bytes of data payload.
-			 */
-			for (i = 0; i < 6; i++) {
-				usdt_data[i] = rxm->data[i + 2];
-			}
-
-			/*
-			 * Save pointer to free position in buffer
-			 * and remaining number of bytes to be received.
-			 */
-			rln = dln - 6;
-			tail = 6;
-
-			/*
-			 * According to the standard, Flow Control Frame
-			 * has to be sent to the sender within 5ms
-			 * after FF is received to indicate we are ready
-			 * to receive CFs.
-			 * FS, BSmax and STmin have to be zero for OBD
-			 * communication, so no data to be passed down.
-			 * Abort if FC can't be sent.
-			 */
-			if (can_usdt_send_frame(CAN_USDT_PCI_FC, NULL, 0)
-			    != 0) {
-				can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-				return EIO;
-			}
-
-			/* Wait for subsequent CFs. */
-			can_usdt_rx_st = CAN_USDT_RX_ST_CF;
-
-			return EAGAIN;
-		}
-
-		break;
-
-	/* Receives CFs */
-	case CAN_USDT_RX_ST_CF:
-		/* Validate packet type */
-		if (ft != CAN_USDT_PCI_CF) {
-			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
-
-			return EIO;
-		}
-
-		/* TODO: Validate Sequence Number */
-
-		/* All CFs except of the last one carry full data payload. */
-		dln = rln >= CAN_USDT_SF_MAX_DATA_SIZE ?
-		    CAN_USDT_SF_MAX_DATA_SIZE : rln;
 
 		/*
-		 * Extract data payload. Skip PCI byte.
+		 * Convert remaining RTL ticks to milliseconds.
+		 * Round up so a partial millisecond is retained.
 		 */
-		for (i = 0; i < dln; i++) {
-			usdt_data[tail + i] = rxm->data[i + 1];
+		timeout_ms = (int)(((uint64_t)remaining *
+		    RTL_SERVICE_PERIOD + 999) / 1000);
+
+		err = can_receive(&frame, timeout_ms);
+		if (err != 0) {
+			return (EIO);
 		}
 
-		/* Update "number of remaining bytes" and buffer pointer. */
-		rln -= dln;
-		tail += dln;
+		/*
+		 * Acceptance mask allows packets within ID range
+		 * 0x7c0 - 0x7ff. Filter out packets not coming from ECU.
+		 */
+		id = CAN_GET_ID(rxm);
+		if ((id & CAN_OBD_ECU_SID_MSK) != CAN_OBD_ECU_SID) {
+			continue;
+		}
 
-		/* There are still data to be received. */
-		if (rln > 0) {
-			return EAGAIN;
+		/* Data payload must contain eight bytes. */
+		if (rxm->msgEID.DLC != CAN_USDT_DLC) {
+			return (EIO);
+		}
+
+		/* Decode frame type. */
+		ft = rxm->data[0] & CAN_USDT_PCI_FRAME_TYPE_MSK;
+
+		/* Start a packet or receive its remaining data. */
+		/* Waits for SF or FF. */
+		if (rln == 0) {
+			/* Validate packet type */
+			if ((ft != CAN_USDT_PCI_SF) &&
+			    (ft != CAN_USDT_PCI_FF)) {
+
+				return EIO;
+			}
+
+			/* Extract size of data payload. */
+			dln = CAN_USDT_GET_DL(rxm);
+
+			/* Single Frame */
+			if (ft == CAN_USDT_PCI_SF) {
+				/* Invalid length of data payload. */
+				if ((dln > CAN_USDT_SF_MAX_DATA_SIZE) ||
+				    (dln == 0)) {
+
+					return EIO;
+				}
+
+				/* Extract data payload. Skip PCI byte. */
+				for (i = 0; i < dln; i++) {
+					usdt_data[i] = rxm->data[i + 1];
+				}
+
+				/*
+				 * We are done, pass pointer to local storage
+				 * and its size to the caller.
+				 */
+				*data = usdt_data;
+				*ln = dln;
+
+
+				return 0;
+			}
+
+			/* First Frame */
+			if (ft == CAN_USDT_PCI_FF) {
+				/*
+				 * Invalid length of data payload.
+				 * 7 and less data bytes should be always
+				 * delivered in form of Single Frames.
+				 */
+				if ((dln > CAN_USDT_MAX_DATA_SIZE) ||
+				    (dln < 8)) {
+
+					return EIO;
+				}
+
+				/*
+				 * Extract data payload. Skip PCI and DL bytes.
+				 * First Frame always carries 6 bytes of data
+				 * payload.
+				 */
+				for (i = 0; i < 6; i++) {
+					usdt_data[i] = rxm->data[i + 2];
+				}
+
+				/*
+				 * Save pointer to free position in buffer
+				 * and remaining number of bytes to be received.
+				 */
+				rln = dln - 6;
+				tail = 6;
+
+				/*
+				 * According to the standard, Flow Control Frame
+				 * has to be sent to the sender within 5ms
+				 * after FF is received to indicate we are ready
+				 * to receive CFs.
+				 * FS, BSmax and STmin have to be zero for OBD
+				 * communication, so no data to be passed down.
+				 * Abort if FC can't be sent.
+				 */
+				if (can_usdt_send_frame(CAN_USDT_PCI_FC,
+				    NULL, 0) != 0) {
+					return EIO;
+				}
+
+				/* Wait for subsequent CFs. */
+				continue;
+			}
 		} else {
+			/* Receives CFs */
+
+			/* Validate packet type */
+			if (ft != CAN_USDT_PCI_CF) {
+
+				return EIO;
+			}
+
+			/* TODO: Validate Sequence Number */
+
+			/*
+			 * All CFs except of the last one carry
+			 * full data payload.
+			 */
+			dln = rln >= CAN_USDT_SF_MAX_DATA_SIZE ?
+			    CAN_USDT_SF_MAX_DATA_SIZE : rln;
+
+			/*
+			 * Extract data payload. Skip PCI byte.
+			 */
+			for (i = 0; i < dln; i++) {
+				usdt_data[tail + i] = rxm->data[i + 1];
+			}
+
+			/*
+			 * Update "number of remaining bytes"
+			 * and buffer pointer.
+			 */
+			rln -= dln;
+			tail += dln;
+
+			/* There are still data to be received. */
+			if (rln > 0) {
+				continue;
+			}
+
 			/*
 			 * We are done, pass pointer to local storage
 			 * and its size to the caller.
@@ -1068,19 +1057,19 @@ can_obd_recv(unsigned char **data, int *ln)
 			*data = usdt_data;
 			*ln = tail;
 
-			/* Switch to IDLE mode. */
-			can_usdt_rx_st = CAN_USDT_RX_ST_IDLE;
+			return (0);
+		} /* if */
+	} /* for */
+}
 
-			return 0;
-		}
-
-		break;
-
-	/* Not reached */
-	default:
-		break;
-	}
-
-	/* Report success by default. */
-	return 0;
+/*
+ * Return TRUE while the OBD response window is active.
+ * Background reception must not consume frames during this window.
+ * Called from the same task as CAN and OBD processing.
+ */
+BOOL
+can_obd_rx_active(void)
+{
+	return (can_obd_rx_to_timer != NULL &&
+	    !rtl_timer_expired(can_obd_rx_to_timer));
 }

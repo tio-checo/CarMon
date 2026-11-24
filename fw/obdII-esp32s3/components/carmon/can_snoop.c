@@ -811,7 +811,8 @@ can_snoop_process_frame(can_frame_t *rxm)
 }
 
 /*
- * Snoop callback function. Called from CAN service. Handles snooping timers.
+ * Snoop callback function. Called periodically from the application task.
+ * Handles snooping timers.
  */
 void
 can_snoop_cb(void)

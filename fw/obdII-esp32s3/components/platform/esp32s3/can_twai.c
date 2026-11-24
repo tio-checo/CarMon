@@ -198,13 +198,24 @@ can_twai_create(int mode, uint32_t bitrate)
 }
 
 /*
- * Receive a copy of one queued frame without blocking.
- * Called from task context only.
+ * Receive a copy of one queued frame.
+ * Called from task context with exclusive access to CAN.
+ * timeout_ms specifies the wait budget; zero means no waiting.
+ * Positive waits are rounded up to whole FreeRTOS ticks.
+ *
+ * Returns:
+ *   0          A frame was received.
+ *   EAGAIN     The queue is empty and timeout_ms is zero.
+ *   ETIMEDOUT  The queue wait expired.
+ *   EINVAL     The output pointer is NULL or timeout_ms is negative.
+ *   ENODEV     The TWAI node or receive queue is unavailable.
  */
 int
-can_twai_receive(can_frame_t *frame)
+can_twai_receive(can_frame_t *frame, int timeout_ms)
 {
-	if (frame == NULL) {
+	TickType_t ticks;
+
+	if (frame == NULL || timeout_ms < 0) {
 		return (EINVAL);
 	}
 
@@ -212,8 +223,12 @@ can_twai_receive(can_frame_t *frame)
 		return (ENODEV);
 	}
 
-	if (xQueueReceive(can_twai_rx_queue, frame, 0) != pdPASS) {
-		return (EAGAIN);
+	/* Round milliseconds up without overflowing the multiplication. */
+	ticks = (TickType_t)(((uint64_t)timeout_ms *
+	    configTICK_RATE_HZ + 999) / 1000);
+
+	if (xQueueReceive(can_twai_rx_queue, frame, ticks) != pdPASS) {
+		return (timeout_ms == 0 ? EAGAIN : ETIMEDOUT);
 	}
 
 	return (0);

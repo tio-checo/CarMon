@@ -72,9 +72,6 @@ typedef enum {
 /* Initialization routine. */
 extern int can_init(void);
 
-/* Periodic service routine, called from CAN task. */
-extern int can_svc(void);
-
 /* Suspend the module. */
 extern int can_suspend(void);
 
@@ -100,19 +97,27 @@ extern BOOL can_response_inuse(void);
 extern int can_configure(int, int, int, UINT32, UINT32);
 
 /*
- * Receive one CAN frame without waiting.
+ * Receive one matching CAN frame.
  * Called from task context with exclusive access to CAN.
+ * timeout_ms specifies the total wait budget; zero means no waiting.
  * The output frame is valid only when the function returns 0.
  *
+ * Each matching frame is passed to the CAN analyzer and the OBD
+ * activity/passive-data callback before being returned to the caller.
+ *
  * Returns:
- *   0       A matching frame was received.
- *   EAGAIN  CAN is disabled, the queue is empty, or the received
- *           frame does not match the requested SID/EID selection.
- *   EINVAL  The output pointer is NULL.
- *   ENODEV  The TWAI node or receive queue is unavailable.
- *   EIO     CAN initialization or configuration has failed.
+ *   0          A matching frame was received.
+ *   EAGAIN     CAN is disabled, or no matching frame was returned
+ *              by a nonblocking receive.
+ *   ETIMEDOUT  No matching frame was received before timeout.
+ *   EINVAL     The output pointer is NULL or timeout_ms is negative.
+ *   ENODEV     The TWAI node or receive queue is unavailable.
+ *   EIO        CAN initialization or configuration has failed.
+ *
+ * Queue waits have FreeRTOS tick resolution. Scheduling may delay
+ * the return beyond the requested timeout.
  */
-extern int can_receive(can_frame_t *);
+extern int can_receive(can_frame_t *, int);
 
 /*
  * Encodes OBD packet to CAN frame and sends the resulting packet to the bus.
@@ -124,14 +129,40 @@ extern int can_receive(can_frame_t *);
 extern int can_obd_send(unsigned char *, int);
 
 /*
- * Waits for CAN frame carrying OBD packet.
+ * Receive and reassemble one complete OBD packet synchronously.
+ * Called from task context with exclusive access to CAN.
+ * Uses the response timeout started by can_obd_send().
+ * The returned buffer remains valid until the next receive call.
+ *
+ * Implements "Unacknowledged Segmented Data Transfer" (USDT)
+ * mechanism used to support multiple consecutive frame responses
+ * to a single frame request.
+ *
+ * The following unique CAN message types are supported by the network
+ * USDT protocol layer:
+ *
+ *  - Single Frame (SF) - supports a maximum length of seven (7) data bytes
+ *  - First Frame (FF)  - the first frame CAN message of a diagnostic
+ *    communication sequence
+ *  - Consecutive Frame (CF) - the second to n frame CAN message
+ *    of a diagnostic communication sequence
+ *  - Flow Control (FC) - the receiving node diagnostic communication
+ *    handshake used to adjust the sender node to the network layer
+ *    capabilities of the receiver
  *
  * Returns:
- *        0 - packet received
- *   EAGAIN - operation in progress
- *   EIO    - ECU did not respond
+ *   0   - A complete OBD packet was received
+ *   EIO - The response timeout expired, CAN reception or Flow Control
+ *         transmission failed, or the received packet was malformed.
  */
 extern int can_obd_recv(unsigned char **, int *);
+
+/*
+ * Return TRUE while the OBD response window is active.
+ * Background reception must not consume frames during this window.
+ * Called from the same task as CAN and OBD processing.
+ */
+extern BOOL can_obd_rx_active(void);
 
 #endif /* __CAN_HAL_H */
 

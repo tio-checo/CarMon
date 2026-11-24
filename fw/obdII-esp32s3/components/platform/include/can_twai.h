@@ -23,10 +23,19 @@ typedef struct {
 extern int can_twai_get_status(can_twai_status_t *);
 
 /*
- * Receive one frame without waiting.
- * Returns 0, EAGAIN when empty, or ENODEV before initialization.
+ * Receive a copy of one queued frame.
+ * Called from task context with exclusive access to CAN.
+ * timeout_ms specifies the wait budget; zero means no waiting.
+ * Positive waits are rounded up to whole FreeRTOS ticks.
+ *
+ * Returns:
+ *   0          A frame was received.
+ *   EAGAIN     The queue is empty and timeout_ms is zero.
+ *   ETIMEDOUT  The queue wait expired.
+ *   EINVAL     The output pointer is NULL or timeout_ms is negative.
+ *   ENODEV     The TWAI node or receive queue is unavailable.
  */
-extern int can_twai_receive(can_frame_t *);
+extern int can_twai_receive(can_frame_t *, int);
 
 /*
  * Send one frame and wait for transmission completion.
