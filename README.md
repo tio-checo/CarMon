@@ -4,7 +4,7 @@ CarMon is a custom vehicle monitoring and data logging project combining OBD-II 
 
 The source includes standard OBD measurements and Toyota diesel-specific definitions for the **1AD-FTV** and **2AD-FTV** engines, including injector feedback, exhaust gas temperatures, and diesel particulate filter (DPF) measurements. Vehicle-specific PID definitions and CAN mappings need to be checked before using the project with another engine or ECU.
 
-The [CarMon wiki](https://github.com/tio-checo/CarMon/wiki) (in Czech) provides a documentation overview and an outline of planned guides for hardware, firmware, communication, and data analysis.
+The [CarMon wiki](https://github.com/tio-checo/CarMon/wiki) provides a documentation overview and an outline of planned guides for hardware, firmware, communication, and data analysis.
 
 ## What it does
 
