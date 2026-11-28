@@ -36,8 +36,18 @@ carmon_app_init(void)
 	 * on an existing card.
 	 */
 	INIT(i2c_init());
-	INIT(ee24_init());
-	INIT(pcf8563_init());
+
+	/* Report missing I2C devices without preventing startup. */
+	err = ee24_init();
+	if (err != 0) {
+		ESP_LOGW("carmon", "EEPROM initialization failed: %d", err);
+	}
+
+	err = pcf8563_init();
+	if (err != 0) {
+		ESP_LOGW("carmon", "RTC initialization failed: %d", err);
+	}
+
 	INIT(mon_init());
 
 	/*
